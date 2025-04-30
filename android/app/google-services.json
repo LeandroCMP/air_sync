@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "79211816884",
+    "project_id": "airsync-296d2",
+    "storage_bucket": "airsync-296d2.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:79211816884:android:38dd48ee1852401890b4e1",
+        "android_client_info": {
+          "package_name": "com.example.air_sync"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCRht2H3F6IS8jXtlQKzqmDnXXSb5l4j9M"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
