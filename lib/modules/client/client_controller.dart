@@ -1,32 +1,32 @@
 import 'package:air_sync/application/auth/auth_service_application.dart';
-import 'package:air_sync/models/air_conditioner_model.dart';
-import 'package:air_sync/models/residence_model.dart';
+import 'package:air_sync/application/ui/loader/loader_mixin.dart';
+import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/services/client/client_service.dart';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/application/core/errors/client_failure.dart';
-import 'package:uuid/uuid.dart';
 
-class ClientController extends GetxController {
+class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   final ClientService _clientService;
   final AuthServiceApplication _authServiceApplication;
 
   ClientController({
     required ClientService clientService,
     required AuthServiceApplication authServiceApplication,
-  }) : _clientService = clientService,
-       _authServiceApplication = authServiceApplication;
+  })  : _clientService = clientService,
+        _authServiceApplication = authServiceApplication;
 
   @override
   void onInit() {
-    registerClient(_authServiceApplication.user.value!.id);
+    loaderListener(isLoading);
+    messageListener(message);
     super.onInit();
   }
 
   @override
-  void onReady() {
-    getClients();
+  void onReady() async {
+    await getClients();
     super.onReady();
   }
 
@@ -36,77 +36,78 @@ class ClientController extends GetxController {
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
   final cpfOrCnpjController = TextEditingController();
-  final birthDate = Rxn<DateTime>();
+  final birthDateController = TextEditingController();
+  Rxn<DateTime> birthDate = Rxn<DateTime>();
 
   final isLoading = false.obs;
-  final errorMessage = RxnString();
-  final successMessage = RxnString();
+  final message = Rxn<MessageModel>();
 
   final RxList<ClientModel> clients = <ClientModel>[].obs;
 
-  // Método para salvar cliente
-  Future<void> registerClient(String userId) async {
-    errorMessage.value = null;
-    successMessage.value = null;
-
-    //if (!formKey.currentState!.validate()) return;
-
-    isLoading.value = true;
-
+  Future<void> registerClient() async {
+    isLoading(true);
     try {
       final client = ClientModel(
-        id: '', // ID será gerado pelo Firebase
-        userId: userId,
-        name: 'nameController.text.trim()',
-        phone: 'phoneController.text.trim()',
-        cpfOrCnpj: 'cpfOrCnpjController.text.trim().isNotEmpty',
-        /* ? cpfOrCnpjController.text.trim()
-            : null,*/
-        birthDate: DateTime.now(),
-        residences: [
-          ResidenceModel(id: Uuid().v1().toString(), name: 'Casa',airConditioners: [
-            AirConditionerModel(id: Uuid().v1().toString(), room: 'Quarto Casal', model: 'fujitsu', btus: 12000)
-          ])
-        ]
+        id: '', // Será preenchido pelo Firebase
+        userId: _authServiceApplication.user.value!.id,
+        name: nameController.text.toUpperCase().trim(),
+        phone: phoneController.text.trim(),
+        cpfOrCnpj: cpfOrCnpjController.text.trim().isNotEmpty
+            ? cpfOrCnpjController.text.trim()
+            : null,
+        birthDate: birthDate.value,
       );
 
-      await _clientService.registerClient(client);
+      // Agora o service retorna o client com ID
+      final savedClient = await _clientService.registerClient(client);
 
-      successMessage.value = 'Cliente cadastrado com sucesso!';
+      clients.add(savedClient); // Adiciona com ID correto
+
+      isLoading(false);
+      await Future.delayed(const Duration(milliseconds: 300));
+      Get.back(); // Fecha modal de cadastro
+
+      message(
+        MessageModel.success(
+          title: 'Sucesso!',
+          message: 'Cliente cadastrado com sucesso!',
+        ),
+      );
+
       clearForm();
     } on ClientFailure catch (e) {
-      errorMessage.value = e.message;
+      message(MessageModel.error(title: 'Erro!', message: e.message));
     } catch (_) {
-      errorMessage.value = 'Erro inesperado ao cadastrar o cliente.';
+      message(
+        MessageModel.error(
+          title: 'Erro!',
+          message: 'Erro inesperado ao cadastrar o cliente.',
+        ),
+      );
     } finally {
-      isLoading.value = false;
+      isLoading(false);
     }
   }
 
   Future<void> getClients() async {
+    isLoading.value = true;
     try {
-      isLoading.value = true;
-
       final result = await _clientService.getClientsByUserId(
         _authServiceApplication.user.value!.id,
       );
       clients.assignAll(result);
-      for (var element in clients) {
-        print(element.name);
-      }
     } catch (e) {
-      // log, snackbar etc.
       Get.snackbar('Erro', e.toString());
     } finally {
       isLoading.value = false;
     }
   }
 
-  // Método para resetar o formulário
   void clearForm() {
     nameController.clear();
     phoneController.clear();
     cpfOrCnpjController.clear();
+    birthDateController.clear();
     birthDate.value = null;
   }
 

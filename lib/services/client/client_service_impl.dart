@@ -9,10 +9,14 @@ class ClientServiceImpl implements ClientService {
     : _clientRepository = clientRepository;
 
   @override
-  Future<void> registerClient(ClientModel client) =>
+  Future<ClientModel> registerClient(ClientModel client) =>
       _clientRepository.registerClient(client);
 
   @override
   Future<List<ClientModel>> getClientsByUserId(String userId) =>
       _clientRepository.getClientsByUserId(userId);
+
+  @override
+  Future<void> updateClient(ClientModel client) =>
+      _clientRepository.updateClient(client);
 }

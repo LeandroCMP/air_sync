@@ -65,6 +65,7 @@ class HomePage extends GetView<HomeController> {
                         height: 60,
                         width: 60,
                         child: CircleAvatar(
+                          backgroundColor: context.themeLightGray,
                           child: Text(
                             '7',
                             style: TextStyle(
@@ -73,7 +74,6 @@ class HomePage extends GetView<HomeController> {
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          backgroundColor: context.themeLightGray,
                         ),
                       ),
                       const SizedBox(width: 20),
@@ -122,7 +122,7 @@ class HomePage extends GetView<HomeController> {
               ),
               const SizedBox(height: 25),
               InkWell(
-                onTap: () {},
+                onTap: () => Get.toNamed('/inventory'),
                 child: Container(
                   width: double.maxFinite,
                   height: 100,

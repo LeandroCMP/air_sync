@@ -22,6 +22,7 @@ class ClientModel {
 
   Map<String, dynamic> toMap() {
     return {
+      '_id': id,
       'userId': userId,
       'name': name.toUpperCase(),
       'phone': phone,
@@ -33,7 +34,7 @@ class ClientModel {
 
   factory ClientModel.fromMap(String id, Map<String, dynamic> map) {
   return ClientModel(
-    id: id,
+    id: map['_id'],
     userId: map['userId'],
     name: map['name'],
     phone: map['phone'],

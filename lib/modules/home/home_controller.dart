@@ -5,13 +5,11 @@ import 'package:get/get.dart';
 
 class HomeController extends GetxController {
   final AuthServiceApplication _authServiceApplication;
-  final AuthService _authService;
 
   HomeController({
     required AuthService authService,
     required AuthServiceApplication authServiceApplication,
-  }) : _authService = authService,
-       _authServiceApplication = authServiceApplication;
+  }) : _authServiceApplication = authServiceApplication;
 
   final Rxn<UserModel> user = Rxn<UserModel>();
 

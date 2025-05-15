@@ -9,13 +9,13 @@ class ClientBindings implements Bindings {
     @override
     void dependencies() {
      Get.lazyPut<ClientRepository>(
-        () => ClientRepositoryImpl(authServiceApplication: Get.find()));
+        () => ClientRepositoryImpl());
     Get.lazyPut<ClientService>(
       () => ClientServiceImpl(clientRepository: Get.find()),
     );
         Get.put(ClientController(
           clientService: Get.find(), 
           authServiceApplication: Get.find(),
-        ));
+        ), );
     }
 }

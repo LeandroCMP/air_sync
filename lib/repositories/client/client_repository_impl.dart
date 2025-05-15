@@ -1,14 +1,10 @@
-import 'package:air_sync/application/auth/auth_service_application.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/application/core/errors/client_failure.dart';
 import 'client_repository.dart';
 
 class ClientRepositoryImpl implements ClientRepository {
-  final AuthServiceApplication _authServiceApplication;
 
-  ClientRepositoryImpl({required AuthServiceApplication authServiceApplication})
-  : _authServiceApplication = authServiceApplication;
 
   final FirebaseFirestore _firestore = FirebaseFirestore.instance;
 
@@ -32,24 +28,46 @@ class ClientRepositoryImpl implements ClientRepository {
   }
 
   @override
-  Future<void> registerClient(ClientModel client) async {
+  Future<ClientModel> registerClient(ClientModel client) async {
     try {
-      if (client.userId.isEmpty ||
-          client.name.isEmpty ||
-          client.phone.isEmpty) {
+      if (client.userId.isEmpty || client.name.isEmpty || client.phone.isEmpty) {
         throw ClientFailure.validation(
           'Nome, telefone ou usuário não podem estar vazios',
         );
       }
 
+      // Gera ID automático
       final docRef = _firestore.collection('clients').doc();
+
+      // Cria cópia do cliente com o ID gerado
       final clientToSave = client.copyWith(id: docRef.id);
 
+      // Salva no Firestore
       await docRef.set(clientToSave.toMap());
+
+      return clientToSave;
     } on FirebaseException catch (e) {
       throw ClientFailure.firebase('Erro ao registrar cliente: ${e.message}');
     } catch (e) {
       throw ClientFailure.unknown('Erro inesperado ao cadastrar cliente');
     }
   }
+
+  @override
+Future<void> updateClient(ClientModel client) async {
+  try {
+    if (client.id.isEmpty) {
+      throw ClientFailure.validation('ID do cliente é obrigatório para atualização');
+    }
+
+    await _firestore
+        .collection('clients')
+        .doc(client.id)
+        .update(client.toMap());
+  } on FirebaseException catch (e) {
+    throw ClientFailure.firebase('Erro ao atualizar cliente: ${e.message}');
+  } catch (e) {
+    throw ClientFailure.unknown('Erro inesperado ao atualizar cliente');
+  }
+}
 }
