@@ -102,4 +102,50 @@ Future<void> addRecord({
   }
 }
 
+@override
+  Future<void> deleteEntry({
+  required String itemId,
+  required String entryId,
+}) async {
+  try {
+    final itemRef = _firestore.collection('inventory').doc(itemId);
+    final snapshot = await itemRef.get();
+
+    if (!snapshot.exists) {
+      throw InventoryFailure.validation('Item não encontrado');
+    }
+
+    final data = snapshot.data()!;
+    final entries = List<Map<String, dynamic>>.from(data['entries'] ?? []);
+
+    // Remove a entrada com o ID correspondente
+    entries.removeWhere((entry) => entry['id'] == entryId);
+
+    // Atualiza o documento com a nova lista de entradas
+    await itemRef.update({'entries': entries});
+  } on FirebaseException catch (e) {
+    throw InventoryFailure.firebase('Erro ao deletar entrada: ${e.message}');
+  } catch (e) {
+    throw InventoryFailure.unknown('Erro inesperado ao deletar entrada');
+  }
+}
+
+ @override
+Future<void> deleteItem(String itemId) async {
+  try {
+    if (itemId.isEmpty) {
+      throw InventoryFailure.validation('ID do item é obrigatório para exclusão');
+    }
+
+    await _firestore.collection('inventory').doc(itemId).delete();
+  } on FirebaseException catch (e) {
+    throw InventoryFailure.firebase('Erro ao deletar item: ${e.message}');
+  } catch (e) {
+    throw InventoryFailure.unknown('Erro inesperado ao deletar item');
+  }
+}
+
+
+
+
 }

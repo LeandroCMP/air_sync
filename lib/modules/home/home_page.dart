@@ -48,7 +48,7 @@ class HomePage extends GetView<HomeController> {
           physics: BouncingScrollPhysics(),
           child: Column(
             children: [
-              InkWell(
+             /* InkWell(
                 onTap: () {},
                 child: Container(
                   width: double.maxFinite,
@@ -84,7 +84,7 @@ class HomePage extends GetView<HomeController> {
                     ],
                   ),
                 ),
-              ),
+              ),*/
               const SizedBox(height: 25),
               InkWell(
                 onTap: () => Get.toNamed('/client'),
@@ -113,7 +113,7 @@ class HomePage extends GetView<HomeController> {
                       ),
                       const SizedBox(width: 20),
                       Text(
-                        '35 Clientes',
+                        'Clientes',
                         style: TextStyle(color: Colors.white, fontSize: 16),
                       ),
                     ],
@@ -156,7 +156,7 @@ class HomePage extends GetView<HomeController> {
                 ),
               ),
               const SizedBox(height: 25),
-              InkWell(
+              /*InkWell(
                 onTap: () {},
                 child: Container(
                   width: double.maxFinite,
@@ -189,8 +189,8 @@ class HomePage extends GetView<HomeController> {
                     ],
                   ),
                 ),
-              ),
-              const SizedBox(height: 25),
+              ),*/
+              /*const SizedBox(height: 25),
               InkWell(
                 onTap: () {},
                 child: Container(
@@ -224,7 +224,7 @@ class HomePage extends GetView<HomeController> {
                     ],
                   ),
                 ),
-              ),
+              ),*/
             ],
           ),
         ),

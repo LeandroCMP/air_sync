@@ -288,7 +288,7 @@ class ClientDetailsPage extends GetView<ClientDetailsController> {
                           return InkWell(
                             onTap: () => Get.toNamed(
                               '/client/details/airconditioner',
-                               arguments: controller.client.value,),
+                               arguments: residence),
                             child: Container(
                               height: 125,
                               width: 150,

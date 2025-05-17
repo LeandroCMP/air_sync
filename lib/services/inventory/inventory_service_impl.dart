@@ -28,4 +28,12 @@ class InventoryServiceImpl implements InventoryService {
     itemId: itemId,
     quantityToAdd: quantityToAdd,
   );
+
+  @override
+  Future<void> deleteEntry({required String itemId, required String entryId}) =>
+      _inventoryRepository.deleteEntry(itemId: itemId, entryId: entryId);
+
+  @override
+  Future<void> deleteItem(String itemId) =>
+      _inventoryRepository.deleteItem(itemId);
 }

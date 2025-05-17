@@ -21,6 +21,28 @@ class ResidenceModel {
     this.airConditioners = const [],
   });
 
+  ResidenceModel copyWith({
+    String? id,
+    String? name,
+    String? number,
+    String? complement,
+    String? street,
+    String? zipCode,
+    String? city,
+    List<AirConditionerModel>? airConditioners,
+  }) {
+    return ResidenceModel(
+      id: id ?? this.id,
+      name: name ?? this.name,
+      number: number ?? this.number,
+      complement: complement ?? this.complement,
+      street: street ?? this.street,
+      zipCode: zipCode ?? this.zipCode,
+      city: city ?? this.city,
+      airConditioners: airConditioners ?? this.airConditioners,
+    );
+  }
+
   Map<String, dynamic> toMap() {
     return {
       'id': id,
