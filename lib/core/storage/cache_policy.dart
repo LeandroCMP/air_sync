@@ -1,0 +1,4 @@
+enum CachePolicy {
+  networkFirst,
+  cacheFirst,
+}
