@@ -1,70 +1,75 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'residence_model.dart';
-
 class ClientModel {
   final String id;
-  final String userId;
   final String name;
-  final String phone;
-  final String? cpfOrCnpj;
-  final DateTime? birthDate;
-  final List<ResidenceModel> residences;
+  final List<String> phones;
+  final List<String> emails;
+  final String? docNumber;
+  final List<String> tags;
+  final String? notes;
 
   ClientModel({
     required this.id,
-    required this.userId,
     required this.name,
-    required this.phone,
-    this.cpfOrCnpj,
-    this.birthDate,
-    this.residences = const [],
+    this.phones = const [],
+    this.emails = const [],
+    this.docNumber,
+    this.tags = const [],
+    this.notes,
   });
 
-  Map<String, dynamic> toMap() {
+  String get primaryPhone => phones.isNotEmpty ? phones.first : '';
+
+  Map<String, dynamic> toCreatePayload() {
     return {
-      '_id': id,
-      'userId': userId,
-      'name': name.toUpperCase(),
-      'phone': phone,
-      'cpfOrCnpj': cpfOrCnpj,
-      'birthDate': birthDate != null ? Timestamp.fromDate(birthDate!) : null,
-      'residences': residences.map((e) => e.toMap()).toList(),
+      'name': name,
+      if (phones.isNotEmpty) 'phones': phones,
+      if (emails.isNotEmpty) 'emails': emails,
+      if (docNumber != null && docNumber!.isNotEmpty) 'docNumber': docNumber,
+      if (tags.isNotEmpty) 'tags': tags,
+      if (notes != null && notes!.isNotEmpty) 'notes': notes,
+    };
+  }
+
+  Map<String, dynamic> toUpdatePayload() {
+    return {
+      'name': name,
+      'phones': phones,
+      'emails': emails,
+      'docNumber': docNumber,
+      'tags': tags,
+      'notes': notes,
     };
   }
 
   factory ClientModel.fromMap(String id, Map<String, dynamic> map) {
-  return ClientModel(
-    id: map['_id'],
-    userId: map['userId'],
-    name: map['name'],
-    phone: map['phone'],
-    cpfOrCnpj: map['cpfOrCnpj'],
-    birthDate: map['birthDate'] != null && map['birthDate'] is Timestamp
-        ? (map['birthDate'] as Timestamp).toDate()
-        : null,
-    residences: (map['residences'] as List<dynamic>? ?? [])
-        .map((e) => ResidenceModel.fromMap(Map<String, dynamic>.from(e)))
-        .toList(),
-  );
-}
+    return ClientModel(
+      id: id,
+      name: (map['name'] ?? '').toString(),
+      phones: (map['phones'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      emails: (map['emails'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      docNumber: map['docNumber']?.toString() ?? map['document']?.toString(),
+      tags: (map['tags'] as List?)?.map((e) => e.toString()).toList() ?? const [],
+      notes: map['notes']?.toString(),
+    );
+  }
 
   ClientModel copyWith({
     String? id,
-    String? userId,
     String? name,
-    String? phone,
-    String? cpfOrCnpj,
-    DateTime? birthDate,
-    List<ResidenceModel>? residences,
+    List<String>? phones,
+    List<String>? emails,
+    String? docNumber,
+    List<String>? tags,
+    String? notes,
   }) {
     return ClientModel(
       id: id ?? this.id,
-      userId: userId ?? this.userId,
       name: name ?? this.name,
-      phone: phone ?? this.phone,
-      cpfOrCnpj: cpfOrCnpj ?? this.cpfOrCnpj,
-      birthDate: birthDate ?? this.birthDate,
-      residences: residences ?? this.residences,
+      phones: phones ?? this.phones,
+      emails: emails ?? this.emails,
+      docNumber: docNumber ?? this.docNumber,
+      tags: tags ?? this.tags,
+      notes: notes ?? this.notes,
     );
   }
 }

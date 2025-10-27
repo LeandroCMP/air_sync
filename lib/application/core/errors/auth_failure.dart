@@ -1,6 +1,6 @@
-// lib/repositories/auth/auth_failure.dart
-
-import 'package:firebase_auth/firebase_auth.dart';
+// lib/application/core/errors/auth_failure.dart
+import 'dart:async';
+import 'dart:io';
 
 enum AuthFailureType {
   wrongPassword,
@@ -8,6 +8,8 @@ enum AuthFailureType {
   invalidEmail,
   userDisabled,
   tooManyRequests,
+  networkError,
+  timeout,
   unknown,
 }
 
@@ -17,47 +19,77 @@ class AuthFailure implements Exception {
 
   const AuthFailure(this.type, this.message);
 
-  // Método para mapear o erro a partir da exceção
-  factory AuthFailure.fromException(Exception e) {
-    if (e is FirebaseAuthException) {
-      return _fromFirebaseAuthException(e);
+  /// Mensagem padrão para cada tipo (usada se não houver mensagem específica).
+  static String messageForType(AuthFailureType type) {
+    switch (type) {
+      case AuthFailureType.wrongPassword:
+        return 'Senha inválida.';
+      case AuthFailureType.userNotFound:
+        return 'Usuário não encontrado.';
+      case AuthFailureType.invalidEmail:
+        return 'E-mail inválido.';
+      case AuthFailureType.userDisabled:
+        return 'Usuário desativado.';
+      case AuthFailureType.tooManyRequests:
+        return 'Muitas tentativas. Tente novamente mais tarde.';
+      case AuthFailureType.networkError:
+        return 'Falha de conexão. Verifique sua internet.';
+      case AuthFailureType.timeout:
+        return 'Tempo de resposta excedido. Tente novamente.';
+      case AuthFailureType.unknown:
+      default:
+        return 'Erro desconhecido.';
     }
-    return const AuthFailure(AuthFailureType.unknown, 'Erro desconhecido.');
   }
 
-  // Método para mapear os códigos de erro do Firebase Auth
-  static AuthFailure _fromFirebaseAuthException(FirebaseAuthException e) {
-    switch (e.code) {
-      case 'invalid-credential':
-        return const AuthFailure(
-          AuthFailureType.wrongPassword,
-          'Usuário ou senha incorreta. Verifique e tente novamente.',
-        );
-      case 'user-not-found':
-        return const AuthFailure(
-          AuthFailureType.userNotFound,
-          'Usuário não encontrado com esse e-mail.',
-        );
-      case 'invalid-email':
-        return const AuthFailure(
-          AuthFailureType.invalidEmail,
-          'O e-mail informado é inválido.',
-        );
-      case 'user-disabled':
-        return const AuthFailure(
-          AuthFailureType.userDisabled,
-          'Essa conta está desativada.',
-        );
-      case 'too-many-requests':
-        return const AuthFailure(
-          AuthFailureType.tooManyRequests,
-          'Muitas tentativas. Tente novamente mais tarde.',
-        );
-      default:
-        return AuthFailure(
-          AuthFailureType.unknown,
-          'Erro de autenticação desconhecido: ${e.code}',
-        );
+  /// Constrói um [AuthFailure] a partir de qualquer [Exception] comum no login.
+  factory AuthFailure.fromException(Exception e) {
+    // Timeout
+    if (e is TimeoutException) {
+      return AuthFailure(AuthFailureType.timeout, messageForType(AuthFailureType.timeout));
     }
+
+    // Rede (sem internet / DNS)
+    if (e is SocketException || e is HandshakeException) {
+      return AuthFailure(AuthFailureType.networkError, messageForType(AuthFailureType.networkError));
+    }
+
+    // Dados mal formatados
+    if (e is FormatException) {
+      return const AuthFailure(AuthFailureType.unknown, 'Resposta inválida do servidor.');
+    }
+
+    // FirebaseAuthException (sem import explícito)
+    // Usa dynamic para acessar .code e .message quando existir.
+    final rt = e.runtimeType.toString();
+    if (rt == 'FirebaseAuthException') {
+      try {
+        final code = (e as dynamic).code as String?;
+        final msg = (e as dynamic).message as String?;
+        switch (code) {
+          case 'wrong-password':
+          case 'invalid-credential':
+            return AuthFailure(AuthFailureType.wrongPassword, msg ?? messageForType(AuthFailureType.wrongPassword));
+          case 'user-not-found':
+            return AuthFailure(AuthFailureType.userNotFound, msg ?? messageForType(AuthFailureType.userNotFound));
+          case 'invalid-email':
+            return AuthFailure(AuthFailureType.invalidEmail, msg ?? messageForType(AuthFailureType.invalidEmail));
+          case 'user-disabled':
+            return AuthFailure(AuthFailureType.userDisabled, msg ?? messageForType(AuthFailureType.userDisabled));
+          case 'too-many-requests':
+            return AuthFailure(AuthFailureType.tooManyRequests, msg ?? messageForType(AuthFailureType.tooManyRequests));
+          case 'network-request-failed':
+            return AuthFailure(AuthFailureType.networkError, msg ?? messageForType(AuthFailureType.networkError));
+          default:
+            return AuthFailure(AuthFailureType.unknown, msg ?? messageForType(AuthFailureType.unknown));
+        }
+      } catch (_) {
+        // Se falhar leitura dinâmica, caímos no unknown.
+        return AuthFailure(AuthFailureType.unknown, messageForType(AuthFailureType.unknown));
+      }
+    }
+
+    // Fallback
+    return AuthFailure(AuthFailureType.unknown, messageForType(AuthFailureType.unknown));
   }
 }

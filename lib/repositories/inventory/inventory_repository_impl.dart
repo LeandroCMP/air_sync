@@ -1,25 +1,34 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/application/core/errors/inventory_failure.dart';
+import 'package:air_sync/application/core/network/api_client.dart';
+import 'package:air_sync/models/inventory_model.dart';
+import 'package:dio/dio.dart';
+import 'package:get/get.dart';
+
 import 'inventory_repository.dart';
 
 class InventoryRepositoryImpl implements InventoryRepository {
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final ApiClient _api = Get.find<ApiClient>();
+
+  String get _basePath => '/v1/inventory/items';
 
   @override
   Future<List<InventoryItemModel>> getItems(String userId) async {
     try {
-      final querySnapshot = await _firestore
-          .collection('inventory')
-          .where('userId', isEqualTo: userId)
-          .get();
-
-      return querySnapshot.docs.map((doc) {
-        return InventoryItemModel.fromMap(doc.id, doc.data());
-      }).toList();
-    } on FirebaseException catch (e) {
+      final res = await _api.dio.get(_basePath);
+      final data = res.data;
+      if (data is List) {
+        return data
+            .cast<Map<String, dynamic>>()
+            .map((e) => InventoryItemModel.fromMap(
+                  (e['id'] ?? e['_id'] ?? '').toString(),
+                  e,
+                ))
+            .toList();
+      }
+      return [];
+    } on DioException catch (e) {
       throw InventoryFailure.firebase('Erro ao buscar itens: ${e.message}');
-    } catch (e) {
+    } catch (_) {
       throw InventoryFailure.unknown('Erro inesperado ao buscar itens do estoque');
     }
   }
@@ -27,25 +36,25 @@ class InventoryRepositoryImpl implements InventoryRepository {
   @override
   Future<InventoryItemModel> registerItem(InventoryItemModel item) async {
     try {
-      if (item.userId.isEmpty || item.description.isEmpty || item.unit.isEmpty || item.quantity <= 0) {
+      if (item.description.isEmpty || item.unit.isEmpty || item.quantity <= 0) {
         throw InventoryFailure.validation(
-          'Descrição, unidade, quantidade e usuário são obrigatórios',
+          'Descrição, unidade e quantidade são obrigatórios',
         );
       }
 
-      // Gera ID automático
-      final docRef = _firestore.collection('inventory').doc();
+      final payload = {
+        'description': item.description,
+        'unit': item.unit,
+        'quantity': item.quantity,
+      };
 
-      // Cria cópia do cliente com o ID gerado
-      final itemToSave = item.copyWith(id: docRef.id);
-
-      // Salva no Firestore
-      await docRef.set(itemToSave.toMap());
-
-      return itemToSave;
-    } on FirebaseException catch (e) {
+      final res = await _api.dio.post(_basePath, data: payload);
+      final data = res.data as Map<String, dynamic>;
+      final id = (data['id'] ?? data['_id'] ?? '').toString();
+      return item.copyWith(id: id);
+    } on DioException catch (e) {
       throw InventoryFailure.firebase('Erro ao registrar item: ${e.message}');
-    } catch (e) {
+    } catch (_) {
       throw InventoryFailure.unknown('Erro inesperado ao cadastrar item');
     }
   }
@@ -56,96 +65,56 @@ class InventoryRepositoryImpl implements InventoryRepository {
       if (item.id.isEmpty) {
         throw InventoryFailure.validation('ID do item é obrigatório para atualização');
       }
-
-      await _firestore
-          .collection('inventory')
-          .doc(item.id)
-          .update(item.toMap());
-    } on FirebaseException catch (e) {
+      final payload = {
+        'description': item.description,
+        'unit': item.unit,
+        'quantity': item.quantity,
+      };
+      await _api.dio.patch('$_basePath/${item.id}', data: payload);
+    } on DioException catch (e) {
       throw InventoryFailure.firebase('Erro ao atualizar item: ${e.message}');
-    } catch (e) {
+    } catch (_) {
       throw InventoryFailure.unknown('Erro inesperado ao atualizar item');
     }
   }
 
   @override
-Future<void> addRecord({
-  required String itemId,
-  required double quantityToAdd,
-}) async {
-  try {
-    final itemRef = _firestore.collection('inventory').doc(itemId);
-
-    final record = {
-      'date': DateTime.now().toIso8601String(),
-      'quantityAdded': quantityToAdd,
-    };
-
-    await _firestore.runTransaction((transaction) async {
-      final snapshot = await transaction.get(itemRef);
-      if (!snapshot.exists) {
-        throw InventoryFailure.validation('Item não encontrado');
-      }
-
-      final currentData = snapshot.data()!;
-      final currentQuantity = (currentData['quantity'] ?? 0).toDouble();
-
-      transaction.update(itemRef, {
-        'quantity': currentQuantity + quantityToAdd,
-        'entries': FieldValue.arrayUnion([record]),
+  Future<void> addRecord({required String itemId, required double quantityToAdd}) async {
+    try {
+      // Atualiza quantidade agregada; histórico depende da API
+      await _api.dio.post('$_basePath/$itemId/increment', data: {
+        'qty': quantityToAdd,
       });
-    });
-  } on FirebaseException catch (e) {
-    throw InventoryFailure.firebase('Erro ao adicionar registro: ${e.message}');
-  } catch (e) {
-    throw InventoryFailure.unknown('Erro inesperado ao registrar entrada');
-  }
-}
-
-@override
-  Future<void> deleteEntry({
-  required String itemId,
-  required String entryId,
-}) async {
-  try {
-    final itemRef = _firestore.collection('inventory').doc(itemId);
-    final snapshot = await itemRef.get();
-
-    if (!snapshot.exists) {
-      throw InventoryFailure.validation('Item não encontrado');
+    } on DioException catch (e) {
+      throw InventoryFailure.firebase('Erro ao adicionar registro: ${e.message}');
+    } catch (_) {
+      throw InventoryFailure.unknown('Erro inesperado ao registrar entrada');
     }
-
-    final data = snapshot.data()!;
-    final entries = List<Map<String, dynamic>>.from(data['entries'] ?? []);
-
-    // Remove a entrada com o ID correspondente
-    entries.removeWhere((entry) => entry['id'] == entryId);
-
-    // Atualiza o documento com a nova lista de entradas
-    await itemRef.update({'entries': entries});
-  } on FirebaseException catch (e) {
-    throw InventoryFailure.firebase('Erro ao deletar entrada: ${e.message}');
-  } catch (e) {
-    throw InventoryFailure.unknown('Erro inesperado ao deletar entrada');
   }
-}
 
- @override
-Future<void> deleteItem(String itemId) async {
-  try {
-    if (itemId.isEmpty) {
-      throw InventoryFailure.validation('ID do item é obrigatório para exclusão');
+  @override
+  Future<void> deleteEntry({required String itemId, required String entryId}) async {
+    try {
+      await _api.dio.delete('$_basePath/$itemId/entries/$entryId');
+    } on DioException catch (e) {
+      throw InventoryFailure.firebase('Erro ao deletar entrada: ${e.message}');
+    } catch (_) {
+      throw InventoryFailure.unknown('Erro inesperado ao deletar entrada');
     }
+  }
 
-    await _firestore.collection('inventory').doc(itemId).delete();
-  } on FirebaseException catch (e) {
-    throw InventoryFailure.firebase('Erro ao deletar item: ${e.message}');
-  } catch (e) {
-    throw InventoryFailure.unknown('Erro inesperado ao deletar item');
+  @override
+  Future<void> deleteItem(String itemId) async {
+    try {
+      if (itemId.isEmpty) {
+        throw InventoryFailure.validation('ID do item é obrigatório para exclusão');
+      }
+      await _api.dio.delete('$_basePath/$itemId');
+    } on DioException catch (e) {
+      throw InventoryFailure.firebase('Erro ao deletar item: ${e.message}');
+    } catch (_) {
+      throw InventoryFailure.unknown('Erro inesperado ao deletar item');
+    }
   }
 }
 
-
-
-
-}

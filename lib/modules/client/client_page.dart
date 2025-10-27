@@ -89,32 +89,6 @@ class ClientPage extends GetView<ClientController> {
                     ),
                   ),
                   const SizedBox(height: 10),
-                  TextFormField(
-                    controller: controller.birthDateController,
-                    readOnly: true,
-                    onTap: () async {
-                      final pickedDate = await showDatePicker(
-                        context: context,
-                        initialDate: DateTime.now(),
-                        firstDate: DateTime(1900),
-                        lastDate: DateTime.now(),
-                        builder: (context, child) {
-                          return Theme(data: ThemeData.dark(), child: child!);
-                        },
-                      );
-                      if (pickedDate != null) {
-                        controller.birthDateController.text =
-                            '${pickedDate.day.toString().padLeft(2, '0')}/${pickedDate.month.toString().padLeft(2, '0')}/${pickedDate.year}';
-                        controller.birthDate(pickedDate);
-                      }
-                    },
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Data de nascimento',
-                      labelStyle: TextStyle(color: Colors.white),
-                      suffixIcon: Icon(Icons.calendar_month_outlined),
-                    ),
-                  ),
                   const SizedBox(height: 20),
                   SizedBox(
                     width: double.infinity,
@@ -213,28 +187,14 @@ class ClientPage extends GetView<ClientController> {
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(
-                                client.name,
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              Text(
-                                client.phone,
-                                style: const TextStyle(color: Colors.white),
-                              ),
+                              Text(client.name, style: const TextStyle(color: Colors.white)),
+                              Text(client.primaryPhone, style: const TextStyle(color: Colors.white)),
                             ],
                           ),
                         ],
                       ),
                       const SizedBox(height: 10),
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.end,
-                        children: [
-                          Text(
-                            '${client.residences.isNotEmpty ? client.residences[0].airConditioners.length : 0} Equipamentos',
-                            style: const TextStyle(color: Colors.white),
-                          ),
-                        ],
-                      ),
+                      const SizedBox.shrink(),
                     ],
                   ),
                 ),

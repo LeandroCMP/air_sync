@@ -8,13 +8,11 @@ import 'package:air_sync/modules/inventory/inventory_module.dart';
 import 'package:air_sync/modules/inventory_item_history/inventory_item_history_module.dart';
 import 'package:air_sync/modules/login/login_module.dart';
 import 'package:air_sync/modules/splash/splash_module.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get_navigation/src/root/get_material_app.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
   runApp(const MyApp());
 }
 

@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'package:cloud_firestore/cloud_firestore.dart';
 
 class UserModel {
   UserModel({
@@ -11,6 +10,8 @@ class UserModel {
     required this.userLevel,
     required this.planExpiration,
     required this.cpfOrCnpj,
+    this.role = '',
+    this.permissions = const [],
   });
 
   final String id;
@@ -21,17 +22,20 @@ class UserModel {
   final int userLevel;
   final DateTime? planExpiration;
   final String cpfOrCnpj;
+  final String role;
+  final List<String> permissions;
 
   Map<String, dynamic> toMap() {
     return <String, dynamic>{
       'name': name.toUpperCase(),
       'email': email.toUpperCase(),
       'phone': phone,
-      'dateBorn': dateBorn != null ? Timestamp.fromDate(dateBorn!) : null,
+      'dateBorn': dateBorn?.toIso8601String(),
       'userLevel': userLevel,
-      'planExpiration':
-          planExpiration != null ? Timestamp.fromDate(planExpiration!) : null,
+      'planExpiration': planExpiration?.toIso8601String(),
       'cpfOrCnpj': cpfOrCnpj,
+      'role': role,
+      'permissions': permissions,
     };
   }
 
@@ -45,16 +49,18 @@ class UserModel {
       name: map['name'] ?? '',
       email: email ?? '',
       phone: map['phone'] ?? '',
-      dateBorn:
-          map['dateBorn'] is Timestamp
-              ? (map['dateBorn'] as Timestamp).toDate()
-              : null,
+      dateBorn: map['dateBorn'] != null
+          ? DateTime.tryParse(map['dateBorn'].toString())
+          : null,
       userLevel: map['userLevel'] ?? 0,
-      planExpiration:
-          map['planExpiration'] is Timestamp
-              ? (map['planExpiration'] as Timestamp).toDate()
-              : null,
+      planExpiration: map['planExpiration'] != null
+          ? DateTime.tryParse(map['planExpiration'].toString())
+          : null,
       cpfOrCnpj: map['cpfOrCnpj'] ?? '',
+      role: (map['role'] ?? '').toString(),
+      permissions: ((map['permissions'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
     );
   }
 
@@ -62,6 +68,6 @@ class UserModel {
 
   @override
   String toString() {
-    return 'UserModel(id: $id, name: $name, email: $email, dateBorn: $dateBorn, phone: $phone, userLevel: $userLevel, planExpiration: $planExpiration, cpfOrCnpj: $cpfOrCnpj)';
+    return 'UserModel(id: $id, name: $name, email: $email, dateBorn: $dateBorn, phone: $phone, userLevel: $userLevel, planExpiration: $planExpiration, cpfOrCnpj: $cpfOrCnpj, role: $role, permissions: $permissions)';
   }
 }

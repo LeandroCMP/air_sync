@@ -36,8 +36,7 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   final nameController = TextEditingController();
   final phoneController = TextEditingController();
   final cpfOrCnpjController = TextEditingController();
-  final birthDateController = TextEditingController();
-  Rxn<DateTime> birthDate = Rxn<DateTime>();
+  
 
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
@@ -48,14 +47,15 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     isLoading(true);
     try {
       final client = ClientModel(
-        id: '', // Será preenchido pelo Firebase
-        userId: _authServiceApplication.user.value!.id,
-        name: nameController.text.toUpperCase().trim(),
-        phone: phoneController.text.trim(),
-        cpfOrCnpj: cpfOrCnpjController.text.trim().isNotEmpty
+        id: '',
+        name: nameController.text.trim(),
+        phones: [phoneController.text.trim()],
+        emails: const [],
+        docNumber: cpfOrCnpjController.text.trim().isNotEmpty
             ? cpfOrCnpjController.text.trim()
             : null,
-        birthDate: birthDate.value,
+        tags: const [],
+        notes: null,
       );
 
       // Agora o service retorna o client com ID
@@ -107,8 +107,7 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     nameController.clear();
     phoneController.clear();
     cpfOrCnpjController.clear();
-    birthDateController.clear();
-    birthDate.value = null;
+    
   }
 
   @override
@@ -119,3 +118,4 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     super.onClose();
   }
 }
+

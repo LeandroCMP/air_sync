@@ -29,12 +29,13 @@ class InventoryItemModel {
   }
 
   factory InventoryItemModel.fromMap(String id, Map<String, dynamic> map) {
+    final qty = map['quantity'] ?? map['qty'] ?? map['stock'] ?? 0;
     return InventoryItemModel(
       id: id,
-      userId: map['userId'] ?? '',
-      description: map['description'] ?? '',
-      unit: map['unit'] ?? '',
-      quantity: (map['quantity'] ?? 0).toDouble(),
+      userId: map['userId']?.toString() ?? '',
+      description: (map['description'] ?? map['name'] ?? '').toString(),
+      unit: (map['unit'] ?? map['uom'] ?? '').toString(),
+      quantity: (qty is num) ? qty.toDouble() : double.tryParse(qty.toString()) ?? 0,
       entries: (map['entries'] as List<dynamic>? ?? [])
           .map((e) => InventoryEntryModel.fromMap(Map<String, dynamic>.from(e)))
           .toList(),

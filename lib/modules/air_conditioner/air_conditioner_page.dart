@@ -192,7 +192,7 @@ class AirConditionerPage extends GetView<AirConditionerController> {
                           ),
                       ),
                       title: Text(
-                        controller.residence.value.name,
+                        controller.residence.value?.name ?? '',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: Colors.white70
                         ),
@@ -212,7 +212,7 @@ class AirConditionerPage extends GetView<AirConditionerController> {
                       separatorBuilder: (context, index) => const SizedBox(
                         height: 10, child: Divider(color: Colors.white70,),
                         ),
-                      itemCount: controller.residence.value.airConditioners.length,
+                      itemCount: (controller.residence.value?.airConditioners ?? const []).length,
                       itemBuilder: (context, index) {
                        return Container(height: 100, width: 100, color: Colors.red,);
                       }, 

@@ -4,6 +4,7 @@ import 'package:air_sync/application/core/services/local_storage_service.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/services/auth/auth_service.dart';
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
+import 'package:air_sync/application/core/session/session_service.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -14,18 +15,19 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
   LoginController({
     required AuthService authService,
     required AuthServiceApplication authServiceApplication,
-  }) : _authService = authService,
-       _authServiceApplication = authServiceApplication;
+  })  : _authService = authService,
+        _authServiceApplication = authServiceApplication;
 
   final _storage = LocalStorageService();
 
-  RxBool viewPassword = true.obs;
-  RxBool saveUserVar = false.obs;
+  // UI states
+  final viewPassword = true.obs;
+  final saveUserVar = false.obs;
+  final isLoading = false.obs;
 
+  // Form
   final emailController = TextEditingController();
   final passwordController = TextEditingController();
-
-  final RxBool isLoading = false.obs;
   final message = Rxn<MessageModel>();
 
   @override
@@ -42,43 +44,82 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
   }
 
   void toggleRememberMe(bool? value) {
-    if (emailController.text.isNotEmpty && emailController.text.isEmail) {
-      saveUserVar.value = value ?? false;
-      _storage.setRememberMe(saveUserVar.value);
-      _storage.setEmail(saveUserVar.value == true ? emailController.text : '');
+    // Alterna o switch; persiste "lembrar" e o e-mail apenas se válido.
+    saveUserVar.value = value ?? false;
+    _storage.setRememberMe(saveUserVar.value);
+    if (emailController.text.isEmail) {
+      _storage.setEmail(saveUserVar.value ? emailController.text : '');
+    } else {
+      _storage.setEmail('');
     }
   }
 
   Future<void> login() async {
+    // evita cliques repetidos
+    if (isLoading.value) return;
+
+    final email = emailController.text.trim();
+    final pass = passwordController.text.trim();
+
+    // Validação local antes de ligar loading
+    if (email.isEmpty || !email.isEmail) {
+      message(MessageModel.error(title: 'E-mail inválido', message: 'Informe um e-mail válido.'));
+      return;
+    }
+    if (pass.isEmpty || pass.length < 6) {
+      message(MessageModel.error(title: 'Senha inválida', message: 'Informe sua senha (mín. 6 caracteres).'));
+      return;
+    }
+
     try {
       isLoading.value = true;
-      final user = await _authService.auth(
-        emailController.text.trim(),
-        passwordController.text.trim(),
-      );
+
+      // Timeout defensivo evita loader eterno
+      final user = await _authService
+          .auth(email, pass)
+          .timeout(const Duration(seconds: 30), onTimeout: () {
+        throw AuthFailure(
+          AuthFailureType.timeout,
+          AuthFailure.messageForType(AuthFailureType.timeout),
+        );
+      });
+
+      // Sucesso → persiste preferência "Salvar usuário"
+      if (saveUserVar.value) {
+        await _storage.setRememberMe(true);
+        await _storage.setEmail(email);
+      } else {
+        await _storage.setRememberMe(false);
+        await _storage.setEmail('');
+      }
+
+      // Atualiza sessão
       _authServiceApplication.user(user);
+      Get.find<SessionService>().onLogin(user);
+
+      // Desliga loader ANTES de navegar
+      isLoading.value = false;
+
+      // Feedback e navegação
+      message(MessageModel.success(title: 'Sucesso', message: 'Sessão iniciada.'));
       Get.offAllNamed('/home');
-      isLoading.value = false;
     } on AuthFailure catch (e) {
-      isLoading.value = false;
-      message(
-        MessageModel.error(title: 'Erro ao fazer login', message: e.message),
-      );
-    } catch (_) {
-      isLoading.value = false;
-      message(
-        MessageModel.error(
-          title: 'Erro inesperado',
-          message: 'Ocorreu um erro inesperado. Tente novamente mais tarde!',
-        ),
-      );
+      if (isLoading.value) isLoading.value = false;
+      message(MessageModel.error(title: 'Erro ao fazer login', message: e.message));
+    } on Exception catch (e) {
+      if (isLoading.value) isLoading.value = false;
+      final af = AuthFailure.fromException(e);
+      message(MessageModel.error(title: 'Erro ao fazer login', message: af.message));
+    } finally {
+      // idempotente: garante que nunca ficará travado
+      if (isLoading.value) isLoading.value = false;
     }
   }
 
   Future<void> resetPassword(String email) async {
-    final email = emailController.text.trim();
+    final target = email.trim();
 
-    if (email.isEmpty || !email.isEmail) {
+    if (target.isEmpty || !target.isEmail) {
       message(
         MessageModel.error(
           title: 'Erro',
@@ -89,7 +130,7 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
     }
 
     try {
-      await _authService.resetPassword(email);
+      await _authService.resetPassword(target);
       message(
         MessageModel.success(
           title: 'Sucesso',
@@ -98,13 +139,9 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
       );
     } on AuthFailure catch (e) {
       message(MessageModel.error(title: 'Erro', message: e.message));
-    } catch (_) {
-      message(
-        MessageModel.error(
-          title: 'Erro',
-          message: 'Erro inesperado. Tente novamente mais tarde.',
-        ),
-      );
+    } on Exception catch (e) {
+      final af = AuthFailure.fromException(e);
+      message(MessageModel.error(title: 'Erro', message: af.message));
     }
   }
 
@@ -114,7 +151,7 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
       _authServiceApplication.user.value = null;
       passwordController.clear();
       Get.offAllNamed('/login');
-    } catch (e) {
+    } catch (_) {
       message(
         MessageModel.error(
           title: 'Erro ao sair',

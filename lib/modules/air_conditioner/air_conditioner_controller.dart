@@ -8,19 +8,11 @@ import 'package:air_sync/models/residence_model.dart';
 
 class AirConditionerController extends GetxController with MessagesMixin, LoaderMixin {
   final ClientService _clientService;
-  final ResidenceModel residence;
+  final Rx<ResidenceModel?> residence = Rx<ResidenceModel?>(null);
 
   AirConditionerController({
     required ClientService clientService,
-    required this.residence,
   }) : _clientService = clientService;
-
-  @override
-  void onInit() {
-    loaderListener(isLoading);
-    messageListener(message);
-    super.onInit();
-  }
 
   final formKey = GlobalKey<FormState>();
 
@@ -35,32 +27,36 @@ class AirConditionerController extends GetxController with MessagesMixin, Loader
   final message = Rxn<MessageModel>();
 
   @override
-  void onReady() {
-    super.onReady();
-    // Inicializa a lista de ar condicionados com os dados da residência
-    airConditioners.assignAll(residence.airConditioners);
+  void onInit() {
+    loaderListener(isLoading);
+    messageListener(message);
+    super.onInit();
+    residence.value = Get.arguments is ResidenceModel ? Get.arguments as ResidenceModel : null;
+    if (residence.value != null) {
+      airConditioners.assignAll(residence.value!.airConditioners);
+    }
   }
 
   Future<void> registerAirConditioner() async {
     isLoading(true);
     try {
       final airConditioner = AirConditionerModel(
-        id: '', // ID will be generated after save
+        id: '',
         room: roomController.text.trim(),
         model: modelController.text.trim(),
         btus: int.parse(btusController.text.trim()),
       );
 
-      // Add the new air conditioner to the list locally
-      residence.airConditioners.add(airConditioner);
-      airConditioners.add(airConditioner); // Update the local list
-
-      // Save the updated residence with the new air conditioner to Firestore
-      await _clientService.addNewAirConditioner(airConditioner, residence.id);
+      airConditioners.add(airConditioner);
+      if (residence.value != null) {
+        residence.value = residence.value!.copyWith(
+          airConditioners: [...residence.value!.airConditioners, airConditioner],
+        );
+      }
 
       isLoading(false);
       await Future.delayed(const Duration(milliseconds: 300));
-      Get.back(); // Close the modal after successful addition
+      Get.back();
 
       message(
         MessageModel.success(
@@ -70,7 +66,7 @@ class AirConditionerController extends GetxController with MessagesMixin, Loader
       );
 
       clearForm();
-    }catch (_) {
+    } catch (_) {
       message(
         MessageModel.error(
           title: 'Erro!',
