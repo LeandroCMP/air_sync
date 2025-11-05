@@ -1,0 +1,97 @@
+import 'package:air_sync/repositories/client/client_repository.dart';
+import 'package:air_sync/repositories/client/client_repository_impl.dart';
+import 'package:air_sync/repositories/equipments/equipments_repository.dart';
+import 'package:air_sync/repositories/equipments/equipments_repository_impl.dart';
+import 'package:air_sync/repositories/inventory/inventory_repository.dart';
+import 'package:air_sync/repositories/inventory/inventory_repository_impl.dart';
+import 'package:air_sync/repositories/locations/locations_repository.dart';
+import 'package:air_sync/repositories/locations/locations_repository_impl.dart';
+import 'package:air_sync/repositories/orders/orders_repository.dart';
+import 'package:air_sync/repositories/orders/orders_repository_impl.dart';
+import 'package:air_sync/services/client/client_service.dart';
+import 'package:air_sync/services/client/client_service_impl.dart';
+import 'package:air_sync/services/equipments/equipments_service.dart';
+import 'package:air_sync/services/equipments/equipments_service_impl.dart';
+import 'package:air_sync/services/locations/locations_service.dart';
+import 'package:air_sync/services/locations/locations_service_impl.dart';
+import 'package:air_sync/services/inventory/inventory_service.dart';
+import 'package:air_sync/services/inventory/inventory_service_impl.dart';
+import 'package:air_sync/services/orders/orders_service.dart';
+import 'package:air_sync/services/orders/orders_service_impl.dart';
+import 'package:get/get.dart';
+
+import 'order_create_controller.dart';
+
+class OrderCreateBindings implements Bindings {
+  @override
+  void dependencies() {
+    if (!Get.isRegistered<OrdersRepository>()) {
+      Get.lazyPut<OrdersRepository>(() => OrdersRepositoryImpl(), fenix: true);
+    }
+    if (!Get.isRegistered<OrdersService>()) {
+      Get.lazyPut<OrdersService>(
+        () => OrdersServiceImpl(repo: Get.find()),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<ClientRepository>()) {
+      Get.lazyPut<ClientRepository>(ClientRepositoryImpl.new, fenix: true);
+    }
+    if (!Get.isRegistered<ClientService>()) {
+      Get.lazyPut<ClientService>(
+        () => ClientServiceImpl(clientRepository: Get.find()),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<LocationsRepository>()) {
+      Get.lazyPut<LocationsRepository>(
+        LocationsRepositoryImpl.new,
+        fenix: true,
+      );
+    }
+    if (!Get.isRegistered<LocationsService>()) {
+      Get.lazyPut<LocationsService>(
+        () => LocationsServiceImpl(repo: Get.find()),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<EquipmentsRepository>()) {
+      Get.lazyPut<EquipmentsRepository>(
+        EquipmentsRepositoryImpl.new,
+        fenix: true,
+      );
+    }
+    if (!Get.isRegistered<EquipmentsService>()) {
+      Get.lazyPut<EquipmentsService>(
+        () => EquipmentsServiceImpl(repo: Get.find()),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<InventoryRepository>()) {
+      Get.lazyPut<InventoryRepository>(
+        InventoryRepositoryImpl.new,
+        fenix: true,
+      );
+    }
+    if (!Get.isRegistered<InventoryService>()) {
+      Get.lazyPut<InventoryService>(
+        () => InventoryServiceImpl(inventoryRepository: Get.find()),
+        fenix: true,
+      );
+    }
+
+    Get.put(
+      OrderCreateController(
+        ordersService: Get.find(),
+        clientService: Get.find(),
+        locationsService: Get.find(),
+        equipmentsService: Get.find(),
+        inventoryService: Get.find(),
+      ),
+    );
+  }
+}

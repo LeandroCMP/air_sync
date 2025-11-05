@@ -1,29 +1,30 @@
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/order_model.dart';
+import 'package:air_sync/modules/orders/order_create_bindings.dart';
+import 'package:air_sync/modules/orders/order_create_page.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
-  final OrdersService _service;
   OrdersController({required OrdersService service}) : _service = service;
 
-  // UI state
+  final OrdersService _service;
+
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
 
-  // Data (bruta e filtrada)
   final RxList<OrderModel> orders = <OrderModel>[].obs;
   final RxList<OrderModel> visibleOrders = <OrderModel>[].obs;
 
-  /// '', 'scheduled', 'in_progress', 'finished', 'canceled'
+  /// '', 'scheduled', 'in_progress', 'done', 'canceled'
   final RxString status = ''.obs;
 
   /// 'today' | 'week' | 'month'
   final RxString period = 'today'.obs;
 
-  /// busca local (cliente, local, equipamento)
+  /// Busca local (cliente, local, equipamento)
   final RxString searchText = ''.obs;
 
   static const _kPrefPeriod = 'orders.period';
@@ -34,15 +35,10 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
   void onInit() {
     loaderListener(isLoading);
     messageListener(message);
-
     _restoreFilters();
 
-    // Sempre que período/status mudarem, recarrega da API
     everAll([period, status], (_) => refreshList());
-
-    // Sempre que lista ou busca mudar, refiltra visibleOrders
     everAll([orders, searchText], (_) => _recomputeVisible());
-
     super.onInit();
   }
 
@@ -69,13 +65,17 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
         from = DateTime(now.year, now.month, now.day);
         to = from.add(const Duration(days: 1));
       } else if (period.value == 'week') {
-        final weekday = now.weekday; // 1..7
-        from = DateTime(now.year, now.month, now.day)
-            .subtract(Duration(days: weekday - 1));
+        final weekday = now.weekday;
+        from = DateTime(
+          now.year,
+          now.month,
+          now.day,
+        ).subtract(Duration(days: weekday - 1));
         to = from.add(const Duration(days: 7));
       } else {
         from = DateTime(now.year, now.month, 1);
-        to = DateTime(now.year, now.month + 1, 1);
+        final nextMonth = DateTime(now.year, now.month + 1, 1);
+        to = nextMonth;
       }
 
       final list = await _service.list(
@@ -87,10 +87,7 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
       orders.assignAll(list);
     } catch (_) {
       message(
-        MessageModel.error(
-          title: 'Erro',
-          message: 'Falha ao carregar ordens.',
-        ),
+        MessageModel.error(title: 'Erro', message: 'Falha ao carregar ordens.'),
       );
     } finally {
       isLoading(false);
@@ -108,20 +105,23 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
   }
 
   void _recomputeVisible() {
-    final q = searchText.value.trim().toLowerCase();
-    if (q.isEmpty) {
+    final query = searchText.value.trim().toLowerCase();
+    if (query.isEmpty) {
       visibleOrders.assignAll(orders);
       return;
     }
 
-    final filtered = orders.where((o) {
-      final haystack = [
-        o.clientName,
-        o.location,
-        o.equipment,
-      ].whereType<String>().join(' ').toLowerCase();
-      return haystack.contains(q);
-    }).toList();
+    final filtered =
+        orders.where((order) {
+          final haystack =
+              [
+                order.clientName,
+                order.locationLabel,
+                order.equipmentLabel,
+                order.notes,
+              ].whereType<String>().join(' ').toLowerCase();
+          return haystack.contains(query);
+        }).toList();
 
     visibleOrders.assignAll(filtered);
   }
@@ -148,5 +148,16 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
     await prefs.setString(_kPrefPeriod, period.value);
     await prefs.setString(_kPrefStatus, status.value);
     await prefs.setString(_kPrefSearch, searchText.value);
+  }
+
+  Future<void> openCreate() async {
+    final created = await Get.to<OrderModel?>(
+      () => const OrderCreatePage(),
+      binding: OrderCreateBindings(),
+    );
+    if (created != null) {
+      orders.insert(0, created);
+      _recomputeVisible();
+    }
   }
 }

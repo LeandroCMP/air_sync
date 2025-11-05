@@ -23,17 +23,22 @@ class AuthRepositoryImpl implements AuthRepository {
       final jti = data['jti'] as String?;
       await _tokens.save(access: access, refresh: refresh, jti: jti);
 
-      final userData = (data['user'] ?? data['account'] ?? {}) as Map<String, dynamic>;
+      final userData =
+          (data['user'] ?? data['account'] ?? {}) as Map<String, dynamic>;
       final id = (userData['id'] ?? userData['_id'] ?? '').toString();
       final name = (userData['name'] ?? userData['fullName'] ?? '').toString();
       final emailResp = (userData['email'] ?? email).toString();
       final role = (userData['role'] ?? '').toString();
-      final permissions = ((userData['permissions'] as List?) ?? const [])
-          .map((e) => e.toString())
-          .toList();
+      final permissions =
+          ((userData['permissions'] as List?) ?? const [])
+              .map((e) => e.toString())
+              .toList();
 
       if (id.isEmpty) {
-        throw const AuthFailure(AuthFailureType.userNotFound, 'Usuário inválido retornado pela API.');
+        throw const AuthFailure(
+          AuthFailureType.userNotFound,
+          'Usuário inválido retornado pela API.',
+        );
       }
 
       return UserModel(
@@ -53,9 +58,15 @@ class AuthRepositoryImpl implements AuthRepository {
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
       if (status == 401) {
-        throw const AuthFailure(AuthFailureType.wrongPassword, 'Usuário ou senha inválidos.');
+        throw const AuthFailure(
+          AuthFailureType.wrongPassword,
+          'Usuário ou senha inválidos.',
+        );
       }
-      throw const AuthFailure(AuthFailureType.unknown, 'Erro de autenticação com a API.');
+      throw const AuthFailure(
+        AuthFailureType.unknown,
+        'Erro de autenticação com a API.',
+      );
     } catch (_) {
       throw const AuthFailure(AuthFailureType.unknown, 'Erro inesperado.');
     }

@@ -1,0 +1,64 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+import 'package:loading_animation_widget/loading_animation_widget.dart';
+
+// Controla um único overlay de loading para toda a aplicação,
+// evitando múltiplos diálogos empilhados e chamadas de fechamento fora de hora.
+class _GlobalLoaderController {
+  static int _openCount = 0;
+
+  static void open() {
+    _openCount++;
+    if ((Get.isDialogOpen ?? false)) return;
+    // Abre somente após o frame atual para não rodar durante o build
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      // Se o contador já voltou a zero, não abre
+      if (_openCount == 0) return;
+      if ((Get.isDialogOpen ?? false)) return;
+      Get.dialog(
+        Center(
+          child: LoadingAnimationWidget.threeArchedCircle(
+            color: Colors.white,
+            size: 50,
+          ),
+        ),
+        barrierDismissible: false,
+      );
+    });
+  }
+
+  // Incrementa somente o contador, sem abrir diálogo (ex.: tela Home)
+  static void incrementOnly() {
+    _openCount++;
+  }
+
+  static void close() {
+    if (_openCount > 0) _openCount--;
+    if (_openCount == 0 && (Get.isDialogOpen ?? false)) {
+      // Fecha após o frame para evitar "visitChildElements during build"
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if ((Get.isDialogOpen ?? false)) {
+          Get.back<void>();
+        }
+      });
+    }
+  }
+}
+
+mixin LoaderMixin on GetxController {
+  void loaderListener(RxBool loaderRx) {
+    ever<bool>(loaderRx, (loading) {
+      if (loading) {
+        // Evita overlay na Home; lá há um indicador linear no topo.
+        if (Get.currentRoute == '/home') {
+          _GlobalLoaderController.incrementOnly();
+        } else {
+          _GlobalLoaderController.open();
+        }
+      } else {
+        _GlobalLoaderController.close();
+      }
+    });
+  }
+}
+

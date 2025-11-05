@@ -1,2 +1,4 @@
-# Auto detect text files and perform LF normalization
-* text=auto
+*.dart text eol=lf
+*.yaml text eol=lf
+*.arb text eol=lf
+*.md text eol=lf

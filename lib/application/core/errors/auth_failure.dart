@@ -46,17 +46,26 @@ class AuthFailure implements Exception {
   factory AuthFailure.fromException(Exception e) {
     // Timeout
     if (e is TimeoutException) {
-      return AuthFailure(AuthFailureType.timeout, messageForType(AuthFailureType.timeout));
+      return AuthFailure(
+        AuthFailureType.timeout,
+        messageForType(AuthFailureType.timeout),
+      );
     }
 
     // Rede (sem internet / DNS)
     if (e is SocketException || e is HandshakeException) {
-      return AuthFailure(AuthFailureType.networkError, messageForType(AuthFailureType.networkError));
+      return AuthFailure(
+        AuthFailureType.networkError,
+        messageForType(AuthFailureType.networkError),
+      );
     }
 
     // Dados mal formatados
     if (e is FormatException) {
-      return const AuthFailure(AuthFailureType.unknown, 'Resposta inválida do servidor.');
+      return const AuthFailure(
+        AuthFailureType.unknown,
+        'Resposta inválida do servidor.',
+      );
     }
 
     // FirebaseAuthException (sem import explícito)
@@ -69,27 +78,54 @@ class AuthFailure implements Exception {
         switch (code) {
           case 'wrong-password':
           case 'invalid-credential':
-            return AuthFailure(AuthFailureType.wrongPassword, msg ?? messageForType(AuthFailureType.wrongPassword));
+            return AuthFailure(
+              AuthFailureType.wrongPassword,
+              msg ?? messageForType(AuthFailureType.wrongPassword),
+            );
           case 'user-not-found':
-            return AuthFailure(AuthFailureType.userNotFound, msg ?? messageForType(AuthFailureType.userNotFound));
+            return AuthFailure(
+              AuthFailureType.userNotFound,
+              msg ?? messageForType(AuthFailureType.userNotFound),
+            );
           case 'invalid-email':
-            return AuthFailure(AuthFailureType.invalidEmail, msg ?? messageForType(AuthFailureType.invalidEmail));
+            return AuthFailure(
+              AuthFailureType.invalidEmail,
+              msg ?? messageForType(AuthFailureType.invalidEmail),
+            );
           case 'user-disabled':
-            return AuthFailure(AuthFailureType.userDisabled, msg ?? messageForType(AuthFailureType.userDisabled));
+            return AuthFailure(
+              AuthFailureType.userDisabled,
+              msg ?? messageForType(AuthFailureType.userDisabled),
+            );
           case 'too-many-requests':
-            return AuthFailure(AuthFailureType.tooManyRequests, msg ?? messageForType(AuthFailureType.tooManyRequests));
+            return AuthFailure(
+              AuthFailureType.tooManyRequests,
+              msg ?? messageForType(AuthFailureType.tooManyRequests),
+            );
           case 'network-request-failed':
-            return AuthFailure(AuthFailureType.networkError, msg ?? messageForType(AuthFailureType.networkError));
+            return AuthFailure(
+              AuthFailureType.networkError,
+              msg ?? messageForType(AuthFailureType.networkError),
+            );
           default:
-            return AuthFailure(AuthFailureType.unknown, msg ?? messageForType(AuthFailureType.unknown));
+            return AuthFailure(
+              AuthFailureType.unknown,
+              msg ?? messageForType(AuthFailureType.unknown),
+            );
         }
       } catch (_) {
         // Se falhar leitura dinâmica, caímos no unknown.
-        return AuthFailure(AuthFailureType.unknown, messageForType(AuthFailureType.unknown));
+        return AuthFailure(
+          AuthFailureType.unknown,
+          messageForType(AuthFailureType.unknown),
+        );
       }
     }
 
     // Fallback
-    return AuthFailure(AuthFailureType.unknown, messageForType(AuthFailureType.unknown));
+    return AuthFailure(
+      AuthFailureType.unknown,
+      messageForType(AuthFailureType.unknown),
+    );
   }
 }

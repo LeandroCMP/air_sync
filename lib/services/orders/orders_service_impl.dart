@@ -3,26 +3,118 @@ import 'package:air_sync/repositories/orders/orders_repository.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 
 class OrdersServiceImpl implements OrdersService {
-  final OrdersRepository _repo;
   OrdersServiceImpl({required OrdersRepository repo}) : _repo = repo;
 
-  @override
-  Future<List<OrderModel>> list({DateTime? from, DateTime? to, String? status}) =>
-      _repo.list(from: from, to: to, status: status);
+  final OrdersRepository _repo;
 
   @override
-  Future<void> finish({required String orderId, required Map<String, dynamic> payload}) =>
-      _repo.finish(orderId: orderId, payload: payload);
+  Future<List<OrderModel>> list({
+    DateTime? from,
+    DateTime? to,
+    String? status,
+    String? technicianId,
+  }) => _repo.list(
+    from: from,
+    to: to,
+    status: status,
+    technicianId: technicianId,
+  );
 
   @override
-  Future<void> start(String orderId) => _repo.start(orderId);
+  Future<OrderModel> getById(String id) => _repo.getById(id);
 
   @override
-  Future<void> reserveMaterials(String orderId, List<Map<String, dynamic>> items) =>
-      _repo.reserveMaterials(orderId, items);
+  Future<OrderModel> create({
+    required String clientId,
+    required String locationId,
+    String? equipmentId,
+    required String status,
+    DateTime? scheduledAt,
+    String? notes,
+    List<String> technicianIds = const [],
+    List<OrderChecklistInput> checklist = const [],
+    List<OrderMaterialInput> materials = const [],
+    List<OrderBillingItemInput> billingItems = const [],
+    num billingDiscount = 0,
+  }) => _repo.create(
+    clientId: clientId,
+    locationId: locationId,
+    equipmentId: equipmentId,
+    status: status,
+    scheduledAt: scheduledAt,
+    notes: notes,
+    technicianIds: technicianIds,
+    checklist: checklist,
+    materials: materials,
+    billingItems: billingItems,
+    billingDiscount: billingDiscount,
+  );
 
   @override
-  String pdfUrl(String orderId, {String type = 'report'}) => _repo.pdfUrl(orderId, type: type);
+  Future<OrderModel> update({
+    required String orderId,
+    String? status,
+    DateTime? scheduledAt,
+    List<String>? technicianIds,
+    List<OrderChecklistInput>? checklist,
+    List<OrderBillingItemInput>? billingItems,
+    num? billingDiscount,
+    String? notes,
+  }) => _repo.update(
+    orderId: orderId,
+    status: status,
+    scheduledAt: scheduledAt,
+    technicianIds: technicianIds,
+    checklist: checklist,
+    billingItems: billingItems,
+    billingDiscount: billingDiscount,
+    notes: notes,
+  );
 
-  
+  @override
+  Future<OrderModel> start(String orderId) => _repo.start(orderId);
+
+  @override
+  Future<OrderModel> finish({
+    required String orderId,
+    required List<OrderBillingItemInput> billingItems,
+    num discount = 0,
+    String? signatureBase64,
+    String? notes,
+  }) => _repo.finish(
+    orderId: orderId,
+    billingItems: billingItems,
+    discount: discount,
+    signatureBase64: signatureBase64,
+    notes: notes,
+  );
+
+  @override
+  Future<void> reserveMaterials(
+    String orderId,
+    List<OrderMaterialInput> materials,
+  ) => _repo.reserveMaterials(orderId, materials);
+
+  @override
+  Future<void> deductMaterials(
+    String orderId,
+    List<OrderMaterialInput> materials,
+  ) => _repo.deductMaterials(orderId, materials);
+
+  @override
+  Future<String> uploadPhoto({
+    required String orderId,
+    required String filename,
+    required List<int> bytes,
+  }) => _repo.uploadPhoto(orderId: orderId, filename: filename, bytes: bytes);
+
+  @override
+  Future<String> uploadSignature({
+    required String orderId,
+    required String base64,
+  }) => _repo.uploadSignature(orderId: orderId, base64: base64);
+
+  @override
+  String pdfUrl(String orderId, {String type = 'report'}) =>
+      _repo.pdfUrl(orderId, type: type);
 }

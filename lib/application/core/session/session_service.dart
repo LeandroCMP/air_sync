@@ -12,9 +12,11 @@ class SessionService extends GetxService {
 
   Timer? _refreshTimer;
 
-  SessionService({required TokenStorage tokens, required AuthService authService})
-      : _tokens = tokens,
-        _authService = authService;
+  SessionService({
+    required TokenStorage tokens,
+    required AuthService authService,
+  }) : _tokens = tokens,
+       _authService = authService;
 
   void onLogin(UserModel user) {
     _scheduleSilentRefresh();
@@ -59,4 +61,3 @@ class SessionService extends GetxService {
     }
   }
 }
-

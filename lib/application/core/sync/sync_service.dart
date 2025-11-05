@@ -1,4 +1,4 @@
-import 'dart:convert';
+﻿import 'dart:convert';
 import 'package:air_sync/repositories/finance/finance_repository.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:get/get.dart';
@@ -28,8 +28,9 @@ class SyncService extends GetxService {
             'status': e.status,
             'scheduledAt': e.scheduledAt?.toIso8601String(),
             'clientName': e.clientName,
-            'location': e.location,
-            'equipment': e.equipment,
+            'location': e.locationLabel,
+            'equipment': e.equipmentLabel,
+            
           }).toList()));
       await prefs.setString('cache_ar', jsonEncode(ar.map((e) => {
             'id': e.id,

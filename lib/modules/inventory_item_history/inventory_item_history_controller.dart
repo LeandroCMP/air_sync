@@ -1,171 +1,149 @@
-import 'package:air_sync/application/ui/loader/loader_mixin.dart';
-import 'package:air_sync/application/ui/messages/messages_mixin.dart';
-import 'package:air_sync/models/inventory_entry_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
-import 'package:air_sync/modules/inventory/inventory_controller.dart';
-import 'package:air_sync/services/inventory/inventory_service.dart';
-import 'package:flutter/cupertino.dart';
 import 'package:get/get.dart';
 
-class InventoryItemHistoryController extends GetxController
-    with MessagesMixin, LoaderMixin {
-  final InventoryService _itemService;
+enum InventoryHistoryFilter { all, entries, exits, adjustments }
 
-  InventoryItemHistoryController({required InventoryService inventoryService})
-    : _itemService = inventoryService;
-
+class InventoryItemHistoryController extends GetxController {
   final isLoading = false.obs;
-  final message = Rxn<MessageModel>();
+  final Rxn<InventoryItemModel> item = Rxn<InventoryItemModel>();
+  final RxList<StockMovementModel> movements = <StockMovementModel>[].obs;
+  final selectedFilter = InventoryHistoryFilter.all.obs;
 
-  final Rx<InventoryItemModel> item = (Get.arguments as InventoryItemModel).obs;
-
-  final quantityToAddCtrl = TextEditingController();
+  late final String _itemId;
 
   @override
   void onInit() {
-    loaderListener(isLoading);
-    messageListener(message);
+    _resolveArguments();
+    _hydrateMovementsFromItem();
     super.onInit();
   }
 
-  Future<void> addRecordToItem() async {
-    isLoading.value = true;
-
-    try {
-      // Cria novo registro
-      final newRecord = InventoryEntryModel(
-        date: DateTime.now(),
-        quantity: double.parse(quantityToAddCtrl.text),
-      );
-
-      // Cria nova versão do item com a quantidade somada e o registro adicionado
-      item.value = item.value.copyWith(
-        quantity: item.value.quantity + double.parse(quantityToAddCtrl.text),
-        entries: [...item.value.entries, newRecord],
-      );
-
-      // Atualiza no banco de dados
-      await _itemService.updateItem(item.value);
-
-      // Atualiza na lista local (se necessário)
-      final inventoryController = Get.find<InventoryController>();
-      final index = inventoryController.items.indexWhere(
-        (e) => e.id == item.value.id,
-      );
-      if (index != -1) {
-        inventoryController.items[index] = item.value;
-      }
-
-      isLoading(false);
-      await Future.delayed(const Duration(milliseconds: 300));
-      Get.back();
-      clearForm();
-
-      message(
-        MessageModel.success(
-          title: 'Sucesso!',
-          message: 'Item atualizado com novo registro!',
-        ),
-      );
-    } catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.toString()));
-    } finally {
-      isLoading.value = false;
+  void _resolveArguments() {
+    final args = Get.arguments;
+    if (args is InventoryItemModel) {
+      item.value = args;
+      _itemId = args.id;
+      return;
     }
-  }
-
-  Future<void> deleteRecordFromItemByIndex(int index) async {
-    isLoading.value = true;
-
-    try {
-      // Verifica se o index é válido antes de acessar
-      if (index < 0 || index >= item.value.entries.length) {
-        throw Exception('Índice inválido');
+    if (args is Map) {
+      if (args['item'] is InventoryItemModel) {
+        final InventoryItemModel model = args['item'];
+        item.value = model;
+        _itemId = model.id;
+        return;
       }
-
-      // Cria cópia dos registros e remove o desejado
-      final updatedEntries = [...item.value.entries];
-      final removedEntry = updatedEntries.removeAt(index);
-
-      // Cria nova versão do item com quantidade atualizada
-      final updatedItem = item.value.copyWith(
-        entries: updatedEntries,
-        quantity: item.value.quantity - removedEntry.quantity,
-      );
-
-      // Atualiza no banco
-      await _itemService.updateItem(updatedItem);
-
-      // Atualiza o item local
-      item.value = updatedItem;
-
-      // Atualiza o item na lista geral
-      final inventoryController = Get.find<InventoryController>();
-      final mainIndex = inventoryController.items.indexWhere(
-        (e) => e.id == updatedItem.id,
-      );
-      if (mainIndex != -1) {
-        inventoryController.items[mainIndex] = updatedItem;
+      if (args['itemId'] != null) {
+        _itemId = args['itemId'].toString();
+        return;
       }
-
-      // Aguarda a UI reconstruir antes de seguir
-      await Future.delayed(const Duration(milliseconds: 100));
-      isLoading(false);
-
-      message(
-        MessageModel.success(
-          title: 'Sucesso!',
-          message: 'Registro removido com sucesso!',
-        ),
-      );
-    } catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.toString()));
-    } finally {
-      isLoading.value = false;
     }
-  }
-
-  Future<void> deleteItem() async {
-    isLoading.value = true;
-
-    try {
-      // Remove do banco de dados
-      await _itemService.deleteItem(item.value.id);
-
-      // Remove da lista local
-      final inventoryController = Get.find<InventoryController>();
-      inventoryController.items.removeWhere((e) => e.id == item.value.id);
-
-      // Fecha a página atual
-      isLoading(false);
-      Get.back(); // Fecha a tela de histórico
-      await Future.delayed(const Duration(milliseconds: 300));
-
-      message(
-        MessageModel.success(
-          title: 'Item removido',
-          message: 'O item foi excluído com sucesso do estoque.',
-        ),
-      );
-    } catch (e) {
-      message(
-        MessageModel.error(
-          title: 'Erro',
-          message: 'Não foi possível remover o item: $e',
-        ),
-      );
-    } finally {
-      isLoading.value = false;
-    }
-  }
-
-  clearForm() {
-    quantityToAddCtrl.clear();
+    _itemId = args?.toString() ?? '';
   }
 
   @override
-  void onClose() {
-    quantityToAddCtrl.dispose();
-    super.onClose();
+  Future<void> onReady() async {
+    await refreshData();
+    super.onReady();
+  }
+
+  Future<void> refreshData() async {
+    isLoading.value = true;
+    _hydrateMovementsFromItem();
+    isLoading.value = false;
+  }
+
+  List<StockMovementModel> get filteredMovements {
+    final filter = selectedFilter.value;
+    return movements.where((movement) {
+      switch (filter) {
+        case InventoryHistoryFilter.all:
+          return true;
+        case InventoryHistoryFilter.entries:
+          return isEntry(movement.type);
+        case InventoryHistoryFilter.exits:
+          return isExit(movement.type);
+        case InventoryHistoryFilter.adjustments:
+          return isAdjustment(movement.type);
+      }
+    }).toList();
+  }
+
+  void changeFilter(InventoryHistoryFilter filter) {
+    if (selectedFilter.value == filter) return;
+    selectedFilter.value = filter;
+  }
+
+  bool isEntry(MovementType type) {
+    return type == MovementType.receive ||
+        type == MovementType.adjustPos ||
+        type == MovementType.transferIn ||
+        type == MovementType.returnIn;
+  }
+
+  bool isExit(MovementType type) {
+    return type == MovementType.issue ||
+        type == MovementType.adjustNeg ||
+        type == MovementType.transferOut;
+  }
+
+  bool isAdjustment(MovementType type) {
+    return type == MovementType.adjustPos || type == MovementType.adjustNeg;
+  }
+
+  String formatQuantity(double value) {
+    return (value == value.roundToDouble()
+            ? value.toStringAsFixed(0)
+            : value.toStringAsFixed(2))
+        .replaceAll('.', ',');
+  }
+
+  String titleForMovement(StockMovementModel movement) {
+    switch (movement.type) {
+      case MovementType.receive:
+        return 'Entrada de compra';
+      case MovementType.returnIn:
+        return 'Entrada (devolução)';
+      case MovementType.transferIn:
+        return 'Transferência recebida';
+      case MovementType.issue:
+        return 'Saída';
+      case MovementType.transferOut:
+        return 'Transferência enviada';
+      case MovementType.adjustPos:
+        return 'Ajuste positivo';
+      case MovementType.adjustNeg:
+        return 'Ajuste negativo';
+    }
+  }
+
+  String subtitleForMovement(StockMovementModel movement) {
+    final parts = <String>[];
+    if ((movement.reason ?? '').isNotEmpty) {
+      parts.add(movement.reason!);
+    }
+    if ((movement.documentRef ?? '').isNotEmpty) {
+      parts.add('Ref: ${movement.documentRef}');
+    }
+    if ((movement.performedBy ?? '').isNotEmpty) {
+      parts.add('Por: ${movement.performedBy}');
+    }
+    return parts.isEmpty ? 'Sem detalhes adicionais' : parts.join(' • ');
+  }
+
+  void updateItem(InventoryItemModel updated) {
+    if (updated.id != _itemId) return;
+    item.value = updated;
+    _hydrateMovementsFromItem();
+  }
+
+  void _hydrateMovementsFromItem() {
+    final source = item.value;
+    if (source == null) {
+      movements.clear();
+      return;
+    }
+    final list = [...source.movements];
+    list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    movements.assignAll(list);
   }
 }

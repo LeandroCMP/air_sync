@@ -15,8 +15,8 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
   LoginController({
     required AuthService authService,
     required AuthServiceApplication authServiceApplication,
-  })  : _authService = authService,
-        _authServiceApplication = authServiceApplication;
+  }) : _authService = authService,
+       _authServiceApplication = authServiceApplication;
 
   final _storage = LocalStorageService();
 
@@ -55,36 +55,46 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
   }
 
   Future<void> login() async {
-    // evita cliques repetidos
     if (isLoading.value) return;
 
     final email = emailController.text.trim();
-    final pass = passwordController.text.trim();
+    final password = passwordController.text.trim();
 
-    // Validação local antes de ligar loading
-    if (email.isEmpty || !email.isEmail) {
-      message(MessageModel.error(title: 'E-mail inválido', message: 'Informe um e-mail válido.'));
+    if (!email.isEmail) {
+      message(
+        MessageModel.error(
+          title: 'E-mail inválido',
+          message: 'Informe um e-mail válido.',
+        ),
+      );
       return;
     }
-    if (pass.isEmpty || pass.length < 6) {
-      message(MessageModel.error(title: 'Senha inválida', message: 'Informe sua senha (mín. 6 caracteres).'));
+
+    if (password.isEmpty || password.length < 6) {
+      message(
+        MessageModel.error(
+          title: 'Senha inválida',
+          message: 'Informe sua senha (mínimo de 6 caracteres).',
+        ),
+      );
       return;
     }
+
+    isLoading.value = true;
 
     try {
-      isLoading.value = true;
-
-      // Timeout defensivo evita loader eterno
       final user = await _authService
-          .auth(email, pass)
-          .timeout(const Duration(seconds: 30), onTimeout: () {
-        throw AuthFailure(
-          AuthFailureType.timeout,
-          AuthFailure.messageForType(AuthFailureType.timeout),
-        );
-      });
+          .auth(email, password)
+          .timeout(
+            const Duration(seconds: 30),
+            onTimeout: () {
+              throw AuthFailure(
+                AuthFailureType.timeout,
+                AuthFailure.messageForType(AuthFailureType.timeout),
+              );
+            },
+          );
 
-      // Sucesso → persiste preferência "Salvar usuário"
       if (saveUserVar.value) {
         await _storage.setRememberMe(true);
         await _storage.setEmail(email);
@@ -93,26 +103,31 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
         await _storage.setEmail('');
       }
 
-      // Atualiza sessão
       _authServiceApplication.user(user);
       Get.find<SessionService>().onLogin(user);
 
-      // Desliga loader ANTES de navegar
-      isLoading.value = false;
+      message(
+        MessageModel.success(
+          title: 'Tudo certo',
+          message: 'Sessão iniciada com sucesso.',
+        ),
+      );
 
-      // Feedback e navegação
-      message(MessageModel.success(title: 'Sucesso', message: 'Sessão iniciada.'));
       Get.offAllNamed('/home');
     } on AuthFailure catch (e) {
-      if (isLoading.value) isLoading.value = false;
-      message(MessageModel.error(title: 'Erro ao fazer login', message: e.message));
+      message(
+        MessageModel.error(title: 'Erro ao fazer login', message: e.message),
+      );
     } on Exception catch (e) {
-      if (isLoading.value) isLoading.value = false;
-      final af = AuthFailure.fromException(e);
-      message(MessageModel.error(title: 'Erro ao fazer login', message: af.message));
+      final failure = AuthFailure.fromException(e);
+      message(
+        MessageModel.error(
+          title: 'Erro ao fazer login',
+          message: failure.message,
+        ),
+      );
     } finally {
-      // idempotente: garante que nunca ficará travado
-      if (isLoading.value) isLoading.value = false;
+      isLoading.value = false;
     }
   }
 
@@ -140,8 +155,8 @@ class LoginController extends GetxController with MessagesMixin, LoaderMixin {
     } on AuthFailure catch (e) {
       message(MessageModel.error(title: 'Erro', message: e.message));
     } on Exception catch (e) {
-      final af = AuthFailure.fromException(e);
-      message(MessageModel.error(title: 'Erro', message: af.message));
+      final failure = AuthFailure.fromException(e);
+      message(MessageModel.error(title: 'Erro', message: failure.message));
     }
   }
 

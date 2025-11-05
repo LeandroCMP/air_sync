@@ -1,11 +1,14 @@
-import 'package:air_sync/application/ui/theme_extensions.dart';
+﻿import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/application/core/connectivity/connectivity_service.dart';
-import 'package:air_sync/modules/orders/orders_page.dart';
-import 'package:get/get.dart';
-import 'package:flutter/material.dart';
-import 'package:air_sync/modules/finance/finance_page.dart';
 import 'package:air_sync/application/core/sync/sync_service.dart';
 import 'package:air_sync/application/core/queue/queue_service.dart';
+import 'package:air_sync/models/user_model.dart';
+import 'package:air_sync/modules/orders/orders_bindings.dart';
+import 'package:air_sync/modules/orders/orders_page.dart';
+import 'package:air_sync/modules/finance/finance_page.dart';
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
+
 import './home_controller.dart';
 
 class HomePage extends GetView<HomeController> {
@@ -14,6 +17,19 @@ class HomePage extends GetView<HomeController> {
   @override
   Widget build(BuildContext context) {
     final border = BorderSide(color: context.themeBorder);
+    final currentUser = controller.user.value;
+    final moduleCards =
+        _homeModuleItems
+            .where((item) => item.canAccess(currentUser))
+            .map(
+              (item) => _ModuleCard(
+                title: item.title,
+                subtitle: item.subtitle,
+                icon: item.icon,
+                onTap: item.onTap,
+              ),
+            )
+            .toList();
 
     return Scaffold(
       backgroundColor: context.themeBg,
@@ -37,25 +53,25 @@ class HomePage extends GetView<HomeController> {
                       children: const [
                         _KpiChip(
                           label: 'OS abertas',
-                          value: '—',
+                          value: '--',
                           icon: Icons.assignment_rounded,
                           colorHex: 0xFF4DA3FF,
                         ),
                         _KpiChip(
                           label: 'Pendentes',
-                          value: '—',
+                          value: '--',
                           icon: Icons.schedule_rounded,
                           colorHex: 0xFFFFA15C,
                         ),
                         _KpiChip(
                           label: 'Atrasadas',
-                          value: '—',
+                          value: '--',
                           icon: Icons.warning_amber_rounded,
                           colorHex: 0xFFFFA15C,
                         ),
                         _KpiChip(
                           label: 'Hoje',
-                          value: '—',
+                          value: '--',
                           icon: Icons.today_rounded,
                           colorHex: 0xFF00B686,
                         ),
@@ -69,40 +85,24 @@ class HomePage extends GetView<HomeController> {
                   GridView(
                     physics: const NeverScrollableScrollPhysics(),
                     shrinkWrap: true,
-                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                      crossAxisCount: 2,
-                      mainAxisSpacing: 16,
-                      crossAxisSpacing: 16,
-                      childAspectRatio: 0.98, // ↑ mais alto = mais espaço p/ texto
-                    ),
-                    children: [
-                      _ModuleCard(
-                        title: 'Ordens de Serviço',
-                        subtitle: 'Acompanhe e crie',
-                        icon: Icons.assignment_rounded,
-                        onTap: () => Get.to(() => const OrdersPage()),
-                      ),
-                      _ModuleCard(
-                        title: 'Clientes',
-                        subtitle: 'Cadastre e gerencie',
-                        icon: Icons.group_rounded,
-                        onTap: () => Get.toNamed('/client'),
-                      ),
-                      _ModuleCard(
-                        title: 'Estoque',
-                        subtitle: 'Movimentações e itens',
-                        icon: Icons.inventory_2_rounded,
-                        onTap: () => Get.toNamed('/inventory'),
-                      ),
-                      _ModuleCard(
-                        title: 'Financeiro',
-                        subtitle: 'Faturas e recebíveis',
-                        icon: Icons.account_balance_wallet_rounded,
-                        onTap: () => Get.to(() => const FinancePage()),
-                      ),
-                    ],
+                    gridDelegate:
+                        const SliverGridDelegateWithFixedCrossAxisCount(
+                          crossAxisCount: 2,
+                          mainAxisSpacing: 16,
+                          crossAxisSpacing: 16,
+                          childAspectRatio: 0.98,
+                        ),
+                    children: moduleCards,
                   ),
 
+                  if (moduleCards.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Text(
+                        'Nenhum modulo disponivel para este usuario. Ajuste as permissoes em colaboradores.',
+                        style: TextStyle(color: context.themeTextSubtle),
+                      ),
+                    ),
                   const SizedBox(height: 24),
 
                   // ================= DICA / RODAPÉ =================
@@ -114,7 +114,7 @@ class HomePage extends GetView<HomeController> {
                       border: Border.fromBorderSide(border),
                     ),
                     child: Text(
-                      'Dica: abra um módulo para criar registros (ex.: criar OS dentro de “Ordens de Serviço”).',
+                      'Dica: abra um módulo para criar registros (ex.: criar OS dentro de "Ordens de Serviço").',
                       style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ),
@@ -158,7 +158,10 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text('Bem-vindo de volta,', style: Theme.of(context).textTheme.bodySmall),
+                  Text(
+                    'Bem-vindo de volta,',
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
                   Row(
                     children: [
                       Expanded(
@@ -170,10 +173,15 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
                       ),
                       const SizedBox(width: 8),
                       Obx(() {
-                        final online = Get.find<ConnectivityService>().isOnline.value;
+                        final online =
+                            Get.find<ConnectivityService>().isOnline.value;
                         return online
                             ? const SizedBox.shrink()
-                            : const Icon(Icons.wifi_off, color: Colors.orangeAccent, size: 18);
+                            : const Icon(
+                              Icons.wifi_off,
+                              color: Colors.orangeAccent,
+                              size: 18,
+                            );
                       }),
                     ],
                   ),
@@ -188,10 +196,11 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
             onPressed: () {},
           ),
           Builder(
-            builder: (context) => IconButton(
-              icon: const Icon(Icons.menu_rounded),
-              onPressed: () => Scaffold.of(context).openEndDrawer(),
-            ),
+            builder:
+                (context) => IconButton(
+                  icon: const Icon(Icons.menu_rounded),
+                  onPressed: () => Scaffold.of(context).openEndDrawer(),
+                ),
           ),
           const SizedBox(width: 4),
         ],
@@ -203,7 +212,163 @@ class _HomeAppBar extends StatelessWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(64);
 }
 
+// ======================= DRAWER =======================
+
+class _HomeDrawer extends StatelessWidget {
+  const _HomeDrawer();
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = Get.find<SyncService>();
+    final queue = Get.find<QueueService>();
+    return Drawer(
+      child: SafeArea(
+        child: ListView(
+          padding: const EdgeInsets.all(16),
+          children: [
+            ListTile(
+              leading: const Icon(Icons.sync, color: Colors.white70),
+              title: const Text(
+                'Sincronizar agora',
+                style: TextStyle(color: Colors.white),
+              ),
+              subtitle: Obx(() {
+                final last = sync.lastSync.value;
+                return Text(
+                  last == null ? 'Nunca' : 'Último: ${last.toLocal()}',
+                  style: const TextStyle(color: Colors.white70),
+                );
+              }),
+              onTap: () => sync.syncInitial(),
+            ),
+            Obx(
+              () => ListTile(
+                leading: const Icon(
+                  Icons.upload_rounded,
+                  color: Colors.white70,
+                ),
+                title: const Text(
+                  'Ações pendentes',
+                  style: TextStyle(color: Colors.white),
+                ),
+                trailing: CircleAvatar(
+                  radius: 12,
+                  backgroundColor: context.themeGreen,
+                  child: Text(
+                    queue.pending.length.toString(),
+                    style: TextStyle(
+                      color: context.themeGray,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                onTap: () => queue.processPending(),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ======================= COMPONENTES =======================
+
+class _ModuleCardData {
+  _ModuleCardData({
+    required this.title,
+    required this.subtitle,
+    required this.icon,
+    required this.onTap,
+    this.requiredPermissions = const [],
+  });
+
+  final String title;
+  final String subtitle;
+  final IconData icon;
+  final VoidCallback onTap;
+  final List<String> requiredPermissions;
+
+  bool canAccess(UserModel? user) {
+    if (requiredPermissions.isEmpty) return true;
+    if (user == null) return true;
+    return user.hasAnyPermission(requiredPermissions);
+  }
+}
+
+final List<_ModuleCardData> _homeModuleItems = [
+  _ModuleCardData(
+    title: 'Ordens de Servi?o',
+    subtitle: 'Acompanhe e crie',
+    icon: Icons.assignment_rounded,
+    requiredPermissions: ['orders.read', 'orders.write'],
+    onTap: () => Get.to(() => const OrdersPage(), binding: OrdersBindings()),
+  ),
+  _ModuleCardData(
+    title: 'Clientes',
+    subtitle: 'Cadastre e gerencie',
+    icon: Icons.group_rounded,
+    requiredPermissions: ['clients.read', 'clients.write'],
+    onTap: () => Get.toNamed('/client'),
+  ),
+  _ModuleCardData(
+    title: 'Estoque',
+    subtitle: 'Movimenta??es e itens',
+    icon: Icons.inventory_2_rounded,
+    requiredPermissions: ['inventory.read', 'inventory.write'],
+    onTap: () => Get.toNamed('/inventory'),
+  ),
+  _ModuleCardData(
+    title: 'Financeiro',
+    subtitle: 'Faturas e receb?veis',
+    icon: Icons.account_balance_wallet_rounded,
+    requiredPermissions: ['finance.read', 'finance.write'],
+    onTap: () => Get.to(() => const FinancePage()),
+  ),
+  _ModuleCardData(
+    title: 'Fornecedores',
+    subtitle: 'Cadastre e gerencie parceiros',
+    icon: Icons.store_mall_directory_outlined,
+    requiredPermissions: ['suppliers.read', 'suppliers.write'],
+    onTap: () => Get.toNamed('/suppliers'),
+  ),
+  _ModuleCardData(
+    title: 'Compras',
+    subtitle: 'Itens e custos por pedido',
+    icon: Icons.shopping_cart_outlined,
+    requiredPermissions: ['purchases.read', 'purchases.write'],
+    onTap: () => Get.toNamed('/purchases'),
+  ),
+  _ModuleCardData(
+    title: 'Contratos',
+    subtitle: 'Planos e SLAs de clientes',
+    icon: Icons.handshake_outlined,
+    requiredPermissions: ['contracts.read', 'contracts.write'],
+    onTap: () => Get.toNamed('/contracts'),
+  ),
+  _ModuleCardData(
+    title: 'Frota',
+    subtitle: 'Check, abastecimento e manuten??o',
+    icon: Icons.local_shipping_outlined,
+    requiredPermissions: ['fleet.read', 'fleet.write'],
+    onTap: () => Get.toNamed('/fleet'),
+  ),
+  _ModuleCardData(
+    title: 'Linha do tempo',
+    subtitle: 'Eventos e atividades por cliente',
+    icon: Icons.timeline_outlined,
+    requiredPermissions: ['timeline.read', 'timeline.write'],
+    onTap: () => Get.toNamed('/timeline'),
+  ),
+  _ModuleCardData(
+    title: 'Colaboradores',
+    subtitle: 'Permiss?es e holerites',
+    icon: Icons.badge_outlined,
+    requiredPermissions: ['users.write'],
+    onTap: () => Get.toNamed('/users'),
+  ),
+];
 
 class _KpiChip extends StatelessWidget {
   final String label;
@@ -221,46 +386,37 @@ class _KpiChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final color = Color(colorHex);
     return Container(
-      width: 165,
+      width: 200,
       margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: context.themeSurfaceAlt,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: context.themeBorder),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.25),
-            blurRadius: 8,
-            offset: const Offset(0, 4),
-          )
-        ],
+        color: color.withOpacity(.12),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withOpacity(.4)),
       ),
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: Row(
         children: [
           CircleAvatar(
-            radius: 18,
-            backgroundColor: color.withOpacity(0.18),
-            child: Icon(icon, size: 20, color: color),
+            backgroundColor: color,
+            child: Icon(icon, color: Colors.white),
           ),
-          const SizedBox(height: 6),
-          Text(
-            value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: context.themeTextMain,
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: const TextStyle(color: Colors.white70)),
+                const SizedBox(height: 4),
+                Text(
+                  value,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ],
             ),
-          ),
-          Text(
-            label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 12.5, color: context.themeTextSubtle),
           ),
         ],
       ),
@@ -282,193 +438,41 @@ class _ModuleCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return LayoutBuilder(
-      builder: (context, c) {
-        // Modo compacto: cards estreitos (duas colunas em telas 360–411dp)
-        final isCompact = c.maxWidth < 190;
-
-        // Tokens responsivos
-        final titleFont = isCompact ? 15.5 : 16.5;
-        final subtitleFont = isCompact ? 13.0 : 13.5;
-        final iconSize = isCompact ? 26.0 : 28.0;
-        final iconBox = isCompact ? 48.0 : 56.0;
-
-        return InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: onTap,
-          child: Ink(
-            decoration: BoxDecoration(
-              color: context.themeSurface,
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: context.themeBorder),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withOpacity(0.28),
-                  blurRadius: 10,
-                  offset: const Offset(0, 4),
-                ),
-              ],
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(14),
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: context.themeSurface,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.white10,
+              foregroundColor: Colors.white,
+              child: Icon(icon),
             ),
-
-            // 👉 Layout muda conforme a largura:
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-              child: isCompact
-                  // ====== LAYOUT COMPACTO: ÍCONE EM CIMA, TEXTO ABAIXO ======
-                  ? Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Container(
-                          height: iconBox,
-                          width: iconBox,
-                          decoration: BoxDecoration(
-                            color: context.themeSurfaceAlt,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(icon, color: context.themeTextMain.withOpacity(0.9), size: iconSize),
-                        ),
-                        const SizedBox(height: 10),
-                        Text(
-                          title,
-                          maxLines: 2, // agora aceita 2 linhas
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: titleFont,
-                            fontWeight: FontWeight.w600,
-                            color: context.themeTextMain,
-                            height: 1.16,
-                          ),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          subtitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: subtitleFont,
-                            color: context.themeTextSubtle,
-                            height: 1.2,
-                          ),
-                        ),
-                        const Spacer(),
-                        Align(
-                          alignment: Alignment.bottomRight,
-                          child: Icon(Icons.chevron_right_rounded, size: 22, color: Colors.white54),
-                        ),
-                      ],
-                    )
-                  // ====== LAYOUT LARGO: ÍCONE AO LADO, TEXTO EM 1 LINHA ======
-                  : Row(
-                      children: [
-                        Container(
-                          height: iconBox,
-                          width: iconBox,
-                          decoration: BoxDecoration(
-                            color: context.themeSurfaceAlt,
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                          child: Icon(icon, color: context.themeTextMain.withOpacity(0.9), size: iconSize),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                title,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: titleFont,
-                                  fontWeight: FontWeight.w600,
-                                  color: context.themeTextMain,
-                                  height: 1.15,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                subtitle,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: subtitleFont,
-                                  color: context.themeTextSubtle,
-                                  height: 1.2,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const Icon(Icons.chevron_right_rounded, size: 22, color: Colors.white54),
-                      ],
-                    ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-}
-
-// ======================= DRAWER =======================
-
-class _HomeDrawer extends StatelessWidget {
-  const _HomeDrawer();
-  @override
-  Widget build(BuildContext context) {
-    final sync = Get.find<SyncService>();
-    final queue = Get.find<QueueService>();
-    return Drawer(
-      backgroundColor: context.themeSurface,
-      child: SafeArea(
-        child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-            child: Text('Mais', style: Theme.of(context).textTheme.titleLarge),
-          ),
-          const Divider(height: 24, color: Colors.white24),
-          ListTile(
-            leading: const Icon(Icons.sync),
-            title: const Text('Sincronizar agora'),
-            subtitle: Obx(() {
-              final last = sync.lastSync.value;
-              return Text(
-                last == null ? 'Nunca' : 'Último: ${last.toLocal()}',
-                style: Theme.of(context).textTheme.bodySmall,
-              );
-            }),
-            onTap: () async {
-              await sync.syncInitial();
-              if (context.mounted) Navigator.of(context).maybePop();
-            },
-          ),
-          Obx(() => ListTile(
-                leading: const Icon(Icons.upload_rounded),
-                title: const Text('Ações pendentes'),
-                trailing: CircleAvatar(
-                  radius: 12,
-                  backgroundColor: context.themePrimary,
-                  child: Text(
-                    queue.pending.length.toString(),
-                    style: TextStyle(color: context.themeBg, fontSize: 12, fontWeight: FontWeight.bold),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
-                onTap: () async {
-                  await queue.processPending();
-                  if (context.mounted) Navigator.of(context).maybePop();
-                },
-              )),
-          const Spacer(),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Text(
-              'AirSync • Dev Build',
-              style: Theme.of(context).textTheme.bodySmall!.copyWith(color: Colors.white38),
+                const SizedBox(height: 6),
+                Text(subtitle, style: const TextStyle(color: Colors.white70)),
+              ],
             ),
-          ),
-        ]),
+          ],
+        ),
       ),
     );
   }

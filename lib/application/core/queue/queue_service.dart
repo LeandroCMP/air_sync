@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:air_sync/application/core/connectivity/connectivity_service.dart';
+import 'package:air_sync/models/order_model.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -11,8 +12,10 @@ class QueueAction {
   QueueAction({required this.type, required this.data});
 
   Map<String, dynamic> toMap() => {'type': type, 'data': data};
-  factory QueueAction.fromMap(Map<String, dynamic> map) =>
-      QueueAction(type: (map['type'] ?? '').toString(), data: Map<String, dynamic>.from(map['data'] ?? {}));
+  factory QueueAction.fromMap(Map<String, dynamic> map) => QueueAction(
+    type: (map['type'] ?? '').toString(),
+    data: Map<String, dynamic>.from(map['data'] ?? {}),
+  );
 }
 
 class QueueService extends GetxService {
@@ -30,22 +33,61 @@ class QueueService extends GetxService {
     return this;
   }
 
-  Future<void> enqueueFinishOrder({required String orderId, required Map<String, dynamic> payload}) async {
-    pending.add(QueueAction(type: 'order.finish', data: {'orderId': orderId, 'payload': payload}));
+  Future<void> enqueueFinishOrder({
+    required String orderId,
+    required List<OrderBillingItemInput> billingItems,
+    num discount = 0,
+    String? signatureBase64,
+    String? notes,
+  }) async {
+    pending.add(
+      QueueAction(
+        type: 'order.finish',
+        data: {
+          'orderId': orderId,
+          'billingItems': billingItems.toJsonList(),
+          'discount': discount,
+          if (signatureBase64 != null) 'signatureBase64': signatureBase64,
+          if (notes != null) 'notes': notes,
+        },
+      ),
+    );
     await _save();
   }
 
   Future<void> processPending() async {
     if (pending.isEmpty) return;
-    final orders = Get.isRegistered<OrdersService>() ? Get.find<OrdersService>() : null;
+    final orders =
+        Get.isRegistered<OrdersService>() ? Get.find<OrdersService>() : null;
     if (orders == null) return;
     final toRemove = <QueueAction>[];
     for (final action in pending) {
       try {
         if (action.type == 'order.finish') {
           final id = action.data['orderId'] as String;
-          final payload = Map<String, dynamic>.from(action.data['payload'] as Map);
-          await orders.finish(orderId: id, payload: payload);
+          final billingRaw = (action.data['billingItems'] as List?) ?? [];
+          final billingItems =
+              billingRaw
+                  .whereType<Map>()
+                  .map(
+                    (e) => OrderBillingItemInput(
+                      type: (e['type'] ?? 'service').toString(),
+                      name: (e['name'] ?? '').toString(),
+                      qty: (e['qty'] ?? 0) as num,
+                      unitPrice: (e['unitPrice'] ?? 0) as num,
+                    ),
+                  )
+                  .toList();
+          final discount = (action.data['discount'] ?? 0) as num;
+          final signature = action.data['signatureBase64'] as String?;
+          final notes = action.data['notes'] as String?;
+          await orders.finish(
+            orderId: id,
+            billingItems: billingItems,
+            discount: discount,
+            signatureBase64: signature,
+            notes: notes,
+          );
           toRemove.add(action);
         }
       } catch (_) {
@@ -76,4 +118,3 @@ class QueueService extends GetxService {
     }
   }
 }
-

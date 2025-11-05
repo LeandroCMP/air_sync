@@ -29,8 +29,14 @@ class ApiClient {
         onRequest: (options, handler) async {
           // Ensure latest baseUrl and headers
           options.baseUrl = _config.baseUrl;
-          // Tenant header não é necessário no login/fluxo atual
-          if (_tokens.accessToken != null && _tokens.accessToken!.isNotEmpty) {
+          // X-Tenant-Id (quando disponível)
+          if (_config.tenantId.isNotEmpty) {
+            options.headers['X-Tenant-Id'] = _config.tenantId;
+          }
+          // Não sobrescrever Authorization em /auth/refresh
+          final path = options.path;
+          final isRefresh = path.contains('/auth/refresh');
+          if (!isRefresh && _tokens.accessToken != null && _tokens.accessToken!.isNotEmpty) {
             options.headers['Authorization'] = 'Bearer ${_tokens.accessToken}';
           }
           handler.next(options);
@@ -64,12 +70,12 @@ class ApiClient {
     try {
       final res = await _dio.post(
         '/v1/auth/refresh',
-        options: Options(
-          // Send refresh token as Bearer or body; try Bearer by default
-          headers: {
-            'Authorization': 'Bearer $refresh',
-          },
-        ),
+        data: {
+          'refreshToken': refresh,
+        },
+        options: Options(headers: {
+          if (_config.tenantId.isNotEmpty) 'X-Tenant-Id': _config.tenantId,
+        }),
       );
       final data = res.data as Map<String, dynamic>;
       final access = (data['accessToken'] ?? '') as String;
@@ -85,3 +91,5 @@ class ApiClient {
     }
   }
 }
+
+

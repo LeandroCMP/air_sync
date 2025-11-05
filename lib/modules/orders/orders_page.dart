@@ -1,184 +1,60 @@
-import 'package:air_sync/application/ui/theme_extensions.dart';
+﻿import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/models/order_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 import './orders_controller.dart';
+import 'order_detail_bindings.dart';
 import 'order_detail_page.dart';
-import 'order_detail_controller.dart';
 
 class OrdersPage extends GetView<OrdersController> {
   const OrdersPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final dateFmt = DateFormat('dd/MM • HH:mm'); // fallback
+    final dateFmt = DateFormat('dd/MM • HH:mm');
     return Scaffold(
       appBar: AppBar(title: const Text('Ordens de Serviço')),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: context.themeGreen,
+        onPressed: controller.openCreate,
+        child: const Icon(Icons.add, color: Colors.white),
+      ),
       body: Obx(() {
         final isLoading = controller.isLoading.value;
-
+        final orders = controller.visibleOrders;
         return Column(
           children: [
-            // linha de progresso sutil
             AnimatedContainer(
               duration: const Duration(milliseconds: 150),
               height: isLoading ? 2 : 0,
-              child: isLoading
-                  ? const LinearProgressIndicator(minHeight: 2)
-                  : const SizedBox.shrink(),
+              child:
+                  isLoading
+                      ? const LinearProgressIndicator(minHeight: 2)
+                      : const SizedBox.shrink(),
             ),
-
-            // ===== Header (não-pinned) com Wrap: chips + status + busca =====
-            Padding(
-              padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-              child: Column(
-                children: [
-                  // Wrap quebra para a próxima linha quando faltar espaço
-                  Obx(() {
-                    final status = controller.status.value;
-                    final statusMeta = _statusChipMeta(status);
-
-                    return Wrap(
-                      spacing: 12,
-                      runSpacing: 8,
-                      crossAxisAlignment: WrapCrossAlignment.center,
-                      children: [
-                        _FilterChip(
-                          label: 'Hoje',
-                          selected: controller.period.value == 'today',
-                          onTap: () {
-                            controller.period.value = 'today';
-                          },
-                        ),
-                        _FilterChip(
-                          label: 'Semana',
-                          selected: controller.period.value == 'week',
-                          onTap: () {
-                            controller.period.value = 'week';
-                          },
-                        ),
-                        _FilterChip(
-                          label: 'Mês',
-                          selected: controller.period.value == 'month',
-                          onTap: () {
-                            controller.period.value = 'month';
-                          },
-                        ),
-
-                        // Chip de Status (abre bottom sheet)
-                        InputChip(
-                          label: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(Icons.circle,
-                                  size: 10, color: statusMeta.color),
-                              const SizedBox(width: 8),
-                              Text(
-                                status.isEmpty
-                                    ? 'Status'
-                                    : statusMeta.label,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ],
-                          ),
-                          labelStyle: const TextStyle(color: Colors.white),
-                          backgroundColor:
-                              status.isEmpty ? context.themeGray : statusMeta.color.withOpacity(.15),
-                          side: status.isEmpty
-                              ? BorderSide.none
-                              : BorderSide(color: statusMeta.color),
-                          onPressed: () => _openStatusSheet(context),
-                          onDeleted: status.isEmpty
-                              ? null
-                              : () => controller.status.value = '',
-                          deleteIcon: status.isEmpty
-                              ? null
-                              : Icon(Icons.clear, size: 18, color: statusMeta.color),
-                          materialTapTargetSize:
-                              MaterialTapTargetSize.shrinkWrap,
-                        ),
-                      ],
-                    );
-                  }),
-
-                  const SizedBox(height: 10),
-
-                  // Busca (100% largura)
-                  _SearchField(onChanged: controller.setSearch),
-
-                  const SizedBox(height: 6),
-
-                  // Contador (sempre com espaço reservado)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Obx(() {
-                      final count = controller.visibleOrders.length;
-                      return Opacity(
-                        opacity: count == 0 ? 0 : 1,
-                        child: Text(
-                          '$count ordem${count == 1 ? '' : 's'} encontrada${count == 1 ? '' : 's'}',
-                          style: const TextStyle(
-                            color: Colors.white54,
-                            fontSize: 12,
-                          ),
-                        ),
-                      );
-                    }),
-                  ),
-                ],
-              ),
-            ),
-
-            // ===== Lista / Empty =====
+            _FiltersHeader(controller: controller),
             Expanded(
-              child: RefreshIndicator(
-                onRefresh: controller.refreshList,
-                child: Obx(() {
-                  final items = controller.visibleOrders;
-
-                  if (controller.isLoading.value) {
-                    // mantém área rolável para o pull-to-refresh
-                    return  ListView(
-                      children: [
-                        SizedBox(height: 200),
-                        Center(child: CircularProgressIndicator()),
-                        SizedBox(height: 400),
-                      ],
-                    );
-                  }
-
-                  if (items.isEmpty) {
-                    return ListView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      children: [
-                        const SizedBox(height: 24),
-                        _EmptyState(onClear: controller.clearFilters),
-                        const SizedBox(height: 200),
-                      ],
-                    );
-                  }
-
-                  final sections = _groupOrdersByDay(items);
-                  return ListView.separated(
-                    itemCount: sections.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder: (_, idx) {
-                      final section = sections[idx];
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _DayHeader(day: section.day),
-                          ...section.items.map(
-                            (o) => _OrderTile(order: o, format: dateFmt),
-                          ),
-                        ],
-                      );
-                    },
-                  );
-                }),
-              ),
+              child:
+                  orders.isEmpty
+                      ? _EmptyState(onClear: controller.clearFilters)
+                      : ListView.separated(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 8,
+                        ),
+                        itemBuilder: (_, index) {
+                          final order = orders[index];
+                          return _OrderTile(
+                            order: order,
+                            subtitle: _subtitleFor(order, dateFmt),
+                            onTap: () => _openOrder(order),
+                          );
+                        },
+                        separatorBuilder: (_, __) => const SizedBox(height: 10),
+                        itemCount: orders.length,
+                      ),
             ),
           ],
         );
@@ -186,273 +62,273 @@ class OrdersPage extends GetView<OrdersController> {
     );
   }
 
-  // ======= Bottom sheet do Status =======
-  void _openStatusSheet(BuildContext context) {
-    final items = const [
-      _StatusItem(value: 'scheduled', label: 'Agendadas', color: Colors.blueAccent),
-      _StatusItem(value: 'in_progress', label: 'Em andamento', color: Colors.orange),
-      _StatusItem(value: 'finished', label: 'Concluídas', color: Colors.green),
-      _StatusItem(value: 'canceled', label: 'Canceladas', color: Colors.redAccent),
-    ];
+  String _subtitleFor(OrderModel order, DateFormat fmt) {
+    final segments = <String>[];
+    if (order.scheduledAt != null) {
+      segments.add(fmt.format(order.scheduledAt!.toLocal()));
+    }
+    if ((order.locationLabel ?? '').isNotEmpty) {
+      segments.add(order.locationLabel!);
+    }
+    if ((order.equipmentLabel ?? '').isNotEmpty) {
+      segments.add(order.equipmentLabel!);
+    }
+    if (order.notes != null && order.notes!.trim().isNotEmpty) {
+      segments.add(order.notes!.trim());
+    }
+    return segments.join(' • ');
+  }
 
-    Get.bottomSheet(
-      SafeArea(
-        child: Container(
-          decoration: BoxDecoration(
-            color: Theme.of(context).scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 8),
-              Container(
-                width: 36,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: Colors.white24,
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const ListTile(
-                title: Text('Filtrar por status',
-                    style:
-                        TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
-              ),
-              for (final it in items)
-                ListTile(
-                  leading: Icon(Icons.circle, size: 12, color: it.color),
-                  title: Text(it.label),
-                  onTap: () {
-                    controller.status.value = it.value;
-                    Get.back();
-                  },
-                ),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () {
-                  controller.status.value = '';
-                  Get.back();
-                },
-                child: const Text('Limpar status'),
-              ),
-              const SizedBox(height: 12),
-            ],
-          ),
-        ),
-      ),
-      isScrollControlled: true,
+  void _openOrder(OrderModel order) {
+    Get.to<OrderModel?>(
+      () => const OrderDetailPage(),
+      binding: OrderDetailBindings(orderId: order.id),
+      arguments: order,
     );
   }
 }
 
-/* ===========================
- * Agrupamento por dia
- * =========================== */
+class _FiltersHeader extends StatelessWidget {
+  const _FiltersHeader({required this.controller});
 
-class _DaySection {
-  final DateTime day; // Y/M/D
-  final List<OrderModel> items;
-  _DaySection({required this.day, required this.items});
-}
-
-List<_DaySection> _groupOrdersByDay(List<OrderModel> list) {
-  final map = <DateTime, List<OrderModel>>{};
-  for (final o in list) {
-    final d = o.scheduledAt;
-    final key = (d != null)
-        ? DateTime(d.year, d.month, d.day)
-        : DateTime(1900, 1, 1); // "sem data"
-    map.putIfAbsent(key, () => []).add(o);
-  }
-
-  final keys = map.keys.toList()..sort((a, b) => a.compareTo(b));
-
-  final sections = <_DaySection>[];
-  for (final k in keys) {
-    sections.add(_DaySection(day: k, items: map[k]!));
-  }
-  return sections;
-}
-
-String _dayHeaderLabel(DateTime day) {
-  if (day.year == 1900) return 'Sem data';
-  final now = DateTime.now();
-  final today = DateTime(now.year, now.month, now.day);
-  final diff = day.difference(today).inDays;
-  if (diff == 0) return 'Hoje';
-  if (diff == 1) return 'Amanhã';
-  if (diff == -1) return 'Ontem';
-  return DateFormat('dd/MM').format(day);
-}
-
-class _DayHeader extends StatelessWidget {
-  final DateTime day;
-  const _DayHeader({required this.day});
+  final OrdersController controller;
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
-      child: Text(
-        _dayHeaderLabel(day),
-        style: const TextStyle(
-          color: Colors.white70,
-          fontWeight: FontWeight.w700,
-          fontSize: 13,
-          letterSpacing: .3,
-        ),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+      child: Column(
+        children: [
+          Obx(() {
+            final currentStatus = controller.status.value;
+            final meta = _statusFor(currentStatus);
+            return Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                _FilterChip(
+                  label: 'Hoje',
+                  selected: controller.period.value == 'today',
+                  onTap: () => controller.period.value = 'today',
+                ),
+                _FilterChip(
+                  label: 'Semana',
+                  selected: controller.period.value == 'week',
+                  onTap: () => controller.period.value = 'week',
+                ),
+                _FilterChip(
+                  label: 'Mês',
+                  selected: controller.period.value == 'month',
+                  onTap: () => controller.period.value = 'month',
+                ),
+                InputChip(
+                  label: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.circle, size: 10, color: meta.color),
+                      const SizedBox(width: 8),
+                      Text(
+                        currentStatus.isEmpty ? 'Status' : meta.label,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ],
+                  ),
+                  labelStyle: const TextStyle(color: Colors.white),
+                  backgroundColor:
+                      currentStatus.isEmpty
+                          ? context.themeGray
+                          : meta.color.withOpacity(.15),
+                  side:
+                      currentStatus.isEmpty
+                          ? BorderSide.none
+                          : BorderSide(color: meta.color),
+                  onPressed: () => _openStatusSheet(context),
+                  onDeleted:
+                      currentStatus.isEmpty
+                          ? null
+                          : () => controller.status.value = '',
+                  deleteIcon:
+                      currentStatus.isEmpty
+                          ? null
+                          : Icon(Icons.clear, size: 18, color: meta.color),
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ],
+            );
+          }),
+          const SizedBox(height: 12),
+          _SearchField(onChanged: controller.setSearch),
+          const SizedBox(height: 6),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: Obx(() {
+              final count = controller.visibleOrders.length;
+              final text = count == 0 ? 'Nenhuma OS encontrada' : '$count OS';
+              return Text(
+                text,
+                style: const TextStyle(color: Colors.white60, fontSize: 12),
+              );
+            }),
+          ),
+        ],
       ),
+    );
+  }
+
+  void _openStatusSheet(BuildContext context) {
+    final current = controller.status.value;
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.themeDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder:
+          (_) => SafeArea(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 16),
+                  child: Text(
+                    'Filtrar por status',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ),
+                for (final item in _statusOptions)
+                  ListTile(
+                    leading: Icon(item.icon, color: item.color),
+                    title: Text(
+                      item.label,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    trailing:
+                        current == item.value
+                            ? Icon(Icons.check, color: item.color)
+                            : null,
+                    onTap: () {
+                      controller.status.value = item.value;
+                      Get.back();
+                    },
+                  ),
+                ListTile(
+                  leading: const Icon(Icons.clear, color: Colors.white70),
+                  title: const Text(
+                    'Todos',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  onTap: () {
+                    controller.status.value = '';
+                    Get.back();
+                  },
+                ),
+              ],
+            ),
+          ),
     );
   }
 }
 
-/* ===========================
- * Tile de Ordem
- * =========================== */
-
 class _OrderTile extends StatelessWidget {
+  const _OrderTile({
+    required this.order,
+    required this.subtitle,
+    required this.onTap,
+  });
+
   final OrderModel order;
-  final DateFormat format;
-  const _OrderTile({required this.order, required this.format});
+  final String subtitle;
+  final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    final statusMeta = _statusMeta(order.status);
-
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor: statusMeta.color.withOpacity(0.2),
-        child: Icon(statusMeta.icon, color: statusMeta.color),
-      ),
-      title: Text(order.clientName, style: const TextStyle(color: Colors.white)),
-      subtitle: Text(
-        [
-          if (order.scheduledAt != null) _friendlyDate(order.scheduledAt!),
-          if (order.location != null) order.location!,
-          if (order.equipment != null) order.equipment!,
-        ].join(' • '),
-        style: const TextStyle(color: Colors.white70),
-        maxLines: 2,
-        overflow: TextOverflow.ellipsis,
-      ),
-      trailing: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: statusMeta.color.withOpacity(0.15),
-          border: Border.all(color: statusMeta.color),
-          borderRadius: BorderRadius.circular(14),
-        ),
-        child: Text(
-          statusMeta.label,
-          style: TextStyle(
-            color: statusMeta.color,
-            fontWeight: FontWeight.w600,
+    final meta = _statusFor(order.status);
+    return Material(
+      color: context.themeDark,
+      borderRadius: BorderRadius.circular(12),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              CircleAvatar(
+                backgroundColor: meta.color.withOpacity(.15),
+                foregroundColor: meta.color,
+                child: Icon(meta.icon),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      order.clientName ?? 'Cliente não informado',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (subtitle.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          subtitle,
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
         ),
       ),
-      onTap: () {
-        Get.to(
-          () => const OrderDetailPage(),
-          arguments: order,
-          binding: BindingsBuilder(() {
-            Get.put(OrderDetailController(service: Get.find()));
-          }),
-        );
-      },
     );
-  }
-
-  String _friendlyDate(DateTime dt) {
-    final local = dt.toLocal();
-    final now = DateTime.now();
-    final today = DateTime(now.year, now.month, now.day);
-    final theDay = DateTime(local.year, local.month, local.day);
-    final diff = theDay.difference(today).inDays;
-    final hm = DateFormat.Hm().format(local);
-
-    if (diff == 0) return 'Hoje às $hm';
-    if (diff == 1) return 'Amanhã às $hm';
-    if (diff == -1) return 'Ontem às $hm';
-    return DateFormat('dd/MM • HH:mm').format(local);
-  }
-
-  _StatusMeta _statusMeta(String s) {
-    switch (s) {
-      case 'scheduled':
-        return _StatusMeta('Agendada', Colors.blueAccent, Icons.event_available);
-      case 'in_progress':
-        return _StatusMeta('Em andamento', Colors.orange, Icons.build);
-      case 'finished':
-        return _StatusMeta('Concluída', Colors.green, Icons.check_circle);
-      case 'canceled':
-        return _StatusMeta('Cancelada', Colors.redAccent, Icons.cancel);
-      default:
-        return _StatusMeta('Indefinido', Colors.grey, Icons.help_outline);
-    }
   }
 }
 
-/* ===========================
- * Widgets auxiliares
- * =========================== */
-
 class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
   const _FilterChip({
     required this.label,
     required this.selected,
     required this.onTap,
   });
 
+  final String label;
+  final bool selected;
+  final VoidCallback onTap;
+
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(16),
-      onTap: onTap,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 120),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? context.themeGreen : context.themeGray,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: selected
-              ? const [
-                  BoxShadow(
-                    color: Colors.black26,
-                    blurRadius: 4,
-                    offset: Offset(0, 2),
-                  )
-                ]
-              : null,
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            if (selected) ...[
-              const Icon(Icons.calendar_today, size: 12, color: Colors.black87),
-              const SizedBox(width: 6),
-            ],
-            Text(
-              label,
-              style: TextStyle(
-                color: selected ? context.themeGray : Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
+    return ChoiceChip(
+      label: Text(label),
+      selected: selected,
+      selectedColor: context.themeGreen.withOpacity(.2),
+      backgroundColor: context.themeDark,
+      labelStyle: TextStyle(
+        color: selected ? context.themeGreen : Colors.white,
       ),
+      side:
+          selected
+              ? BorderSide(color: context.themeGreen)
+              : const BorderSide(color: Colors.white24),
+      onSelected: (_) => onTap(),
     );
   }
 }
 
 class _SearchField extends StatelessWidget {
-  final ValueChanged<String> onChanged;
   const _SearchField({required this.onChanged});
+
+  final ValueChanged<String> onChanged;
 
   @override
   Widget build(BuildContext context) {
@@ -461,13 +337,15 @@ class _SearchField extends StatelessWidget {
       textInputAction: TextInputAction.search,
       style: const TextStyle(color: Colors.white),
       decoration: InputDecoration(
-        hintText: 'Buscar cliente, local ou equipamento...',
+        hintText: 'Buscar por cliente, local ou equipamento...',
         hintStyle: const TextStyle(color: Colors.white54),
         prefixIcon: const Icon(Icons.search, color: Colors.white70),
         filled: true,
         fillColor: Theme.of(context).cardColor.withOpacity(0.25),
-        contentPadding:
-            const EdgeInsets.symmetric(vertical: 12, horizontal: 12),
+        contentPadding: const EdgeInsets.symmetric(
+          vertical: 12,
+          horizontal: 12,
+        ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(12),
           borderSide: BorderSide.none,
@@ -482,8 +360,9 @@ class _SearchField extends StatelessWidget {
 }
 
 class _EmptyState extends StatelessWidget {
-  final VoidCallback onClear;
   const _EmptyState({required this.onClear});
+
+  final VoidCallback onClear;
 
   @override
   Widget build(BuildContext context) {
@@ -491,9 +370,13 @@ class _EmptyState extends StatelessWidget {
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 24),
         child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            const Icon(Icons.event_note_outlined,
-                size: 56, color: Colors.white38),
+            const Icon(
+              Icons.assignment_outlined,
+              size: 56,
+              color: Colors.white38,
+            ),
             const SizedBox(height: 12),
             const Text(
               'Sem ordens no período selecionado',
@@ -502,15 +385,12 @@ class _EmptyState extends StatelessWidget {
             ),
             const SizedBox(height: 6),
             const Text(
-              'Tente alterar o período, o status ou use a busca acima.',
+              'Ajuste os filtros ou utilize a busca para localizar outra OS.',
               style: TextStyle(color: Colors.white54, fontSize: 14),
               textAlign: TextAlign.center,
             ),
-            const SizedBox(height: 10),
-            TextButton(
-              onPressed: onClear,
-              child: const Text('Limpar filtros'),
-            ),
+            const SizedBox(height: 12),
+            TextButton(onPressed: onClear, child: const Text('Limpar filtros')),
           ],
         ),
       ),
@@ -518,59 +398,64 @@ class _EmptyState extends StatelessWidget {
   }
 }
 
-/* ===========================
- * Tipos/cores de status
- * =========================== */
-
 class _StatusItem {
-  final String value;
-  final String label;
-  final Color color;
   const _StatusItem({
     required this.value,
     required this.label,
     required this.color,
+    required this.icon,
   });
-}
 
-_StatusItem _statusChipMeta(String s) {
-  switch (s) {
-    case 'scheduled':
-      return const _StatusItem(
-          value: 'scheduled', label: 'Agendadas', color: Colors.blueAccent);
-    case 'in_progress':
-      return const _StatusItem(
-          value: 'in_progress', label: 'Em andamento', color: Colors.orange);
-    case 'finished':
-      return const _StatusItem(
-          value: 'finished', label: 'Concluídas', color: Colors.green);
-    case 'canceled':
-      return const _StatusItem(
-          value: 'canceled', label: 'Canceladas', color: Colors.redAccent);
-    default:
-      return const _StatusItem(
-          value: '', label: 'Status', color: Colors.white54);
-  }
-}
-
-class _StatusMeta {
+  final String value;
   final String label;
   final Color color;
   final IconData icon;
-  _StatusMeta(this.label, this.color, this.icon);
 }
 
-_StatusMeta _statusMeta(String s) {
-  switch (s) {
-    case 'scheduled':
-      return _StatusMeta('Agendada', Colors.blueAccent, Icons.event_available);
-    case 'in_progress':
-      return _StatusMeta('Em andamento', Colors.orange, Icons.build);
-    case 'finished':
-      return _StatusMeta('Concluída', Colors.green, Icons.check_circle);
-    case 'canceled':
-      return _StatusMeta('Cancelada', Colors.redAccent, Icons.cancel);
-    default:
-      return _StatusMeta('Indefinido', Colors.grey, Icons.help_outline);
+_StatusItem _statusFor(String value) {
+  if (value.isEmpty) {
+    return const _StatusItem(
+      value: '',
+      label: 'Status',
+      color: Colors.white54,
+      icon: Icons.filter_list,
+    );
   }
+  return _statusOptions.firstWhere(
+    (item) => item.value == value,
+    orElse:
+        () => const _StatusItem(
+          value: '',
+          label: 'Status',
+          color: Colors.white54,
+          icon: Icons.filter_list,
+        ),
+  );
 }
+
+const List<_StatusItem> _statusOptions = [
+  _StatusItem(
+    value: 'scheduled',
+    label: 'Agendada',
+    color: Colors.blueAccent,
+    icon: Icons.event_available,
+  ),
+  _StatusItem(
+    value: 'in_progress',
+    label: 'Em andamento',
+    color: Colors.orange,
+    icon: Icons.build,
+  ),
+  _StatusItem(
+    value: 'done',
+    label: 'Concluída',
+    color: Colors.green,
+    icon: Icons.check_circle,
+  ),
+  _StatusItem(
+    value: 'canceled',
+    label: 'Cancelada',
+    color: Colors.redAccent,
+    icon: Icons.cancel,
+  ),
+];

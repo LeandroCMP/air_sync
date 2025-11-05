@@ -2,476 +2,361 @@ import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/models/order_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:signature/signature.dart';
+
 import './order_detail_controller.dart';
-import 'package:air_sync/services/inventory/inventory_service.dart';
-import 'package:air_sync/models/inventory_model.dart';
-import 'package:air_sync/application/auth/auth_service_application.dart';
 
 class OrderDetailPage extends GetView<OrderDetailController> {
   const OrderDetailPage({super.key});
 
   @override
   Widget build(BuildContext context) {
-    final order = Get.arguments as OrderModel;
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Detalhe da OS'),
+        title: const Text('Detalhes da OS'),
         actions: [
           IconButton(
             icon: const Icon(Icons.picture_as_pdf_outlined),
-            onPressed: controller.openPdf,
-          )
+            onPressed: () => _openPdf(controller),
+          ),
         ],
       ),
-      body: Obx(() => Stack(children: [
-            ListView(
-              padding: const EdgeInsets.all(16),
-              children: [
-                _Header(order: order),
-                const SizedBox(height: 12),
-                Row(children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.play_arrow),
-                      label: const Text('Iniciar'),
-                      onPressed: controller.startOrder,
+      body: Obx(() {
+        final order = controller.order.value;
+        if (order == null) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        return RefreshIndicator(
+          onRefresh: controller.load,
+          child: ListView(
+            padding: const EdgeInsets.all(16),
+            children: [
+              _Header(order: order),
+              const SizedBox(height: 16),
+              _SectionTitle('Checklist'),
+              if (order.checklist.isEmpty)
+                const Text(
+                  'Sem itens cadastrados.',
+                  style: TextStyle(color: Colors.white54),
+                )
+              else
+                ...order.checklist.map(
+                  (item) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      item.done ? Icons.check_circle : Icons.radio_button_off,
+                      color: item.done ? context.themeGreen : Colors.white38,
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      icon: const Icon(Icons.inventory_2_outlined),
-                      label: const Text('Reservar materiais'),
-                      onPressed: () => _openReserveDialogV2(context),
+                    title: Text(
+                      item.item,
+                      style: const TextStyle(color: Colors.white),
                     ),
+                    subtitle:
+                        item.note == null
+                            ? null
+                            : Text(
+                              item.note!,
+                              style: const TextStyle(color: Colors.white70),
+                            ),
                   ),
-                ]),
-                const SizedBox(height: 12),
-                OutlinedButton.icon(
-                  icon: const Icon(Icons.flag),
-                  label: const Text('Finalizar OS'),
-                  onPressed: () => _openFinishDialogV2(context),
                 ),
-                const SizedBox(height: 24),
-                _Section(title: 'Checklist', child: _ChecklistSection()), 
-                const SizedBox(height: 12),
-                _Section(title: 'Evidências', child: _EvidenceSection()), 
-                const SizedBox(height: 12),
-                _Section(title: 'Faturamento', child: _Soon(label: 'Resumo e histórico em breve')), 
-              ],
-            ),
-            if (controller.isLoading.value)
-              const Positioned(top: 0, left: 0, right: 0, child: LinearProgressIndicator(minHeight: 2)),
-          ])),
+              const SizedBox(height: 20),
+              _SectionTitle('Materiais'),
+              if (order.materials.isEmpty)
+                const Text(
+                  'Nenhum material vinculado.',
+                  style: TextStyle(color: Colors.white54),
+                )
+              else
+                ...order.materials.map(
+                  (material) => ListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: Text(
+                      material.itemName ?? material.itemId,
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    subtitle: Text(
+                      'Qtd: ${material.qty} • Reservado: ${material.reserved ? 'Sim' : 'Não'}',
+                      style: const TextStyle(color: Colors.white70),
+                    ),
+                  ),
+                ),
+              const SizedBox(height: 20),
+              _SectionTitle('Cobrança'),
+              if (order.billing.items.isEmpty)
+                const Text(
+                  'Sem itens de cobrança.',
+                  style: TextStyle(color: Colors.white54),
+                )
+              else
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ...order.billing.items.map(
+                      (item) => ListTile(
+                        contentPadding: EdgeInsets.zero,
+                        title: Text(
+                          item.name,
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                        subtitle: Text(
+                          '${item.type == 'service' ? 'Serviço' : 'Peça'} • ${item.qty} x R\$ ${item.unitPrice.toStringAsFixed(2)}',
+                          style: const TextStyle(color: Colors.white70),
+                        ),
+                        trailing: Text(
+                          'R\$ ${item.lineTotal.toStringAsFixed(2)}',
+                          style: const TextStyle(color: Colors.white),
+                        ),
+                      ),
+                    ),
+                    const Divider(),
+                    _BillingSummary(order.billing),
+                  ],
+                ),
+              const SizedBox(height: 24),
+              _Actions(controller: controller, order: order),
+            ],
+          ),
+        );
+      }),
     );
   }
 
-  void _openReserveDialog(BuildContext context) {
-    final itemIdCtrl = TextEditingController();
-    final qtyCtrl = TextEditingController();
-    Get.defaultDialog(
-      title: 'Reservar materiais',
-      content: Column(
-        children: [
-          TextField(controller: itemIdCtrl, decoration: const InputDecoration(labelText: 'Item ID')),
-          TextField(controller: qtyCtrl, decoration: const InputDecoration(labelText: 'Quantidade'), keyboardType: TextInputType.number),
-        ],
-      ),
-      textConfirm: 'Reservar',
-      textCancel: 'Cancelar',
-      onConfirm: () {
-        final id = itemIdCtrl.text.trim();
-        final qty = double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 0;
-        if (id.isNotEmpty && qty > 0) {
-          controller.reserveMaterials([
-            {'itemId': id, 'qty': qty},
-          ]);
-        }
-        Get.back();
-      },
-    );
-  }
-
-  void _openFinishDialog(BuildContext context) {
-    final itemIdCtrl = TextEditingController();
-    final qtyCtrl = TextEditingController();
-    final nameCtrl = TextEditingController(text: 'Serviço');
-    final qtyBillCtrl = TextEditingController(text: '1');
-    final unitPriceCtrl = TextEditingController(text: '0');
-    final discountCtrl = TextEditingController(text: '0');
-    Get.defaultDialog(
-      title: 'Finalizar OS',
-      content: SingleChildScrollView(
-        child: Column(
-          children: [
-            const Text('Materiais usados'),
-            TextField(controller: itemIdCtrl, decoration: const InputDecoration(labelText: 'Item ID')),
-            TextField(controller: qtyCtrl, decoration: const InputDecoration(labelText: 'Quantidade'), keyboardType: TextInputType.number),
-            const SizedBox(height: 8),
-            const Text('Faturamento'),
-            TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nome do item')),
-            TextField(controller: qtyBillCtrl, decoration: const InputDecoration(labelText: 'Qtd'), keyboardType: TextInputType.number),
-            TextField(controller: unitPriceCtrl, decoration: const InputDecoration(labelText: 'Preço unitário'), keyboardType: TextInputType.number),
-            TextField(controller: discountCtrl, decoration: const InputDecoration(labelText: 'Desconto'), keyboardType: TextInputType.number),
-          ],
-        ),
-      ),
-      textConfirm: 'Finalizar',
-      textCancel: 'Cancelar',
-      onConfirm: () {
-        final materials = <Map<String, dynamic>>[];
-        final mid = itemIdCtrl.text.trim();
-        final mqty = double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 0;
-        if (mid.isNotEmpty && mqty > 0) {
-          materials.add({'itemId': mid, 'qty': mqty});
-        }
-        final items = <Map<String, dynamic>>[
-          {
-            'type': 'service',
-            'name': nameCtrl.text.trim(),
-            'qty': double.tryParse(qtyBillCtrl.text.replaceAll(',', '.')) ?? 1,
-            'unitPrice': double.tryParse(unitPriceCtrl.text.replaceAll(',', '.')) ?? 0,
-          },
-        ];
-        final discount = double.tryParse(discountCtrl.text.replaceAll(',', '.')) ?? 0;
-        controller.finishOrder(materials: materials, billingItems: items, discount: discount);
-        Get.back();
-      },
-    );
+  void _openPdf(OrderDetailController controller) {
+    final url = controller.pdfUrl();
+    Get.toNamed('/pdf/viewer', arguments: url);
   }
 }
 
 class _Header extends StatelessWidget {
-  final OrderModel order;
   const _Header({required this.order});
+
+  final OrderModel order;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(color: context.themeGray, borderRadius: BorderRadius.circular(12)),
-      padding: const EdgeInsets.all(12),
-      child: Row(
-        children: [
-          Icon(Icons.assignment_outlined, color: Colors.white70),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+    final status = _statusFor(order.status);
+    return Card(
+      color: context.themeDark,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
               children: [
-                Text(order.clientName, style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                Text(
-                  [
-                    if (order.scheduledAt != null) order.scheduledAt!.toLocal().toString(),
-                    if (order.location != null) order.location!,
-                    if (order.equipment != null) order.equipment!,
-                  ].join(' • '),
-                  style: const TextStyle(color: Colors.white70),
+                CircleAvatar(
+                  backgroundColor: status.color.withOpacity(.15),
+                  foregroundColor: status.color,
+                  child: Icon(status.icon),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        order.clientName ?? 'Cliente não informado',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        status.label,
+                        style: TextStyle(
+                          color: status.color,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ],
             ),
-          ),
-          const SizedBox(width: 8),
-          _StatusTag(status: order.status),
-        ],
-      ),
-    );
-  }
-}
-
-class _StatusTag extends StatelessWidget {
-  final String status;
-  const _StatusTag({required this.status});
-  @override
-  Widget build(BuildContext context) {
-    final statusColor = {
-      'scheduled': Colors.blueAccent,
-      'in_progress': Colors.orange,
-      'finished': Colors.green,
-      'canceled': Colors.redAccent,
-    }[status] ?? Colors.grey;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: statusColor.withOpacity(0.2),
-        border: Border.all(color: statusColor),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Text(status, style: TextStyle(color: statusColor)),
-    );
-  }
-}
-
-class _Soon extends StatelessWidget {
-  final String label;
-  const _Soon({required this.label});
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(color: context.themeGray, borderRadius: BorderRadius.circular(12)),
-      child: Text(label, style: const TextStyle(color: Colors.white70)),
-    );
-  }
-}
-
-class _Section extends StatelessWidget {
-  final String title;
-  final Widget child;
-  const _Section({required this.title, required this.child});
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title, style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
-        child,
-      ],
-    );
-  }
-}
-
-class _ChecklistSection extends GetView<OrderDetailController> {
-  final TextEditingController _textCtrl = TextEditingController();
-  _ChecklistSection({super.key});
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _textCtrl,
-                decoration: const InputDecoration(labelText: 'Novo item'),
-              ),
+            const SizedBox(height: 12),
+            _InfoRow('Local', order.locationLabel),
+            _InfoRow('Equipamento', order.equipmentLabel),
+            _InfoRow(
+              'Agendada para',
+              order.scheduledAt?.toLocal().toString().replaceFirst('T', ' às '),
             ),
-            const SizedBox(width: 8),
-            ElevatedButton(
-              onPressed: () {
-                controller.addChecklistItem(_textCtrl.text);
-                _textCtrl.clear();
-              },
-              child: const Text('Adicionar'),
-            ),
+            _InfoRow('Início', order.startedAt?.toLocal().toString()),
+            _InfoRow('Conclusão', order.finishedAt?.toLocal().toString()),
+            if (order.notes != null && order.notes!.isNotEmpty)
+              _InfoRow('Observações', order.notes),
           ],
         ),
-        const SizedBox(height: 8),
-        Obx(() => Column(
-              children: [
-                for (int i = 0; i < controller.checklist.length; i++)
-                  CheckboxListTile(
-                    value: (controller.checklist[i]['checked'] as bool?) ?? false,
-                    onChanged: (v) => controller.toggleChecklist(i, v ?? false),
-                    title: Text(
-                      controller.checklist[i]['text']?.toString() ?? '',
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                    secondary: IconButton(
-                      icon: const Icon(Icons.delete, color: Colors.redAccent),
-                      onPressed: () => controller.removeChecklist(i),
-                    ),
-                  ),
-              ],
-            )),
-      ],
+      ),
     );
   }
 }
 
-class _EvidenceSection extends GetView<OrderDetailController> {
-  _EvidenceSection({super.key});
-  final SignatureController _sigCtrl = SignatureController(penStrokeWidth: 3, penColor: Colors.white);
+class _InfoRow extends StatelessWidget {
+  const _InfoRow(this.label, this.value);
+
+  final String label;
+  final String? value;
+
+  @override
+  Widget build(BuildContext context) {
+    if (value == null || value!.trim().isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: RichText(
+        text: TextSpan(
+          style: const TextStyle(color: Colors.white70),
+          children: [
+            TextSpan(
+              text: '$label: ',
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            TextSpan(text: value),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BillingSummary extends StatelessWidget {
+  const _BillingSummary(this.billing);
+
+  final OrderBilling billing;
 
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Row(
-          children: [
-            OutlinedButton.icon(
-              icon: const Icon(Icons.attach_file),
-              label: const Text('Adicionar arquivo'),
-              onPressed: controller.addEvidenceFromPicker,
-            ),
-            const SizedBox(width: 8),
-            OutlinedButton.icon(
-              icon: const Icon(Icons.border_color),
-              label: const Text('Assinatura'),
-              onPressed: () => _openSignatureDialog(context),
-            ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        Obx(() => Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                for (final name in controller.evidences)
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    decoration: BoxDecoration(
-                      color: context.themeGray,
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                    child: Text(name, style: const TextStyle(color: Colors.white70)),
-                  )
-              ],
-            )),
+        _summaryRow('Subtotal', billing.subtotal),
+        _summaryRow('Desconto', -billing.discount),
+        const SizedBox(height: 6),
+        _summaryRow('Total', billing.total, emphasize: true),
       ],
     );
   }
 
-  void _openSignatureDialog(BuildContext context) {
-    _sigCtrl.clear();
-    Get.defaultDialog(
-      title: 'Assinatura',
-      content: Container(
-        color: context.themeGray,
-        width: Get.width * .8,
-        height: 200,
-        child: Signature(controller: _sigCtrl, backgroundColor: context.themeGray),
-      ),
-      textConfirm: 'Salvar',
-      textCancel: 'Cancelar',
-      onConfirm: () async {
-        final bytes = await _sigCtrl.toPngBytes();
-        if (bytes != null) {
-          await controller.uploadSignatureBytes(bytes);
-        }
-        Get.back();
-      },
+  Widget _summaryRow(String label, num value, {bool emphasize = false}) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      children: [
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white70,
+            fontWeight: emphasize ? FontWeight.bold : FontWeight.w500,
+          ),
+        ),
+        Text(
+          'R\$ ${value.toStringAsFixed(2)}',
+          style: TextStyle(
+            color: Colors.white,
+            fontWeight: emphasize ? FontWeight.bold : FontWeight.w500,
+          ),
+        ),
+      ],
     );
   }
 }
 
-Future<List<Map<String, dynamic>>> _pickMultipleInventoryItems() async {
-  final inv = Get.find<InventoryService>();
-  final auth = Get.find<AuthServiceApplication>();
-  final items = await inv.getItems(auth.user.value?.id ?? '');
-  final list = RxList<InventoryItemModel>(items);
-  final selected = RxList<Map<String, dynamic>>([]);
-  final searchCtrl = TextEditingController();
+class _Actions extends StatelessWidget {
+  const _Actions({required this.controller, required this.order});
 
-  await Get.bottomSheet(
-    Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(color: Get.context!.theme.scaffoldBackgroundColor, borderRadius: const BorderRadius.vertical(top: Radius.circular(16))),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: searchCtrl,
-                  decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar item'),
-                  onChanged: (v) {
-                    final q = v.trim().toUpperCase();
-                    list.assignAll(items.where((e) => e.description.toUpperCase().contains(q)));
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: () => Get.back(),
-                child: const Text('Concluir'),
-              )
-            ],
-          ),
-          const SizedBox(height: 8),
-          Flexible(
-            child: Obx(() => ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) => ListTile(
-                    title: Text(list[i].description),
-                    subtitle: Text('Qtd: ${list[i].quantity} ${list[i].unit}'),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.add),
-                      onPressed: () {
-                        final qtyCtrl = TextEditingController(text: '1');
-                        Get.defaultDialog(
-                          title: 'Quantidade',
-                          content: TextField(controller: qtyCtrl, keyboardType: TextInputType.number),
-                          textConfirm: 'Adicionar',
-                          textCancel: 'Cancelar',
-                          onConfirm: () {
-                            final q = double.tryParse(qtyCtrl.text.replaceAll(',', '.')) ?? 0;
-                            if (q > 0) {
-                              selected.add({'itemId': list[i].id, 'qty': q, 'desc': list[i].description});
-                            }
-                            Get.back();
-                          },
-                        );
-                      },
-                    ),
-                  ),
-                )),
-          ),
-          const SizedBox(height: 8),
-          Obx(() => Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: selected
-                    .map((e) => Chip(
-                          label: Text('${e['desc']} • ${e['qty']}'),
-                          onDeleted: () => selected.remove(e),
-                        ))
-                    .toList(),
-              )),
-        ],
-      ),
-    ),
-    isScrollControlled: true,
-  );
-  return selected.map((e) => {'itemId': e['itemId'], 'qty': (e['qty'] as num).toDouble()}).toList();
+  final OrderDetailController controller;
+  final OrderModel order;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ElevatedButton.icon(
+          icon: const Icon(Icons.play_arrow),
+          label: const Text('Iniciar OS'),
+          onPressed:
+              order.isInProgress || order.isDone ? null : controller.startOrder,
+        ),
+        const SizedBox(height: 8),
+        ElevatedButton.icon(
+          icon: const Icon(Icons.refresh),
+          label: const Text('Atualizar dados'),
+          onPressed: controller.load,
+        ),
+      ],
+    );
+  }
 }
 
-Future<void> _openReserveDialogV2(BuildContext context) async {
-  final items = await _pickMultipleInventoryItems();
-  if (items.isEmpty) return;
-  await Get.find<OrderDetailController>().reserveMaterials(items);
+_StatusItem _statusFor(String value) {
+  if (value == 'scheduled') {
+    return const _StatusItem(
+      label: 'Agendada',
+      color: Colors.blueAccent,
+      icon: Icons.event_available,
+    );
+  }
+  if (value == 'in_progress') {
+    return const _StatusItem(
+      label: 'Em andamento',
+      color: Colors.orange,
+      icon: Icons.build,
+    );
+  }
+  if (value == 'done') {
+    return const _StatusItem(
+      label: 'Concluída',
+      color: Colors.green,
+      icon: Icons.check_circle,
+    );
+  }
+  if (value == 'canceled') {
+    return const _StatusItem(
+      label: 'Cancelada',
+      color: Colors.redAccent,
+      icon: Icons.cancel,
+    );
+  }
+  return const _StatusItem(
+    label: 'Indefinido',
+    color: Colors.white54,
+    icon: Icons.help_outline,
+  );
 }
 
-Future<void> _openFinishDialogV2(BuildContext context) async {
-  final nameCtrl = TextEditingController(text: 'Serviço');
-  final qtyBillCtrl = TextEditingController(text: '1');
-  final unitPriceCtrl = TextEditingController(text: '0');
-  final discountCtrl = TextEditingController(text: '0');
-  final usedMaterials = await _pickMultipleInventoryItems();
-  if (usedMaterials.isEmpty) return;
-  Get.defaultDialog(
-    title: 'Finalizar OS',
-    content: SingleChildScrollView(
-      child: Column(
-        children: [
-          const Text('Faturamento'),
-          TextField(controller: nameCtrl, decoration: const InputDecoration(labelText: 'Nome do item')),
-          TextField(controller: qtyBillCtrl, decoration: const InputDecoration(labelText: 'Qtd'), keyboardType: TextInputType.number),
-          TextField(controller: unitPriceCtrl, decoration: const InputDecoration(labelText: 'Preço unitário'), keyboardType: TextInputType.number),
-          TextField(controller: discountCtrl, decoration: const InputDecoration(labelText: 'Desconto'), keyboardType: TextInputType.number),
-        ],
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.title);
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(
+        title,
+        style: const TextStyle(
+          color: Colors.white,
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+        ),
       ),
-    ),
-    textConfirm: 'Finalizar',
-    textCancel: 'Cancelar',
-    onConfirm: () {
-      final items = <Map<String, dynamic>>[
-        {
-          'type': 'service',
-          'name': nameCtrl.text.trim(),
-          'qty': double.tryParse(qtyBillCtrl.text.replaceAll(',', '.')) ?? 1,
-          'unitPrice': double.tryParse(unitPriceCtrl.text.replaceAll(',', '.')) ?? 0,
-        },
-      ];
-      final discount = double.tryParse(discountCtrl.text.replaceAll(',', '.')) ?? 0;
-      Get.find<OrderDetailController>().finishOrder(materials: usedMaterials, billingItems: items, discount: discount);
-      Get.back();
-    },
-  );
+    );
+  }
+}
+
+class _StatusItem {
+  const _StatusItem({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
 }

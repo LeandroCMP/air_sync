@@ -8,5 +8,14 @@ abstract class LocationsRepository {
     Map<String, String?> address,
     String? notes,
   });
-}
 
+  Future<LocationModel> update({
+    required String id,
+    String? label,
+    Map<String, String?> address,
+    String? notes,
+    bool includeNotes = false,
+  });
+
+  Future<void> delete(String id, {bool cascadeEquipments = false});
+}

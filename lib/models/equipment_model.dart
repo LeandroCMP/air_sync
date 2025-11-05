@@ -6,6 +6,8 @@ class EquipmentModel {
   final String? model;
   final String? type;
   final int? btus;
+  final String? room;
+  final DateTime? installDate;
   final String? serial;
   final String? notes;
 
@@ -17,6 +19,8 @@ class EquipmentModel {
     this.model,
     this.type,
     this.btus,
+    this.room,
+    this.installDate,
     this.serial,
     this.notes,
   });
@@ -31,6 +35,8 @@ class EquipmentModel {
       model: map['model']?.toString(),
       type: map['type']?.toString(),
       btus: map['btus'] is num ? (map['btus'] as num).toInt() : int.tryParse(map['btus']?.toString() ?? ''),
+      room: map['room']?.toString(),
+      installDate: map['installDate'] != null ? DateTime.tryParse(map['installDate'].toString()) : null,
       serial: map['serial']?.toString(),
       notes: map['notes']?.toString(),
     );
