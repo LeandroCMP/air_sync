@@ -4,7 +4,7 @@ class InventoryFailure implements Exception {
   InventoryFailure._(this.message);
 
   factory InventoryFailure.firebase(String message) =>
-      InventoryFailure._('[FIREBASE] $message');
+      InventoryFailure._(message);
 
   factory InventoryFailure.validation(String message) =>
       InventoryFailure._('[VALIDATION] $message');

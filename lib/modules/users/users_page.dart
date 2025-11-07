@@ -1,14 +1,12 @@
-﻿import 'package:air_sync/application/ui/input_formatters.dart';
-import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/models/collaborator_models.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
 // ignore_for_file: use_build_context_synchronously
 import 'users_controller.dart';
+import 'widgets/collaborator_form.dart';
 
 final NumberFormat _currencyFormatter = NumberFormat.currency(
   locale: 'pt_BR',
@@ -74,7 +72,7 @@ class _UsersSearchField extends StatelessWidget {
           controller: controller.searchCtrl,
           style: const TextStyle(color: Colors.white),
           decoration: InputDecoration(
-            hintText: 'Buscar por nome, e-mail ou permissão',
+            hintText: 'Buscar por nome, e-mail ou permissÃ£o',
             hintStyle: const TextStyle(color: Colors.white54),
             prefixIcon: const Icon(Icons.search, color: Colors.white70),
             suffixIcon:
@@ -125,7 +123,7 @@ class _RoleFilterButton extends StatelessWidget {
               CheckedPopupMenuItem<CollaboratorRole?>(
                 value: null,
                 checked: current == null,
-                child: const Text('Todos os papÃƒÂ©is'),
+                child: const Text('Todos os papÃ©is'),
               ),
               ...CollaboratorRole.values.map(
                 (role) => CheckedPopupMenuItem<CollaboratorRole?>(
@@ -153,6 +151,9 @@ class _CollaboratorList extends StatelessWidget {
         return Obx(() {
           final isLoading = controller.isLoading.value;
           final items = controller.collaborators.toList();
+          final catalogByCode = {
+            for (final entry in controller.permissions) entry.code: entry,
+          };
           final labelByPermission = {
             for (final entry in controller.permissions) entry.code: entry.label,
           };
@@ -171,10 +172,15 @@ class _CollaboratorList extends StatelessWidget {
                       .toList();
 
           if (isLoading && items.isEmpty) {
-            return const Center(child: CircularProgressIndicator());
+            return Column(
+              children: const [
+                _TopLoadingIndicator(visible: true),
+                Expanded(child: Center(child: CircularProgressIndicator())),
+              ],
+            );
           }
 
-          if (filtered.isEmpty) {
+          Widget buildEmptyState() {
             return RefreshIndicator(
               onRefresh: controller.loadCollaborators,
               child: ListView(
@@ -202,74 +208,134 @@ class _CollaboratorList extends StatelessWidget {
             );
           }
 
-          final roleFilter = controller.filterRole.value;
+          Widget buildList() {
+            final roleFilter = controller.filterRole.value;
+            return RefreshIndicator(
+              onRefresh: controller.loadCollaborators,
+              child: ListView.separated(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
+                itemCount: filtered.length + 1,
+                separatorBuilder: (_, __) => const SizedBox(height: 16),
+                itemBuilder: (context, index) {
+                  if (index == 0) {
+                    return _CollaboratorSummary(
+                      total: items.length,
+                      visible: filtered.length,
+                      roleFilter: roleFilter,
+                    );
+                  }
 
-          return RefreshIndicator(
-            onRefresh: controller.loadCollaborators,
-            child: ListView.separated(
-              physics: const AlwaysScrollableScrollPhysics(),
-              padding: const EdgeInsets.fromLTRB(20, 24, 20, 120),
-              itemCount: filtered.length + 1,
-              separatorBuilder: (_, __) => const SizedBox(height: 16),
-              itemBuilder: (context, index) {
-                if (index == 0) {
-                  return _CollaboratorSummary(
-                    total: items.length,
-                    visible: filtered.length,
-                    roleFilter: roleFilter,
-                  );
-                }
+                  final collaborator = filtered[index - 1];
+                  return Obx(() {
+                    final payrollList =
+                        controller.payrollByUser[collaborator.id] ??
+                        const <PayrollModel>[];
+                    final isPayrollLoading = controller.payrollLoading.contains(
+                      collaborator.id,
+                    );
+                    final isDeleting = controller.deletingIds.contains(
+                      collaborator.id,
+                    );
+                    final moduleCounts = <String, int>{};
+                    for (final code in collaborator.permissions) {
+                      final module =
+                          catalogByCode[code]?.module?.toLowerCase() ??
+                          'outros';
+                      moduleCounts[module] = (moduleCounts[module] ?? 0) + 1;
+                    }
+                    final defaultPermissions = controller
+                        .defaultPermissionsForRole(collaborator.role);
+                    final usesCustomPermissions =
+                        !_samePermissions(
+                          defaultPermissions,
+                          collaborator.permissions,
+                        );
 
-                final collaborator = filtered[index - 1];
-                return Obx(() {
-                  final payrollList =
-                      controller.payrollByUser[collaborator.id] ??
-                      const <PayrollModel>[];
-                  final isPayrollLoading = controller.payrollLoading.contains(
-                    collaborator.id,
-                  );
-                  final isDeleting = controller.deletingIds.contains(
-                    collaborator.id,
-                  );
+                    return _CollaboratorCard(
+                      collaborator: collaborator,
+                      permissionLabels: labelByPermission,
+                      permissionCatalog: catalogByCode,
+                      moduleCounts: moduleCounts,
+                      usesCustomPermissions: usesCustomPermissions,
+                      payrollCount: payrollList.length,
+                      isPayrollLoading: isPayrollLoading,
+                      isDeleting: isDeleting,
+                      showPayrollButton: controller.canViewPayroll,
+                      onEdit:
+                          controller.canManageCollaborators
+                              ? () => _openCollaboratorForm(
+                                context,
+                                controller,
+                                collaborator: collaborator,
+                              )
+                              : null,
+                      onPayroll:
+                          controller.canViewPayroll
+                              ? () => _openPayrollSheet(
+                                context,
+                                controller: controller,
+                                collaborator: collaborator,
+                              )
+                              : null,
+                      onDelete:
+                          controller.canManageCollaborators
+                              ? () => _confirmCollaboratorDeletion(
+                                context,
+                                controller,
+                                collaborator,
+                              )
+                              : null,
+                    );
+                  });
+                },
+              ),
+            );
+          }
 
-                  return _CollaboratorCard(
-                    collaborator: collaborator,
-                    permissionLabels: labelByPermission,
-                    payrollCount: payrollList.length,
-                    isPayrollLoading: isPayrollLoading,
-                    isDeleting: isDeleting,
-                    showPayrollButton: controller.canViewPayroll,
-                    onEdit:
-                        controller.canManageCollaborators
-                            ? () => _openCollaboratorForm(
-                              context,
-                              controller,
-                              collaborator: collaborator,
-                            )
-                            : null,
-                    onPayroll:
-                        controller.canViewPayroll
-                            ? () => _openPayrollSheet(
-                              context,
-                              controller: controller,
-                              collaborator: collaborator,
-                            )
-                            : null,
-                    onDelete:
-                        controller.canManageCollaborators
-                            ? () => _confirmCollaboratorDeletion(
-                              context,
-                              controller,
-                              collaborator,
-                            )
-                            : null,
-                  );
-                });
-              },
-            ),
+          if (filtered.isEmpty) {
+            return Column(
+              children: [
+                _TopLoadingIndicator(visible: isLoading),
+                Expanded(child: buildEmptyState()),
+              ],
+            );
+          }
+
+          return Column(
+            children: [
+              _TopLoadingIndicator(visible: isLoading),
+              Expanded(child: buildList()),
+            ],
           );
         });
       },
+    );
+  }
+}
+
+class _TopLoadingIndicator extends StatelessWidget {
+  const _TopLoadingIndicator({required this.visible});
+
+  final bool visible;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!visible) {
+      return const SizedBox(height: 0);
+    }
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 200),
+      curve: Curves.easeInOut,
+      height: 4,
+      width: double.infinity,
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(bottom: Radius.circular(2)),
+        child: LinearProgressIndicator(
+          color: context.themePrimary,
+          backgroundColor: context.themeSurface.withValues(alpha: 0.4),
+        ),
+      ),
     );
   }
 }
@@ -324,6 +390,9 @@ class _CollaboratorCard extends StatelessWidget {
   const _CollaboratorCard({
     required this.collaborator,
     required this.permissionLabels,
+    required this.permissionCatalog,
+    required this.moduleCounts,
+    required this.usesCustomPermissions,
     required this.payrollCount,
     required this.isPayrollLoading,
     required this.isDeleting,
@@ -335,6 +404,9 @@ class _CollaboratorCard extends StatelessWidget {
 
   final CollaboratorModel collaborator;
   final Map<String, String> permissionLabels;
+  final Map<String, PermissionCatalogEntry> permissionCatalog;
+  final Map<String, int> moduleCounts;
+  final bool usesCustomPermissions;
   final int payrollCount;
   final bool isPayrollLoading;
   final bool isDeleting;
@@ -351,15 +423,36 @@ class _CollaboratorCard extends StatelessWidget {
     final paymentDay = compensation?.paymentDay;
     final hourlyCost = collaborator.hourlyCost;
 
-    final chips =
-        collaborator.permissions
+    final summaryEntries =
+        moduleCounts.entries.toList()
+          ..sort((a, b) => _moduleLabel(a.key).compareTo(_moduleLabel(b.key)));
+    final summaryChips =
+        summaryEntries
             .map(
-              (code) => Chip(
-                label: Text(permissionLabels[code] ?? code),
+              (entry) => Chip(
+                label: Text('${_moduleLabel(entry.key)} · ${entry.value}'),
                 backgroundColor: context.themeSurface,
               ),
             )
             .toList();
+
+    final detailChips =
+        collaborator.permissions.map((code) {
+          final entry = permissionCatalog[code];
+          final label = permissionLabels[code] ?? entry?.label ?? code;
+          final tooltip =
+              entry?.description?.trim().isNotEmpty == true
+                  ? entry!.description!.trim()
+                  : 'Código: $code';
+          return Tooltip(
+            message: tooltip,
+            waitDuration: const Duration(milliseconds: 300),
+            child: Chip(
+              label: Text(label),
+              backgroundColor: context.themeSurface,
+            ),
+          );
+        }).toList();
 
     final card = Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -430,6 +523,22 @@ class _CollaboratorCard extends StatelessWidget {
                               ? context.themeGreen.withValues(alpha: 0.12)
                               : theme.colorScheme.error.withValues(alpha: 0.12),
                     ),
+                    if (usesCustomPermissions) ...[
+                      const SizedBox(height: 8),
+                      Tooltip(
+                        message:
+                            'Permissões personalizadas para este colaborador.',
+                        child: Chip(
+                          avatar: const Icon(Icons.tune, size: 18),
+                          label: const Text('Personalizadas'),
+                          backgroundColor: theme.colorScheme.secondary
+                              .withValues(alpha: 0.12),
+                          labelStyle: TextStyle(
+                            color: theme.colorScheme.secondary,
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -442,7 +551,7 @@ class _CollaboratorCard extends StatelessWidget {
                 if (salary != null)
                   _InfoTile(
                     icon: Icons.attach_money,
-                    label: 'SalÃƒÂ¡rio',
+                    label: 'Salário',
                     value: _currencyFormatter.format(salary),
                   ),
                 if (hourlyCost != null)
@@ -455,12 +564,12 @@ class _CollaboratorCard extends StatelessWidget {
                   _InfoTile(
                     icon: Icons.calendar_today,
                     label: 'Dia de pagamento',
-                    value: 'Dia $paymentDay',
+                    value: 'Dia ',
                   ),
                 if (compensation?.paymentFrequency != null)
                   _InfoTile(
                     icon: Icons.event_repeat,
-                    label: 'FrequÃƒÂªncia',
+                    label: 'Frequência',
                     value: _paymentFrequencyLabel(
                       compensation!.paymentFrequency!,
                     ),
@@ -482,25 +591,49 @@ class _CollaboratorCard extends StatelessWidget {
                 ),
               ),
             ],
+            if (summaryChips.isNotEmpty) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Resumo de permissões',
+                style: theme.textTheme.titleSmall?.copyWith(
+                  color: Colors.white70,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(spacing: 8, runSpacing: 8, children: summaryChips),
+            ],
             const SizedBox(height: 12),
-            if (chips.isNotEmpty)
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'PermissÃƒÂµes (${chips.length})',
+            if (detailChips.isNotEmpty)
+              Theme(
+                data: theme.copyWith(dividerColor: Colors.white12),
+                child: ExpansionTile(
+                  tilePadding: EdgeInsets.zero,
+                  collapsedIconColor: Colors.white70,
+                  iconColor: Colors.white,
+                  childrenPadding: const EdgeInsets.only(top: 4, bottom: 4),
+                  title: Text(
+                    'Permissões ()',
                     style: theme.textTheme.titleSmall?.copyWith(
                       color: Colors.white70,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Wrap(spacing: 8, runSpacing: 8, children: chips),
-                ],
+                  children: [
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: detailChips,
+                      ),
+                    ),
+                  ],
+                ),
               )
             else
               Text(
-                'PermissÃƒÂµes determinadas pelo papel.',
+                'Permissões determinadas pelo papel.',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: Colors.white54,
                 ),
@@ -511,10 +644,13 @@ class _CollaboratorCard extends StatelessWidget {
               runSpacing: 8,
               children: [
                 if (onEdit != null)
-                  TextButton.icon(
-                    onPressed: onEdit,
-                    icon: const Icon(Icons.edit_outlined),
-                    label: const Text('Editar'),
+                  Tooltip(
+                    message: 'Editar colaborador',
+                    child: TextButton.icon(
+                      onPressed: onEdit,
+                      icon: const Icon(Icons.edit_outlined),
+                      label: const Text('Editar'),
+                    ),
                   ),
                 if (showPayrollButton)
                   TextButton.icon(
@@ -528,18 +664,19 @@ class _CollaboratorCard extends StatelessWidget {
                             )
                             : const Icon(Icons.receipt_long_outlined),
                     label: Text(
-                      isPayrollLoading
-                          ? 'Carregando...'
-                          : 'Holerites ($payrollCount)',
+                      isPayrollLoading ? 'Carregando...' : 'Holerites ()',
                     ),
                   ),
                 if (onDelete != null)
-                  TextButton.icon(
-                    onPressed: onDelete,
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('Excluir'),
-                    style: TextButton.styleFrom(
-                      foregroundColor: theme.colorScheme.error,
+                  Tooltip(
+                    message: 'Excluir colaborador',
+                    child: TextButton.icon(
+                      onPressed: onDelete,
+                      icon: const Icon(Icons.delete_outline),
+                      label: const Text('Excluir'),
+                      style: TextButton.styleFrom(
+                        foregroundColor: theme.colorScheme.error,
+                      ),
                     ),
                   ),
               ],
@@ -612,615 +749,6 @@ class _InfoTile extends StatelessWidget {
   }
 }
 
-class CollaboratorFormController extends GetxController {
-  CollaboratorFormController({
-    required this.usersController,
-    this.collaborator,
-  });
-
-  final UsersController usersController;
-  final CollaboratorModel? collaborator;
-
-  final formKey = GlobalKey<FormState>();
-
-  late final TextEditingController nameCtrl;
-  late final TextEditingController emailCtrl;
-  late final TextEditingController passwordCtrl;
-  late final TextEditingController salaryCtrl;
-  late final TextEditingController paymentDayCtrl;
-  late final TextEditingController hourlyCostCtrl;
-  late final TextEditingController notesCtrl;
-
-  final role = CollaboratorRole.tech.obs;
-  final active = true.obs;
-  final paymentFrequency = Rxn<PaymentFrequency>();
-  final paymentMethod = Rxn<PaymentMethod>();
-  final useCustomPermissions = false.obs;
-  final obscurePassword = true.obs;
-  final RxList<String> selectedPermissions = <String>[].obs;
-
-  bool get isEditing => collaborator != null;
-
-  @override
-  void onInit() {
-    super.onInit();
-    role.value = collaborator?.role ?? CollaboratorRole.tech;
-    active.value = collaborator?.active ?? true;
-    paymentFrequency.value = collaborator?.compensation?.paymentFrequency;
-    paymentMethod.value = collaborator?.compensation?.paymentMethod;
-
-    nameCtrl = TextEditingController(text: collaborator?.name ?? '');
-    emailCtrl = TextEditingController(text: collaborator?.email ?? '');
-    passwordCtrl = TextEditingController();
-    salaryCtrl = TextEditingController(
-      text:
-          collaborator?.compensation?.salary != null
-              ? _currencyFormatter.format(collaborator!.compensation!.salary)
-              : '',
-    );
-    paymentDayCtrl = TextEditingController(
-      text: collaborator?.compensation?.paymentDay?.toString() ?? '',
-    );
-    hourlyCostCtrl = TextEditingController(
-      text:
-          collaborator?.hourlyCost != null
-              ? _currencyFormatter.format(collaborator!.hourlyCost)
-              : '',
-    );
-    notesCtrl = TextEditingController(
-      text: collaborator?.compensation?.notes ?? '',
-    );
-
-    final defaultPermissions = usersController.defaultPermissionsForRole(
-      role.value,
-    );
-    final currentPermissions = collaborator?.permissions ?? defaultPermissions;
-    selectedPermissions.assignAll(currentPermissions);
-    if (collaborator == null) {
-      useCustomPermissions.value = false;
-      selectedPermissions.assignAll(defaultPermissions);
-    } else {
-      final preset = usersController.defaultPermissionsForRole(
-        collaborator!.role,
-      );
-      useCustomPermissions.value =
-          !_samePermissions(preset, collaborator!.permissions);
-      if (!useCustomPermissions.value) {
-        selectedPermissions.assignAll(preset);
-      }
-    }
-
-    if (role.value == CollaboratorRole.admin) {
-      active.value = true;
-    }
-  }
-
-  static bool _samePermissions(List<String> a, List<String> b) {
-    if (a.length != b.length) return false;
-    final setA = a.toSet();
-    final setB = b.toSet();
-    return setA.length == setB.length && setA.containsAll(setB);
-  }
-
-  void updateRole(CollaboratorRole value) {
-    role.value = value;
-    if (!useCustomPermissions.value) {
-      selectedPermissions.assignAll(
-        usersController.defaultPermissionsForRole(value),
-      );
-    }
-    if (value == CollaboratorRole.admin) {
-      active.value = true;
-    }
-  }
-
-  void toggleActive(bool value) {
-    if (role.value == CollaboratorRole.admin && !value) {
-      usersController.message(
-        MessageModel.error(
-          title: 'OperaÃƒÂ§ÃƒÂ£o invÃƒÂ¡lida',
-          message: 'Administradores nÃƒÂ£o podem ser inativados.',
-        ),
-      );
-      return;
-    }
-    active.value = value;
-  }
-
-  void toggleUseCustomPermissions(bool value) {
-    useCustomPermissions.value = value;
-    if (!value) {
-      selectedPermissions.assignAll(
-        usersController.defaultPermissionsForRole(role.value),
-      );
-    }
-  }
-
-  void onPermissionToggle(String code, bool enabled) {
-    if (enabled) {
-      if (!selectedPermissions.contains(code)) {
-        selectedPermissions.add(code);
-      }
-    } else {
-      selectedPermissions.remove(code);
-    }
-  }
-
-  void togglePasswordVisibility() {
-    obscurePassword.value = !obscurePassword.value;
-  }
-
-  void updatePaymentFrequency(PaymentFrequency? value) {
-    paymentFrequency.value = value;
-  }
-
-  void updatePaymentMethod(PaymentMethod? value) {
-    paymentMethod.value = value;
-  }
-
-  Future<void> submit(BuildContext context) async {
-    if (!formKey.currentState!.validate()) {
-      return;
-    }
-    FocusScope.of(context).unfocus();
-
-    final salary = _parseCurrency(salaryCtrl.text);
-    final hourlyCost = _parseCurrency(hourlyCostCtrl.text);
-    final paymentDay =
-        paymentDayCtrl.text.trim().isEmpty
-            ? null
-            : int.parse(paymentDayCtrl.text);
-    final notes = notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim();
-    final permissions =
-        useCustomPermissions.value ? selectedPermissions.toList() : null;
-    final bool resolvedActive =
-        role.value == CollaboratorRole.admin ? true : active.value;
-
-    if (collaborator == null) {
-      final success = await usersController.createCollaborator(
-        CollaboratorCreateInput(
-          name: nameCtrl.text.trim(),
-          email: emailCtrl.text.trim(),
-          password: passwordCtrl.text.trim(),
-          role: role.value,
-          permissions: permissions,
-          salary: salary,
-          paymentDay: paymentDay,
-          paymentFrequency: paymentFrequency.value,
-          paymentMethod: paymentMethod.value,
-          hourlyCost: hourlyCost,
-          active: resolvedActive,
-          compensationNotes: notes,
-        ),
-      );
-      if (success) Navigator.of(context).pop();
-      return;
-    }
-
-    final success = await usersController.updateCollaborator(
-      collaborator!.id,
-      CollaboratorUpdateInput(
-        name: nameCtrl.text.trim(),
-        role: role.value,
-        permissions: permissions,
-        salary: salary,
-        paymentDay: paymentDay,
-        paymentFrequency: paymentFrequency.value,
-        paymentMethod: paymentMethod.value,
-        compensationNotes: notes,
-        hourlyCost: hourlyCost,
-        active: resolvedActive,
-      ),
-    );
-    if (success) Navigator.of(context).pop();
-  }
-
-  @override
-  void onClose() {
-    nameCtrl.dispose();
-    emailCtrl.dispose();
-    passwordCtrl.dispose();
-    salaryCtrl.dispose();
-    paymentDayCtrl.dispose();
-    hourlyCostCtrl.dispose();
-    notesCtrl.dispose();
-    super.onClose();
-  }
-}
-
-class _CollaboratorForm extends StatelessWidget {
-  const _CollaboratorForm({
-    required this.formController,
-    required this.sheetContext,
-  });
-
-  final CollaboratorFormController formController;
-  final BuildContext sheetContext;
-
-  @override
-  Widget build(BuildContext context) {
-    final usersController = formController.usersController;
-    final theme = Theme.of(context);
-
-    return Obx(() {
-      final isEditing = formController.isEditing;
-      final loading = usersController.isLoading.value;
-      final role = formController.role.value;
-      final active = formController.active.value;
-      final frequency = formController.paymentFrequency.value;
-      final method = formController.paymentMethod.value;
-      final useCustom = formController.useCustomPermissions.value;
-      final obscurePassword = formController.obscurePassword.value;
-
-      return Form(
-        key: formController.formKey,
-        child: SingleChildScrollView(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    isEditing ? 'Editar colaborador' : 'Novo colaborador',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.white,
-                    ),
-                  ),
-                  const Spacer(),
-                  IconButton(
-                    icon: const Icon(Icons.close, color: Colors.white70),
-                    onPressed:
-                        loading ? null : () => Navigator.of(sheetContext).pop(),
-                  ),
-                ],
-              ),
-              if (loading) ...[
-                const SizedBox(height: 8),
-                const LinearProgressIndicator(),
-              ],
-              const SizedBox(height: 16),
-              TextFormField(
-                controller: formController.nameCtrl,
-                decoration: const InputDecoration(labelText: 'Nome completo*'),
-                style: const TextStyle(color: Colors.white),
-                textCapitalization: TextCapitalization.words,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Informe o nome do colaborador';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: formController.emailCtrl,
-                decoration: const InputDecoration(labelText: 'E-mail*'),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) {
-                    return 'Informe o e-mail';
-                  }
-                  if (!GetUtils.isEmail(value.trim())) {
-                    return 'Informe um e-mail vÃƒÂ¡lido';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<CollaboratorRole>(
-                value: role,
-                decoration: const InputDecoration(labelText: 'Papel*'),
-                dropdownColor: context.themeSurface,
-                style: const TextStyle(color: Colors.white),
-                items:
-                    CollaboratorRole.values
-                        .map(
-                          (item) => DropdownMenuItem<CollaboratorRole>(
-                            value: item,
-                            child: Text(_roleLabel(item)),
-                          ),
-                        )
-                        .toList(),
-                onChanged:
-                    loading
-                        ? null
-                        : (value) {
-                          if (value != null) {
-                            formController.updateRole(value);
-                          }
-                        },
-              ),
-              const SizedBox(height: 12),
-              SwitchListTile.adaptive(
-                value: active,
-                onChanged: loading ? null : formController.toggleActive,
-                title: const Text(
-                  'Ativo',
-                  style: TextStyle(color: Colors.white),
-                ),
-                contentPadding: EdgeInsets.zero,
-              ),
-              if (!isEditing) ...[
-                TextFormField(
-                  controller: formController.passwordCtrl,
-                  decoration: InputDecoration(
-                    labelText: 'Senha inicial*',
-                    suffixIcon: IconButton(
-                      icon: Icon(
-                        obscurePassword
-                            ? Icons.visibility_off
-                            : Icons.visibility,
-                      ),
-                      onPressed:
-                          loading
-                              ? null
-                              : formController.togglePasswordVisibility,
-                    ),
-                  ),
-                  style: const TextStyle(color: Colors.white),
-                  obscureText: obscurePassword,
-                  validator: (value) {
-                    if (value == null || value.trim().isEmpty) {
-                      return 'Informe uma senha temporÃƒÂ¡ria';
-                    }
-                    if (value.trim().length < 8) {
-                      return 'A senha deve ter ao menos 8 caracteres';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-              ],
-              Text(
-                'CompensaÃƒÂ§ÃƒÂ£o',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: formController.salaryCtrl,
-                decoration: const InputDecoration(labelText: 'SalÃƒÂ¡rio (R\$)'),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-                inputFormatters: [MoneyInputFormatter()],
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: formController.hourlyCostCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Custo por hora (R\$)',
-                ),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-                inputFormatters: [MoneyInputFormatter()],
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: formController.paymentDayCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Dia do pagamento (1-31)',
-                ),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: TextInputType.number,
-                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                validator: (value) {
-                  if (value == null || value.trim().isEmpty) return null;
-                  final day = int.tryParse(value.trim());
-                  if (day == null || day < 1 || day > 31) {
-                    return 'Informe um dia entre 1 e 31';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<PaymentFrequency>(
-                value: frequency,
-                decoration: const InputDecoration(
-                  labelText: 'FrequÃƒÂªncia de pagamento',
-                ),
-                dropdownColor: context.themeSurface,
-                style: const TextStyle(color: Colors.white),
-                items: [
-                  const DropdownMenuItem<PaymentFrequency>(
-                    value: null,
-                    child: Text('Selecionar...'),
-                  ),
-                  ...PaymentFrequency.values.map(
-                    (item) => DropdownMenuItem<PaymentFrequency>(
-                      value: item,
-                      child: Text(_paymentFrequencyLabel(item)),
-                    ),
-                  ),
-                ],
-                onChanged:
-                    loading ? null : formController.updatePaymentFrequency,
-              ),
-              const SizedBox(height: 12),
-              DropdownButtonFormField<PaymentMethod>(
-                value: method,
-                decoration: const InputDecoration(
-                  labelText: 'Forma de pagamento',
-                ),
-                dropdownColor: context.themeSurface,
-                style: const TextStyle(color: Colors.white),
-                items: [
-                  const DropdownMenuItem<PaymentMethod>(
-                    value: null,
-                    child: Text('Selecionar...'),
-                  ),
-                  ...PaymentMethod.values.map(
-                    (item) => DropdownMenuItem<PaymentMethod>(
-                      value: item,
-                      child: Text(_paymentMethodLabel(item)),
-                    ),
-                  ),
-                ],
-                onChanged: loading ? null : formController.updatePaymentMethod,
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: formController.notesCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'ObservaÃƒÂ§ÃƒÂµes de pagamento',
-                ),
-                style: const TextStyle(color: Colors.white),
-                minLines: 2,
-                maxLines: 4,
-              ),
-              const SizedBox(height: 24),
-              Text(
-                'PermissÃƒÂµes de acesso',
-                style: theme.textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
-              const SizedBox(height: 8),
-              SwitchListTile.adaptive(
-                value: useCustom,
-                onChanged:
-                    loading ? null : formController.toggleUseCustomPermissions,
-                contentPadding: EdgeInsets.zero,
-                title: const Text(
-                  'Editar permissÃƒÂµes manualmente',
-                  style: TextStyle(color: Colors.white),
-                ),
-                subtitle: Text(
-                  useCustom
-                      ? 'Selecione as permissÃƒÂµes abaixo.'
-                      : 'SerÃƒÂ¡ aplicado o preset do papel escolhido.',
-                  style: const TextStyle(color: Colors.white70),
-                ),
-              ),
-              const SizedBox(height: 12),
-              if (useCustom)
-                _PermissionSelector(
-                  formController: formController,
-                  enabled: !loading,
-                ),
-              const SizedBox(height: 28),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                alignment: WrapAlignment.end,
-                children: [
-                  TextButton(
-                    onPressed:
-                        loading ? null : () => Navigator.of(sheetContext).pop(),
-                    child: const Text('Cancelar'),
-                  ),
-                  FilledButton.icon(
-                    onPressed:
-                        loading
-                            ? null
-                            : () => formController.submit(sheetContext),
-                    icon: const Icon(Icons.check),
-                    label: Text(
-                      isEditing ? 'Salvar alteraÃƒÂ§ÃƒÂµes' : 'Cadastrar',
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
-      );
-    });
-  }
-}
-
-class _PermissionSelector extends StatelessWidget {
-  const _PermissionSelector({
-    required this.formController,
-    required this.enabled,
-  });
-
-  final CollaboratorFormController formController;
-  final bool enabled;
-
-  @override
-  Widget build(BuildContext context) {
-    final usersController = formController.usersController;
-    return Obx(() {
-      if (usersController.isLoadingPermissions.value &&
-          usersController.permissions.isEmpty) {
-        return const Center(child: CircularProgressIndicator());
-      }
-
-      if (usersController.permissions.isEmpty) {
-        return const Text(
-          'Nenhuma permissÃƒÂ£o disponÃƒÂ­vel para seleÃƒÂ§ÃƒÂ£o.',
-          style: TextStyle(color: Colors.white70),
-        );
-      }
-
-      final grouped = <String, List<PermissionCatalogEntry>>{};
-      for (final permission in usersController.permissions) {
-        final module = permission.module ?? 'outros';
-        grouped
-            .putIfAbsent(module, () => <PermissionCatalogEntry>[])
-            .add(permission);
-      }
-
-      final entries =
-          grouped.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children:
-            entries.map((entry) {
-              final permissions =
-                  entry.value..sort((a, b) => a.label.compareTo(b.label));
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _moduleLabel(entry.key),
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children:
-                          permissions
-                              .map(
-                                (perm) => FilterChip(
-                                  selected: formController.selectedPermissions
-                                      .contains(perm.code),
-                                  label: Text(perm.label),
-                                  onSelected:
-                                      enabled
-                                          ? (value) =>
-                                              formController.onPermissionToggle(
-                                                perm.code,
-                                                value,
-                                              )
-                                          : null,
-                                ),
-                              )
-                              .toList(),
-                    ),
-                  ],
-                ),
-              );
-            }).toList(),
-      );
-    });
-  }
-}
-
 Future<void> _openCollaboratorForm(
   BuildContext context,
   UsersController controller, {
@@ -1241,34 +769,36 @@ Future<void> _openCollaboratorForm(
     tag: tag,
   );
 
-  await showModalBottomSheet<void>(
-    context: context,
-    isScrollControlled: true,
-    backgroundColor: context.themeDark,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
-    builder: (sheetContext) {
-      final bottom = MediaQuery.of(sheetContext).viewInsets.bottom;
-      return Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 24,
-          bottom: bottom + 24,
-        ),
-        child: _CollaboratorForm(
-          formController: formController,
-          sheetContext: sheetContext,
-        ),
-      );
-    },
-  );
-  Future.delayed(const Duration(milliseconds: 200), () {
+  try {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.themeDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (sheetContext) {
+        final bottom = MediaQuery.of(sheetContext).viewInsets.bottom;
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 24,
+            bottom: bottom + 24,
+          ),
+          child: CollaboratorForm(
+            formController: formController,
+            sheetContext: sheetContext,
+          ),
+        );
+      },
+    );
+  } finally {
+    await Future.delayed(const Duration(milliseconds: 200));
     if (Get.isRegistered<CollaboratorFormController>(tag: tag)) {
       Get.delete<CollaboratorFormController>(tag: tag, force: true);
     }
-  });
+  }
 }
 
 Future<void> _openPayrollSheet(
@@ -1439,7 +969,7 @@ class _PayrollTile extends StatelessWidget {
             if (payroll.paymentMethod != null) ...[
               const SizedBox(height: 4),
               Text(
-                'MÃƒÂ©todo: ${_paymentMethodLabel(payroll.paymentMethod!)}',
+                'MÃ©todo: ${_paymentMethodLabel(payroll.paymentMethod!)}',
                 style: theme.textTheme.bodyMedium?.copyWith(
                   color: Colors.white70,
                 ),
@@ -1475,7 +1005,7 @@ Future<void> _confirmCollaboratorDeletion(
               title: const Text('Remover colaborador'),
               content: Text(
                 'Tem certeza que deseja remover ${collaborator.name}? '
-                'O acesso SerÃƒÂ¡ revogado e o registro ficarÃƒÂ¡ inativo.',
+                'O acesso SerÃ¡ revogado e o registro ficarÃ¡ inativo.',
               ),
               actions: [
                 TextButton(
@@ -1496,6 +1026,32 @@ Future<void> _confirmCollaboratorDeletion(
 
   if (shouldDelete) {
     await controller.deleteCollaborator(collaborator.id);
+  }
+}
+
+bool _samePermissions(List<String> a, List<String> b) {
+  if (a.length != b.length) return false;
+  final setA = a.toSet();
+  final setB = b.toSet();
+  return setA.length == setB.length && setA.containsAll(setB);
+}
+
+String _moduleLabel(String module) {
+  switch (module.toLowerCase()) {
+    case 'orders':
+      return 'Ordens de serviço';
+    case 'inventory':
+      return 'Estoque';
+    case 'fleet':
+      return 'Frota';
+    case 'finance':
+      return 'Financeiro';
+    case 'users':
+      return 'Colaboradores';
+    case 'purchases':
+      return 'Compras';
+    default:
+      return module.capitalizeFirst ?? module;
   }
 }
 
@@ -1523,9 +1079,9 @@ String _roleLabel(CollaboratorRole role) {
     case CollaboratorRole.manager:
       return 'Gestor';
     case CollaboratorRole.tech:
-      return 'TÃƒÂ©cnico';
+      return 'TÃ©cnico';
     case CollaboratorRole.viewer:
-      return 'VisualizaÃƒÂ§ÃƒÂ£o';
+      return 'VisualizaÃ§Ã£o';
   }
 }
 
@@ -1560,28 +1116,9 @@ String _paymentMethodLabel(PaymentMethod method) {
     case PaymentMethod.cash:
       return 'Dinheiro';
     case PaymentMethod.card:
-      return 'CartÃƒÂ£o';
+      return 'CartÃ£o';
     case PaymentMethod.bankTransfer:
-      return 'TransferÃƒÂªncia bancÃƒÂ¡ria';
-  }
-}
-
-String _moduleLabel(String module) {
-  switch (module) {
-    case 'orders':
-      return 'Ordens de serviÃƒÂ§o';
-    case 'inventory':
-      return 'Estoque';
-    case 'fleet':
-      return 'Frota';
-    case 'finance':
-      return 'Financeiro';
-    case 'users':
-      return 'Colaboradores';
-    case 'purchases':
-      return 'Compras';
-    default:
-      return module.capitalizeFirst ?? module;
+      return 'TransferÃªncia bancÃ¡ria';
   }
 }
 
@@ -1602,10 +1139,3 @@ Color _payrollStatusColor(PayrollStatus status, ThemeData theme) {
       return theme.colorScheme.secondary;
   }
 }
-
-double? _parseCurrency(String text) {
-  final digits = text.replaceAll(RegExp(r'[^0-9]'), '');
-  if (digits.isEmpty) return null;
-  return double.parse(digits) / 100;
-}
-

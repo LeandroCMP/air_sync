@@ -1,10 +1,12 @@
-﻿import 'package:air_sync/application/ui/theme_extensions.dart';
+import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/application/core/connectivity/connectivity_service.dart';
 import 'package:air_sync/application/core/sync/sync_service.dart';
 import 'package:air_sync/application/core/queue/queue_service.dart';
 import 'package:air_sync/models/user_model.dart';
 import 'package:air_sync/modules/orders/orders_bindings.dart';
 import 'package:air_sync/modules/orders/orders_page.dart';
+import 'package:air_sync/modules/company_profile/company_profile_bindings.dart';
+import 'package:air_sync/modules/company_profile/company_profile_page.dart';
 import 'package:air_sync/modules/finance/finance_page.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -99,7 +101,7 @@ class HomePage extends GetView<HomeController> {
                     Padding(
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       child: Text(
-                        'Nenhum modulo disponivel para este usuario. Ajuste as permissoes em colaboradores.',
+                        'Nenhum módulo disponível para este usuário. Ajuste as permissões em Colaboradores.',
                         style: TextStyle(color: context.themeTextSubtle),
                       ),
                     ),
@@ -221,6 +223,7 @@ class _HomeDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final sync = Get.find<SyncService>();
     final queue = Get.find<QueueService>();
+    final homeController = Get.find<HomeController>();
     return Drawer(
       child: SafeArea(
         child: ListView(
@@ -240,6 +243,27 @@ class _HomeDrawer extends StatelessWidget {
                 );
               }),
               onTap: () => sync.syncInitial(),
+            ),
+            ListTile(
+              leading: const Icon(
+                Icons.business_center_outlined,
+                color: Colors.white70,
+              ),
+              title: const Text(
+                'Perfil da empresa',
+                style: TextStyle(color: Colors.white),
+              ),
+              subtitle: const Text(
+                'PIX e taxas dos pagamentos',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                Get.to(
+                  () => const CompanyProfilePage(),
+                  binding: CompanyProfileBindings(),
+                );
+              },
             ),
             Obx(
               () => ListTile(
@@ -265,6 +289,15 @@ class _HomeDrawer extends StatelessWidget {
                 ),
                 onTap: () => queue.processPending(),
               ),
+            ),
+            const Divider(height: 32),
+            ListTile(
+              leading: const Icon(Icons.logout, color: Colors.redAccent),
+              title: const Text('Sair', style: TextStyle(color: Colors.white)),
+              onTap: () async {
+                Navigator.of(context).pop();
+                await homeController.logout();
+              },
             ),
           ],
         ),
@@ -330,14 +363,14 @@ final List<_ModuleCardData> _homeModuleItems = [
     title: 'Fornecedores',
     subtitle: 'Cadastre e gerencie parceiros',
     icon: Icons.store_mall_directory_outlined,
-    requiredPermissions: ['suppliers.read', 'suppliers.write'],
+    requiredPermissions: [],
     onTap: () => Get.toNamed('/suppliers'),
   ),
   _ModuleCardData(
     title: 'Compras',
     subtitle: 'Itens e custos por pedido',
     icon: Icons.shopping_cart_outlined,
-    requiredPermissions: ['purchases.read', 'purchases.write'],
+    requiredPermissions: [],
     onTap: () => Get.toNamed('/purchases'),
   ),
   _ModuleCardData(

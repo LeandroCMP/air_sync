@@ -111,3 +111,32 @@ class MoneyInputFormatter extends TextInputFormatter {
     );
   }
 }
+
+class PercentInputFormatter extends TextInputFormatter {
+  PercentInputFormatter({this.maxDigits = 5, this.locale = 'pt_BR'})
+    : _formatter = NumberFormat.decimalPattern(locale);
+
+  final int maxDigits;
+  final String locale;
+  final NumberFormat _formatter;
+
+  @override
+  TextEditingValue formatEditUpdate(
+    TextEditingValue oldValue,
+    TextEditingValue newValue,
+  ) {
+    var digits = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
+    if (maxDigits > 0 && digits.length > maxDigits) {
+      digits = digits.substring(0, maxDigits);
+    }
+    if (digits.isEmpty) {
+      return const TextEditingValue(text: '');
+    }
+    final value = double.parse(digits) / 100;
+    final formatted = _formatter.format(value);
+    return TextEditingValue(
+      text: formatted,
+      selection: TextSelection.collapsed(offset: formatted.length),
+    );
+  }
+}

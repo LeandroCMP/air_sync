@@ -1,4 +1,4 @@
-﻿import 'package:air_sync/application/ui/theme_extensions.dart';
+import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/models/order_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -13,7 +13,7 @@ class OrdersPage extends GetView<OrdersController> {
 
   @override
   Widget build(BuildContext context) {
-    final dateFmt = DateFormat('dd/MM • HH:mm');
+    final dateFmt = DateFormat("dd/MM 'às' HH:mm");
     return Scaffold(
       appBar: AppBar(title: const Text('Ordens de Serviço')),
       floatingActionButton: FloatingActionButton(
@@ -23,7 +23,7 @@ class OrdersPage extends GetView<OrdersController> {
       ),
       body: Obx(() {
         final isLoading = controller.isLoading.value;
-        final orders = controller.visibleOrders;
+        final orders = controller.visibleOrders.toList(growable: false);
         return Column(
           children: [
             AnimatedContainer(
@@ -34,6 +34,7 @@ class OrdersPage extends GetView<OrdersController> {
                       ? const LinearProgressIndicator(minHeight: 2)
                       : const SizedBox.shrink(),
             ),
+            _StatusSummaryBar(controller: controller),
             _FiltersHeader(controller: controller),
             Expanded(
               child:
@@ -50,6 +51,12 @@ class OrdersPage extends GetView<OrdersController> {
                             order: order,
                             subtitle: _subtitleFor(order, dateFmt),
                             onTap: () => _openOrder(order),
+                            onDuplicate: () => controller.duplicateOrder(order),
+                            onDuplicateDraft:
+                                () => controller.duplicateOrder(
+                                  order,
+                                  asDraft: true,
+                                ),
                           );
                         },
                         separatorBuilder: (_, __) => const SizedBox(height: 10),
@@ -76,10 +83,14 @@ class OrdersPage extends GetView<OrdersController> {
     if (order.notes != null && order.notes!.trim().isNotEmpty) {
       segments.add(order.notes!.trim());
     }
-    return segments.join(' • ');
+    return segments.join(' - ');
   }
 
   void _openOrder(OrderModel order) {
+    if (order.status == 'draft' && order.id.startsWith('draft:')) {
+      controller.openDraft(order.id);
+      return;
+    }
     Get.to<OrderModel?>(
       () => const OrderDetailPage(),
       binding: OrderDetailBindings(orderId: order.id),
@@ -107,6 +118,11 @@ class _FiltersHeader extends StatelessWidget {
               runSpacing: 8,
               crossAxisAlignment: WrapCrossAlignment.center,
               children: [
+                _FilterChip(
+                  label: 'Todos',
+                  selected: controller.period.value == 'all',
+                  onTap: () => controller.period.value = 'all',
+                ),
                 _FilterChip(
                   label: 'Hoje',
                   selected: controller.period.value == 'today',
@@ -138,7 +154,7 @@ class _FiltersHeader extends StatelessWidget {
                   backgroundColor:
                       currentStatus.isEmpty
                           ? context.themeGray
-                          : meta.color.withOpacity(.15),
+                          : meta.color.withValues(alpha: .15),
                   side:
                       currentStatus.isEmpty
                           ? BorderSide.none
@@ -189,6 +205,22 @@ class _FiltersHeader extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
+                ListTile(
+                  leading: const Icon(Icons.filter_list, color: Colors.white70),
+                  title: const Text(
+                    'Todos',
+                    style: TextStyle(color: Colors.white),
+                  ),
+                  trailing:
+                      current.isEmpty
+                          ? const Icon(Icons.check, color: Colors.white70)
+                          : null,
+                  onTap: () {
+                    controller.status.value = '';
+                    Get.back();
+                  },
+                ),
+                const Divider(height: 1),
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Text(
@@ -238,15 +270,20 @@ class _OrderTile extends StatelessWidget {
     required this.order,
     required this.subtitle,
     required this.onTap,
+    this.onDuplicate,
+    this.onDuplicateDraft,
   });
 
   final OrderModel order;
   final String subtitle;
   final VoidCallback onTap;
+  final VoidCallback? onDuplicate;
+  final VoidCallback? onDuplicateDraft;
 
   @override
   Widget build(BuildContext context) {
     final meta = _statusFor(order.status);
+    final isLocalDraft = order.status == 'draft' && order.id.startsWith('draft:');
     return Material(
       color: context.themeDark,
       borderRadius: BorderRadius.circular(12),
@@ -259,7 +296,7 @@ class _OrderTile extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               CircleAvatar(
-                backgroundColor: meta.color.withOpacity(.15),
+                backgroundColor: meta.color.withValues(alpha: .15),
                 foregroundColor: meta.color,
                 child: Icon(meta.icon),
               ),
@@ -287,9 +324,144 @@ class _OrderTile extends StatelessWidget {
                   ],
                 ),
               ),
+              if (!isLocalDraft)
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    if (value == 'duplicate') {
+                      onDuplicate?.call();
+                    } else if (value == 'draft') {
+                      onDuplicateDraft?.call();
+                    }
+                  },
+                  itemBuilder:
+                      (_) => [
+                        const PopupMenuItem(
+                          value: 'duplicate',
+                          child: Text('Duplicar OS'),
+                        ),
+                        const PopupMenuItem(
+                          value: 'draft',
+                          child: Text('Duplicar como rascunho'),
+                        ),
+                      ],
+                ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _StatusSummaryBar extends StatelessWidget {
+  const _StatusSummaryBar({required this.controller});
+
+  final OrdersController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final orders = controller.orders;
+      if (orders.isEmpty) return const SizedBox.shrink();
+      final scheduled = orders.where((o) => o.isScheduled).length;
+      final inProgress = orders.where((o) => o.isInProgress).length;
+      final doneToday =
+          orders
+              .where(
+                (o) =>
+                    o.isDone &&
+                    o.finishedAt != null &&
+                    o.finishedAt!.toLocal().day == DateTime.now().day &&
+                    o.finishedAt!.toLocal().month == DateTime.now().month &&
+                    o.finishedAt!.toLocal().year == DateTime.now().year,
+              )
+              .length;
+      final overdue =
+          orders
+              .where(
+                (o) =>
+                    o.isScheduled &&
+                    o.scheduledAt != null &&
+                    o.scheduledAt!.isBefore(DateTime.now()),
+              )
+              .length;
+
+      final items = [
+        _SummaryMetric(
+          label: 'Agendadas',
+          value: scheduled,
+          color: Colors.blueAccent,
+        ),
+        _SummaryMetric(
+          label: 'Em andamento',
+          value: inProgress,
+          color: Colors.orangeAccent,
+        ),
+        _SummaryMetric(
+          label: 'Concluídas hoje',
+          value: doneToday,
+          color: Colors.green,
+        ),
+        _SummaryMetric(
+          label: 'Atrasadas',
+          value: overdue,
+          color: Colors.redAccent,
+        ),
+      ];
+
+      return SizedBox(
+        height: 112,
+        child: ListView.separated(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          scrollDirection: Axis.horizontal,
+          itemBuilder: (_, index) => items[index],
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemCount: items.length,
+        ),
+      );
+    });
+  }
+}
+
+class _SummaryMetric extends StatelessWidget {
+  const _SummaryMetric({
+    required this.label,
+    required this.value,
+    required this.color,
+  });
+
+  final String label;
+  final int value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 140,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withOpacity(0.4)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text(
+            value.toString(),
+            style: TextStyle(
+              color: color,
+              fontSize: 20,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: TextStyle(color: color, fontWeight: FontWeight.w600),
+          ),
+        ],
       ),
     );
   }
@@ -311,7 +483,7 @@ class _FilterChip extends StatelessWidget {
     return ChoiceChip(
       label: Text(label),
       selected: selected,
-      selectedColor: context.themeGreen.withOpacity(.2),
+      selectedColor: context.themeGreen.withValues(alpha: .2),
       backgroundColor: context.themeDark,
       labelStyle: TextStyle(
         color: selected ? context.themeGreen : Colors.white,
@@ -341,7 +513,7 @@ class _SearchField extends StatelessWidget {
         hintStyle: const TextStyle(color: Colors.white54),
         prefixIcon: const Icon(Icons.search, color: Colors.white70),
         filled: true,
-        fillColor: Theme.of(context).cardColor.withOpacity(0.25),
+        fillColor: Theme.of(context).cardColor.withValues(alpha: 0.25),
         contentPadding: const EdgeInsets.symmetric(
           vertical: 12,
           horizontal: 12,
@@ -439,6 +611,12 @@ const List<_StatusItem> _statusOptions = [
     label: 'Agendada',
     color: Colors.blueAccent,
     icon: Icons.event_available,
+  ),
+  _StatusItem(
+    value: 'draft',
+    label: 'Rascunho',
+    color: Colors.white70,
+    icon: Icons.insert_drive_file_outlined,
   ),
   _StatusItem(
     value: 'in_progress',

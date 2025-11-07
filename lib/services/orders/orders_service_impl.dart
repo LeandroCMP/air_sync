@@ -28,7 +28,7 @@ class OrdersServiceImpl implements OrdersService {
     required String clientId,
     required String locationId,
     String? equipmentId,
-    required String status,
+    String? status,
     DateTime? scheduledAt,
     String? notes,
     List<String> technicianIds = const [],
@@ -60,6 +60,9 @@ class OrdersServiceImpl implements OrdersService {
     List<OrderBillingItemInput>? billingItems,
     num? billingDiscount,
     String? notes,
+    String? clientId,
+    String? locationId,
+    String? equipmentId,
   }) => _repo.update(
     orderId: orderId,
     status: status,
@@ -69,6 +72,9 @@ class OrdersServiceImpl implements OrdersService {
     billingItems: billingItems,
     billingDiscount: billingDiscount,
     notes: notes,
+    clientId: clientId,
+    locationId: locationId,
+    equipmentId: equipmentId,
   );
 
   @override
@@ -79,13 +85,26 @@ class OrdersServiceImpl implements OrdersService {
     required String orderId,
     required List<OrderBillingItemInput> billingItems,
     num discount = 0,
-    String? signatureBase64,
+    required String signatureBase64,
     String? notes,
+    List<OrderPaymentInput> payments = const [],
   }) => _repo.finish(
     orderId: orderId,
     billingItems: billingItems,
     discount: discount,
     signatureBase64: signatureBase64,
+    notes: notes,
+    payments: payments,
+  );
+
+  @override
+  Future<OrderModel> reschedule({
+    required String orderId,
+    required DateTime scheduledAt,
+    String? notes,
+  }) => _repo.reschedule(
+    orderId: orderId,
+    scheduledAt: scheduledAt,
     notes: notes,
   );
 
@@ -117,4 +136,7 @@ class OrdersServiceImpl implements OrdersService {
   @override
   String pdfUrl(String orderId, {String type = 'report'}) =>
       _repo.pdfUrl(orderId, type: type);
+
+  @override
+  Future<void> delete(String orderId) => _repo.delete(orderId);
 }

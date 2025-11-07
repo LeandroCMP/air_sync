@@ -1,9 +1,15 @@
 import 'package:air_sync/models/inventory_model.dart';
+import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:get/get.dart';
 
 enum InventoryHistoryFilter { all, entries, exits, adjustments }
 
 class InventoryItemHistoryController extends GetxController {
+  InventoryItemHistoryController({required InventoryService inventoryService})
+    : _inventoryService = inventoryService;
+
+  final InventoryService _inventoryService;
+
   final isLoading = false.obs;
   final Rxn<InventoryItemModel> item = Rxn<InventoryItemModel>();
   final RxList<StockMovementModel> movements = <StockMovementModel>[].obs;
@@ -47,9 +53,25 @@ class InventoryItemHistoryController extends GetxController {
   }
 
   Future<void> refreshData() async {
+    if (_itemId.isEmpty) {
+      _hydrateMovementsFromItem();
+      return;
+    }
+
     isLoading.value = true;
-    _hydrateMovementsFromItem();
-    isLoading.value = false;
+    try {
+      final freshItem = await _inventoryService.getItem(_itemId);
+      item.value = freshItem;
+      final fetchedMovements = await _inventoryService.listMovements(
+        itemId: _itemId,
+        limit: 200,
+      );
+      movements.assignAll(_sortMovements(fetchedMovements));
+    } catch (_) {
+      _hydrateMovementsFromItem();
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   List<StockMovementModel> get filteredMovements {
@@ -102,13 +124,13 @@ class InventoryItemHistoryController extends GetxController {
       case MovementType.receive:
         return 'Entrada de compra';
       case MovementType.returnIn:
-        return 'Entrada (devolução)';
+        return 'Entrada (devolucao)';
       case MovementType.transferIn:
-        return 'Transferência recebida';
+        return 'Transferencia recebida';
       case MovementType.issue:
-        return 'Saída';
+        return 'Saida';
       case MovementType.transferOut:
-        return 'Transferência enviada';
+        return 'Transferencia enviada';
       case MovementType.adjustPos:
         return 'Ajuste positivo';
       case MovementType.adjustNeg:
@@ -118,16 +140,31 @@ class InventoryItemHistoryController extends GetxController {
 
   String subtitleForMovement(StockMovementModel movement) {
     final parts = <String>[];
-    if ((movement.reason ?? '').isNotEmpty) {
-      parts.add(movement.reason!);
+    final unit = item.value?.unit ?? '';
+    final qtyLabel =
+        unit.trim().isEmpty
+            ? formatQuantity(movement.quantity)
+            : '${formatQuantity(movement.quantity)} $unit';
+    parts.add('Qtd.: $qtyLabel');
+
+    final reason = (movement.reason ?? '').trim();
+    if (reason.isNotEmpty) {
+      parts.add(reason);
     }
-    if ((movement.documentRef ?? '').isNotEmpty) {
-      parts.add('Ref: ${movement.documentRef}');
+
+    final document = (movement.documentRef ?? '').trim();
+    if (document.isNotEmpty) {
+      parts.add('Ref: $document');
     }
-    if ((movement.performedBy ?? '').isNotEmpty) {
-      parts.add('Por: ${movement.performedBy}');
+
+    final performer = (movement.performedBy ?? '').trim();
+    if (performer.isNotEmpty) {
+      parts.add('Por: $performer');
     }
-    return parts.isEmpty ? 'Sem detalhes adicionais' : parts.join(' • ');
+
+    parts.add('Registro: ${_formatDateTime(movement.createdAt)}');
+
+    return parts.join(' • ');
   }
 
   void updateItem(InventoryItemModel updated) {
@@ -142,8 +179,22 @@ class InventoryItemHistoryController extends GetxController {
       movements.clear();
       return;
     }
-    final list = [...source.movements];
+    movements.assignAll(_sortMovements(source.movements));
+  }
+
+  List<StockMovementModel> _sortMovements(List<StockMovementModel> source) {
+    final list = List<StockMovementModel>.from(source);
     list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    movements.assignAll(list);
+    return list;
+  }
+
+  String _formatDateTime(DateTime dt) {
+    final local = dt.toLocal();
+    final day = local.day.toString().padLeft(2, '0');
+    final month = local.month.toString().padLeft(2, '0');
+    final year = local.year.toString().padLeft(4, '0');
+    final hour = local.hour.toString().padLeft(2, '0');
+    final minute = local.minute.toString().padLeft(2, '0');
+    return '$day/$month/$year $hour:$minute';
   }
 }

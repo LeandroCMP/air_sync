@@ -49,7 +49,7 @@ class EquipmentHistoryController extends GetxController
     isLoading(true);
     try {
       final list = await _service.listHistory(equipmentId);
-      items.assignAll(list);
+      items.assignAll(_orderHistory(list));
     } catch (_) {
       message(
         MessageModel.error(
@@ -122,5 +122,43 @@ class EquipmentHistoryController extends GetxController
     } catch (_) {
       return null;
     }
+  }
+
+  List<Map<String, dynamic>> _orderHistory(List<Map<String, dynamic>> source) {
+    DateTime? parse(dynamic value) {
+      if (value == null) return null;
+      if (value is DateTime) return value;
+      if (value is int) {
+        if (value > 1e12) {
+          return DateTime.fromMillisecondsSinceEpoch(value);
+        }
+        return DateTime.fromMillisecondsSinceEpoch(value * 1000);
+      }
+      if (value is num) {
+        final millis =
+            value.abs() > 1e12
+                ? value.toInt()
+                : (value.toDouble() * 1000).round();
+        return DateTime.fromMillisecondsSinceEpoch(millis);
+      }
+      final text = value.toString().trim();
+      if (text.isEmpty) return null;
+      return DateTime.tryParse(text);
+    }
+
+    final list = List<Map<String, dynamic>>.from(source);
+    list.sort((a, b) {
+      final da = parse(
+        a['at'] ?? a['date'] ?? a['createdAt'] ?? a['performedAt'],
+      );
+      final db = parse(
+        b['at'] ?? b['date'] ?? b['createdAt'] ?? b['performedAt'],
+      );
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return db.compareTo(da);
+    });
+    return list;
   }
 }

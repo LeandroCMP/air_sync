@@ -35,9 +35,10 @@ class QueueService extends GetxService {
 
   Future<void> enqueueFinishOrder({
     required String orderId,
+    List<OrderMaterialInput> materials = const [],
     required List<OrderBillingItemInput> billingItems,
     num discount = 0,
-    String? signatureBase64,
+    required String signatureBase64,
     String? notes,
   }) async {
     pending.add(
@@ -45,9 +46,10 @@ class QueueService extends GetxService {
         type: 'order.finish',
         data: {
           'orderId': orderId,
+          if (materials.isNotEmpty) 'materials': materials.toJsonList(),
           'billingItems': billingItems.toJsonList(),
           'discount': discount,
-          if (signatureBase64 != null) 'signatureBase64': signatureBase64,
+          'signatureBase64': signatureBase64,
           if (notes != null) 'notes': notes,
         },
       ),
@@ -65,6 +67,26 @@ class QueueService extends GetxService {
       try {
         if (action.type == 'order.finish') {
           final id = action.data['orderId'] as String;
+          final materialsRaw = (action.data['materials'] as List?) ?? [];
+          final materials =
+              materialsRaw.whereType<Map>().map((e) {
+                String? normalize(dynamic value) {
+                  if (value == null) return null;
+                  final text = value is String ? value : value.toString();
+                  final trimmed = text.trim();
+                  return trimmed.isEmpty ? null : trimmed;
+                }
+
+                final normalizedName = normalize(e['itemName'] ?? e['name']);
+                final normalizedDescription =
+                    normalize(e['description']) ?? normalizedName;
+                return OrderMaterialInput(
+                  itemId: (e['itemId'] ?? '').toString(),
+                  qty: (e['qty'] ?? 0) as num,
+                  itemName: normalizedName,
+                  description: normalizedDescription,
+                );
+              }).toList();
           final billingRaw = (action.data['billingItems'] as List?) ?? [];
           final billingItems =
               billingRaw
@@ -79,8 +101,14 @@ class QueueService extends GetxService {
                   )
                   .toList();
           final discount = (action.data['discount'] ?? 0) as num;
-          final signature = action.data['signatureBase64'] as String?;
+          final signature = (action.data['signatureBase64'] ?? '') as String;
+          if (signature.isEmpty) {
+            continue;
+          }
           final notes = action.data['notes'] as String?;
+          if (materials.isNotEmpty) {
+            await orders.deductMaterials(id, materials);
+          }
           await orders.finish(
             orderId: id,
             billingItems: billingItems,
@@ -91,7 +119,7 @@ class QueueService extends GetxService {
           toRemove.add(action);
         }
       } catch (_) {
-        // mantém na fila se falhou
+        // mant??m na fila se falhou
       }
     }
     if (toRemove.isNotEmpty) {
@@ -114,7 +142,7 @@ class QueueService extends GetxService {
       final list = (json.decode(raw) as List).cast<Map<String, dynamic>>();
       pending.assignAll(list.map(QueueAction.fromMap));
     } catch (_) {
-      // ignore formato inválido
+      // ignore formato inv??lido
     }
   }
 }

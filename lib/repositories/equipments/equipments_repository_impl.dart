@@ -123,10 +123,20 @@ class EquipmentsRepositoryImpl implements EquipmentsRepository {
     try {
       final res = await _api.dio.get('/v1/equipment/$equipmentId/history');
       final data = res.data;
+      Iterable<dynamic> rawList = const [];
       if (data is List) {
-        return data.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+        rawList = data;
+      } else if (data is Map) {
+        final items =
+            data['items'] ?? data['history'] ?? data['data'] ?? data['results'];
+        if (items is List) {
+          rawList = items;
+        }
       }
-      return [];
+      return rawList
+          .whereType<Map>()
+          .map((entry) => Map<String, dynamic>.from(entry))
+          .toList();
     } on DioException {
       return [];
     }

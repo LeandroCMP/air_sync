@@ -1,3 +1,5 @@
+import 'package:intl/intl.dart';
+
 class OrderModel {
   final String id;
   final String clientId;
@@ -23,6 +25,11 @@ class OrderModel {
   final String? clientName;
   final String? locationLabel;
   final String? equipmentLabel;
+  final List<OrderPaymentEntry> payments;
+  final double paymentGrossTotal;
+  final double paymentFeeTotal;
+  final double paymentNetTotal;
+  final String? financeTransactionId;
 
   OrderModel({
     required this.id,
@@ -47,6 +54,11 @@ class OrderModel {
     this.clientName,
     this.locationLabel,
     this.equipmentLabel,
+    this.payments = const [],
+    this.paymentGrossTotal = 0,
+    this.paymentFeeTotal = 0,
+    this.paymentNetTotal = 0,
+    this.financeTransactionId,
   }) : billing = billing ?? OrderBilling.empty(),
        timesheet = timesheet ?? OrderTimesheet.empty(),
        audit = audit ?? OrderAudit.empty();
@@ -55,6 +67,19 @@ class OrderModel {
   bool get isInProgress => status == 'in_progress';
   bool get isDone => status == 'done';
   bool get isCanceled => status == 'canceled';
+  bool get isDraft {
+    if (status == 'draft') return true;
+    final note = (notes ?? '').toLowerCase().trim();
+    return note.startsWith('[rascunho');
+  }
+
+  static String _normalizeTimezone(String input) {
+    final tzMatch = RegExp(r'([+-]\d{2})(\d{2})$').firstMatch(input);
+    if (tzMatch != null && !input.contains(':', tzMatch.start + 1)) {
+      return '${input.substring(0, tzMatch.start)}${tzMatch.group(1)}:${tzMatch.group(2)}';
+    }
+    return input;
+  }
 
   factory OrderModel.fromMap(Map<String, dynamic> map) {
     final id = _string(map, ['id', '_id']);
@@ -63,19 +88,103 @@ class OrderModel {
     final equipmentId = _string(map, ['equipmentId']);
     final status = _string(map, ['status']) ?? 'scheduled';
 
-    DateTime? _tryParseDate(dynamic value) {
+    DateTime? tryParseDate(dynamic value) {
       if (value == null) return null;
-      try {
-        if (value is DateTime) return value;
-        return DateTime.parse(value.toString());
-      } catch (_) {
-        return null;
+      if (value is DateTime) return value;
+      if (value is Map) {
+        final millis = value['milliseconds'] ?? value['ms'];
+        if (millis != null) {
+          final parsed =
+              millis is num ? millis.toDouble() : double.tryParse('$millis');
+          if (parsed != null) {
+            return DateTime.fromMillisecondsSinceEpoch(parsed.round());
+          }
+        }
+        final seconds = value['seconds'] ?? value['epochSeconds'];
+        if (seconds != null) {
+          final parsed =
+              seconds is num ? seconds.toDouble() : double.tryParse('$seconds');
+          if (parsed != null) {
+            return DateTime.fromMillisecondsSinceEpoch((parsed * 1000).round());
+          }
+        }
+        final micro = value['microseconds'];
+        if (micro != null) {
+          final parsed =
+              micro is num ? micro.toDouble() : double.tryParse('$micro');
+          if (parsed != null) {
+            return DateTime.fromMicrosecondsSinceEpoch(parsed.round());
+          }
+        }
+        final iso =
+            value['iso'] ??
+            value['iso8601'] ??
+            value['date'] ??
+            value['timestamp'];
+        if (iso != null) {
+          final normalizedIso = iso.toString().trim();
+          if (normalizedIso.isNotEmpty) {
+            final candidateIso = _normalizeTimezone(normalizedIso);
+            final parsedIso = DateTime.tryParse(candidateIso);
+            if (parsedIso != null) return parsedIso;
+          }
+        }
       }
+      if (value is int) {
+        return DateTime.fromMillisecondsSinceEpoch(value);
+      }
+      if (value is num) {
+        final millis =
+            value.abs() > 1e12
+                ? value.toInt()
+                : (value.toDouble() * 1000).round();
+        return DateTime.fromMillisecondsSinceEpoch(millis);
+      }
+
+      final normalized = value.toString().trim();
+      if (normalized.isEmpty) return null;
+
+      final candidate = _normalizeTimezone(normalized);
+
+      final numeric = int.tryParse(candidate);
+      if (numeric != null) {
+        final millis = candidate.length >= 13 ? numeric : (numeric * 1000);
+        return DateTime.fromMillisecondsSinceEpoch(millis);
+      }
+
+      final parsed = DateTime.tryParse(candidate);
+      if (parsed != null) return parsed;
+
+      const fallbackPatterns = [
+        'yyyy-MM-dd HH:mm:ss',
+        'yyyy/MM/dd HH:mm:ss',
+        'yyyy-MM-dd HH:mm',
+        'yyyy/MM/dd HH:mm',
+        'dd/MM/yyyy HH:mm:ss',
+        'dd/MM/yyyy HH:mm',
+        'dd/MM/yyyy',
+        'MM/dd/yyyy HH:mm:ss',
+        'MM/dd/yyyy HH:mm',
+        'MM/dd/yyyy',
+      ];
+      for (final pattern in fallbackPatterns) {
+        try {
+          final formatter = DateFormat(pattern);
+          final parsedFallback = formatter.parseLoose(candidate);
+          return parsedFallback;
+        } catch (_) {
+          // continue
+        }
+      }
+
+      return null;
     }
 
-    final scheduledAt = _tryParseDate(map['scheduledAt'] ?? map['scheduled']);
-    final startedAt = _tryParseDate(map['startedAt']);
-    final finishedAt = _tryParseDate(map['finishedAt']);
+    final scheduledAt = tryParseDate(map['scheduledAt'] ?? map['scheduled']);
+    final startedAt = tryParseDate(map['startedAt']);
+    final finishedAt = tryParseDate(map['finishedAt']);
+    final createdAt = tryParseDate(map['createdAt']);
+    final updatedAt = tryParseDate(map['updatedAt']);
 
     final techs =
         _list(
@@ -110,15 +219,26 @@ class OrderModel {
             ? OrderTimesheet.fromMap(map['timesheet'] as Map<String, dynamic>)
             : OrderTimesheet.empty();
 
+    final payments =
+        _list(map['payments'])
+            .whereType<Map>()
+            .map((e) => OrderPaymentEntry.fromMap(Map<String, dynamic>.from(e)))
+            .toList();
+    final paymentGrossTotal =
+        _parseNullableDouble(map['paymentGrossTotal']) ?? 0;
+    final paymentFeeTotal = _parseNullableDouble(map['paymentFeeTotal']) ?? 0;
+    final paymentNetTotal = _parseNullableDouble(map['paymentNetTotal']) ?? 0;
+    final financeTransactionId = _string(map, [
+      'financeTransactionId',
+      'financeId',
+    ]);
+
     final photoUrls = _list(map['photoUrls']).map((e) => e.toString()).toList();
     final customerSignatureUrl = _string(map, [
       'customerSignatureUrl',
       'signatureUrl',
     ]);
     final notes = _string(map, ['notes']);
-
-    final createdAt = _tryParseDate(map['createdAt']);
-    final updatedAt = _tryParseDate(map['updatedAt']);
 
     final audit =
         map['audit'] is Map<String, dynamic>
@@ -175,6 +295,11 @@ class OrderModel {
       clientName: clientName,
       locationLabel: locationLabel,
       equipmentLabel: equipmentLabel,
+      payments: payments,
+      paymentGrossTotal: paymentGrossTotal,
+      paymentFeeTotal: paymentFeeTotal,
+      paymentNetTotal: paymentNetTotal,
+      financeTransactionId: financeTransactionId,
     );
   }
 
@@ -192,6 +317,14 @@ class OrderModel {
     String? customerSignatureUrl,
     String? notes,
     DateTime? updatedAt,
+    String? clientName,
+    String? locationLabel,
+    String? equipmentLabel,
+    List<OrderPaymentEntry>? payments,
+    double? paymentGrossTotal,
+    double? paymentFeeTotal,
+    double? paymentNetTotal,
+    String? financeTransactionId,
   }) {
     return OrderModel(
       id: id,
@@ -213,9 +346,14 @@ class OrderModel {
       createdAt: createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       audit: audit,
-      clientName: clientName,
-      locationLabel: locationLabel,
-      equipmentLabel: equipmentLabel,
+      clientName: clientName ?? this.clientName,
+      locationLabel: locationLabel ?? this.locationLabel,
+      equipmentLabel: equipmentLabel ?? this.equipmentLabel,
+      payments: payments ?? this.payments,
+      paymentGrossTotal: paymentGrossTotal ?? this.paymentGrossTotal,
+      paymentFeeTotal: paymentFeeTotal ?? this.paymentFeeTotal,
+      paymentNetTotal: paymentNetTotal ?? this.paymentNetTotal,
+      financeTransactionId: financeTransactionId ?? this.financeTransactionId,
     );
   }
 }
@@ -259,6 +397,8 @@ class OrderMaterialItem {
   final bool reserved;
   final DateTime? deductedAt;
   final String? itemName;
+  final String? description;
+  final double? unitPrice;
 
   OrderMaterialItem({
     required this.itemId,
@@ -266,28 +406,54 @@ class OrderMaterialItem {
     this.reserved = false,
     this.deductedAt,
     this.itemName,
+    this.description,
+    this.unitPrice,
   });
 
   factory OrderMaterialItem.fromMap(Map<String, dynamic> map) {
     DateTime? deducted;
     final rawDeducted = map['deductedAt'];
     if (rawDeducted != null) {
-      try {
-        deducted = DateTime.parse(rawDeducted.toString());
-      } catch (_) {
-        deducted = null;
-      }
+      deducted = DateTime.tryParse(rawDeducted.toString());
     }
     return OrderMaterialItem(
       itemId: _string(map, ['itemId']) ?? '',
       qty: (map['qty'] ?? map['quantity'] ?? 0) as num,
       reserved: map['reserved'] == true,
       deductedAt: deducted,
-      itemName: _string(map, ['itemName', 'name']),
+      itemName: _string(map, [
+        'itemName',
+        'name',
+        'description',
+        'itemDescription',
+      ]),
+      description: _string(map, ['description', 'itemDescription']) ??
+          _string(map, ['itemName', 'name']),
+      unitPrice: _parseNullableDouble(map['unitPrice'] ?? map['price']),
     );
   }
 
   Map<String, dynamic> toJson() => {'itemId': itemId, 'qty': qty};
+
+  OrderMaterialItem copyWith({
+    String? itemId,
+    num? qty,
+    bool? reserved,
+    DateTime? deductedAt,
+    String? itemName,
+    String? description,
+    double? unitPrice,
+  }) {
+    return OrderMaterialItem(
+      itemId: itemId ?? this.itemId,
+      qty: qty ?? this.qty,
+      reserved: reserved ?? this.reserved,
+      deductedAt: deductedAt ?? this.deductedAt,
+      itemName: itemName ?? this.itemName,
+      description: description ?? this.description,
+      unitPrice: unitPrice ?? this.unitPrice,
+    );
+  }
 }
 
 class OrderBillingItem {
@@ -378,11 +544,7 @@ class OrderTimesheet {
   factory OrderTimesheet.fromMap(Map<String, dynamic> map) {
     DateTime? parse(dynamic v) {
       if (v == null) return null;
-      try {
-        return DateTime.parse(v.toString());
-      } catch (_) {
-        return null;
-      }
+      return DateTime.tryParse(v.toString());
     }
 
     int? totalMin;
@@ -410,11 +572,7 @@ class OrderAudit {
     DateTime? deletedAt;
     final raw = map['deletedAt'];
     if (raw != null) {
-      try {
-        deletedAt = DateTime.parse(raw.toString());
-      } catch (_) {
-        deletedAt = null;
-      }
+      deletedAt = DateTime.tryParse(raw.toString());
     }
     return OrderAudit(
       createdBy: _string(map, ['createdBy']),
@@ -447,6 +605,18 @@ String? _string(dynamic source, List<String> keys) {
   return null;
 }
 
+double? _parseNullableDouble(dynamic value) {
+  if (value == null) return null;
+  if (value is num) return value.toDouble();
+  final text = value.toString().trim();
+  if (text.isEmpty) return null;
+  final normalized = text
+      .replaceAll(RegExp(r'[^0-9,.\-]'), '')
+      .replaceAll(',', '.');
+  if (normalized.isEmpty || normalized == '-' || normalized == '.') return null;
+  return double.tryParse(normalized);
+}
+
 class OrderChecklistInput {
   final String item;
   final bool? done;
@@ -471,10 +641,31 @@ class OrderChecklistInput {
 class OrderMaterialInput {
   final String itemId;
   final num qty;
+  final String? itemName;
+  final String? description;
 
-  OrderMaterialInput({required this.itemId, required this.qty});
+  OrderMaterialInput({
+    required this.itemId,
+    required this.qty,
+    this.itemName,
+    this.description,
+  });
 
-  Map<String, dynamic> toJson() => {'itemId': itemId, 'qty': qty};
+  Map<String, dynamic> toJson({bool includeMetadata = true}) {
+    final map = <String, dynamic>{
+      'itemId': itemId,
+      'qty': qty,
+    };
+    if (includeMetadata) {
+      if (itemName != null && itemName!.trim().isNotEmpty) {
+        map['itemName'] = itemName!.trim();
+      }
+      if (description != null && description!.trim().isNotEmpty) {
+        map['description'] = description!.trim();
+      }
+    }
+    return map;
+  }
 }
 
 class OrderBillingItemInput {
@@ -504,11 +695,67 @@ extension OrderChecklistInputX on Iterable<OrderChecklistInput> {
 }
 
 extension OrderMaterialInputX on Iterable<OrderMaterialInput> {
-  List<Map<String, dynamic>> toJsonList() =>
-      map((e) => e.toJson()).toList(growable: false);
+  List<Map<String, dynamic>> toJsonList({bool includeMetadata = true}) =>
+      map((e) => e.toJson(includeMetadata: includeMetadata))
+          .toList(growable: false);
 }
 
 extension OrderBillingItemInputX on Iterable<OrderBillingItemInput> {
   List<Map<String, dynamic>> toJsonList() =>
       map((e) => e.toJson()).toList(growable: false);
+}
+
+class OrderPaymentInput {
+  OrderPaymentInput({
+    required this.method,
+    required this.amount,
+    this.installments,
+  });
+
+  final String method;
+  final double amount;
+  final int? installments;
+
+  Map<String, dynamic> toJson() => {
+    'method': method,
+    'amount': amount,
+    if (installments != null) 'installments': installments,
+  };
+}
+
+extension OrderPaymentInputX on Iterable<OrderPaymentInput> {
+  List<Map<String, dynamic>> toJsonList() =>
+      map((e) => e.toJson()).toList(growable: false);
+}
+
+class OrderPaymentEntry {
+  OrderPaymentEntry({
+    required this.method,
+    required this.amount,
+    this.installments,
+    required this.feePercent,
+    required this.feeValue,
+    required this.netAmount,
+  });
+
+  final String method;
+  final double amount;
+  final int? installments;
+  final double feePercent;
+  final double feeValue;
+  final double netAmount;
+
+  factory OrderPaymentEntry.fromMap(Map<String, dynamic> map) {
+    return OrderPaymentEntry(
+      method: map['method']?.toString() ?? 'PIX',
+      amount: _parseNullableDouble(map['amount']) ?? 0,
+      installments:
+          map['installments'] is num
+              ? (map['installments'] as num).toInt()
+              : null,
+      feePercent: _parseNullableDouble(map['feePercent']) ?? 0,
+      feeValue: _parseNullableDouble(map['feeValue']) ?? 0,
+      netAmount: _parseNullableDouble(map['netAmount']) ?? 0,
+    );
+  }
 }

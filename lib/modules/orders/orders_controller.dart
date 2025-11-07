@@ -1,16 +1,29 @@
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
+import 'package:air_sync/models/order_draft_model.dart';
 import 'package:air_sync/models/order_model.dart';
 import 'package:air_sync/modules/orders/order_create_bindings.dart';
 import 'package:air_sync/modules/orders/order_create_page.dart';
+import 'package:air_sync/modules/orders/order_create_result.dart';
+import 'package:air_sync/services/orders/order_draft_storage.dart';
+import 'package:air_sync/services/orders/order_label_service.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
-  OrdersController({required OrdersService service}) : _service = service;
+  OrdersController({
+    required OrdersService service,
+    required OrderLabelService labelService,
+    required OrderDraftStorage draftStorage,
+  }) : _service = service,
+       _labelService = labelService,
+       _draftStorage = draftStorage;
 
   final OrdersService _service;
+  final OrderLabelService _labelService;
+  final OrderDraftStorage _draftStorage;
+  int _activeLoads = 0;
 
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
@@ -21,7 +34,7 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
   /// '', 'scheduled', 'in_progress', 'done', 'canceled'
   final RxString status = ''.obs;
 
-  /// 'today' | 'week' | 'month'
+  /// 'today' | 'week' | 'month' | 'all'
   final RxString period = 'today'.obs;
 
   /// Busca local (cliente, local, equipamento)
@@ -38,7 +51,8 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
     _restoreFilters();
 
     everAll([period, status], (_) => refreshList());
-    everAll([orders, searchText], (_) => _recomputeVisible());
+    ever<List<OrderModel>>(orders, (_) => _recomputeVisible());
+    ever<String>(searchText, (_) => _recomputeVisible());
     super.onInit();
   }
 
@@ -55,42 +69,69 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
   }
 
   Future<void> refreshList() async {
-    isLoading(true);
+    _activeLoads++;
+    if (_activeLoads == 1) {
+      isLoading(true);
+    }
     try {
       final now = DateTime.now();
-      late DateTime from;
-      late DateTime to;
+      DateTime? from;
+      DateTime? to;
+      final statusFilter = status.value;
+      final filteringDrafts = statusFilter == 'draft';
 
-      if (period.value == 'today') {
-        from = DateTime(now.year, now.month, now.day);
-        to = from.add(const Duration(days: 1));
-      } else if (period.value == 'week') {
-        final weekday = now.weekday;
-        from = DateTime(
-          now.year,
-          now.month,
-          now.day,
-        ).subtract(Duration(days: weekday - 1));
-        to = from.add(const Duration(days: 7));
-      } else {
-        from = DateTime(now.year, now.month, 1);
-        final nextMonth = DateTime(now.year, now.month + 1, 1);
-        to = nextMonth;
+      if (filteringDrafts) {
+        final drafts = await _draftStorage.getAll();
+        orders.assignAll(drafts.map((draft) => draft.toOrderModel()).toList());
+        _recomputeVisible();
+        return;
+      }
+
+      switch (period.value) {
+        case 'today':
+          from = DateTime(now.year, now.month, now.day);
+          to = from.add(const Duration(days: 1));
+          break;
+        case 'week':
+          final weekday = now.weekday;
+          from = DateTime(
+            now.year,
+            now.month,
+            now.day,
+          ).subtract(Duration(days: weekday - 1));
+          to = from.add(const Duration(days: 7));
+          break;
+        case 'month':
+          from = DateTime(now.year, now.month, 1);
+          to = DateTime(now.year, now.month + 1, 1);
+          break;
+        case 'all':
+          from = null;
+          to = null;
+          break;
+        default:
+          from = DateTime(now.year, now.month, 1);
+          to = DateTime(now.year, now.month + 1, 1);
       }
 
       final list = await _service.list(
         from: from,
         to: to,
-        status: status.value.isEmpty ? null : status.value,
+        status: statusFilter.isEmpty ? null : statusFilter,
       );
 
-      orders.assignAll(list);
+      final enriched = await _labelService.enrichAll(list);
+      orders.assignAll(enriched.where((order) => !order.isDraft).toList());
+      _recomputeVisible();
     } catch (_) {
       message(
         MessageModel.error(title: 'Erro', message: 'Falha ao carregar ordens.'),
       );
     } finally {
-      isLoading(false);
+      _activeLoads = (_activeLoads - 1).clamp(0, 1 << 30).toInt();
+      if (_activeLoads == 0) {
+        isLoading(false);
+      }
     }
   }
 
@@ -98,7 +139,7 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
 
   void clearFilters() {
     status.value = '';
-    period.value = 'today';
+    period.value = 'all';
     searchText.value = '';
     _persistFilters();
     refreshList();
@@ -151,13 +192,169 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
   }
 
   Future<void> openCreate() async {
-    final created = await Get.to<OrderModel?>(
+    final result = await Get.to<dynamic>(
       () => const OrderCreatePage(),
       binding: OrderCreateBindings(),
     );
-    if (created != null) {
-      orders.insert(0, created);
+    if (result is OrderModel) {
+      final created = await _labelService.enrich(result);
+      upsertOrder(created);
+      Get.snackbar('OS criada', 'A ordem foi cadastrada com sucesso.');
+    } else if (result == OrderCreateResult.draftDeleted) {
+      Get.snackbar(
+        'Rascunho',
+        'Rascunho excluído.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<void> openDraft(String draftId) async {
+    final draft = await _draftStorage.getById(draftId);
+    if (draft == null) {
+      message(
+        MessageModel.error(
+          title: 'Rascunho',
+          message: 'Não foi possível localizar esse rascunho.',
+        ),
+      );
+      return;
+    }
+    final result = await Get.to<dynamic>(
+      () => const OrderCreatePage(),
+      binding: OrderCreateBindings(initialDraft: draft),
+    );
+    if (result is OrderModel) {
+      upsertOrder(await _labelService.enrich(result));
+      Get.snackbar('OS criada', 'Rascunho enviado para a API.');
+    } else if (result == OrderCreateResult.draftDeleted) {
+      Get.snackbar(
+        'Rascunho',
+        'Rascunho excluído.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Future<void> notifyDraftsChanged() async {
+    if (status.value == 'draft') {
+      await refreshList();
+    }
+  }
+
+  Future<void> duplicateOrder(OrderModel source, {bool asDraft = false}) async {
+    if (asDraft) {
+      final draft = OrderDraftModel.fromOrder(source);
+      await _draftStorage.save(draft);
+      await notifyDraftsChanged();
+      message(
+        MessageModel.success(
+          title: 'Rascunho',
+          message: 'Rascunho criado a partir da OS ${source.id}.',
+        ),
+      );
+      return;
+    }
+    try {
+      final checklistInputs =
+          source.checklist
+              .map(
+                (item) => OrderChecklistInput(
+                  item: item.item,
+                  done: asDraft ? false : item.done,
+                  note: item.note,
+                ),
+              )
+              .toList();
+      final materialInputs =
+          source.materials
+              .where((m) => m.itemId.isNotEmpty)
+              .map(
+                (m) => OrderMaterialInput(
+                  itemId: m.itemId,
+                  qty: m.qty,
+                  itemName:
+                      (m.itemName ?? '').trim().isEmpty
+                          ? null
+                          : m.itemName!.trim(),
+                  description:
+                      (m.description ?? m.itemName)?.trim().isEmpty == true
+                          ? null
+                          : (m.description ?? m.itemName)!.trim(),
+                ),
+              )
+              .toList();
+      final billingInputs =
+          source.billing.items
+              .map(
+                (item) => OrderBillingItemInput(
+                  type: item.type,
+                  name: item.name,
+                  qty: item.qty,
+                  unitPrice: item.unitPrice,
+                ),
+              )
+              .toList();
+      final notes =
+          asDraft
+              ? '[RASCUNHO] ${(source.notes ?? '').trim()}'.trim()
+              : source.notes;
+      final duplicated = await _service.create(
+        clientId: source.clientId,
+        locationId: source.locationId,
+        equipmentId: source.equipmentId,
+        status: asDraft ? 'draft' : 'scheduled',
+        scheduledAt: asDraft ? null : source.scheduledAt,
+        technicianIds: source.technicianIds,
+        notes: notes,
+        checklist: checklistInputs,
+        materials: materialInputs,
+        billingItems: billingInputs,
+        billingDiscount: source.billing.discount,
+      );
+      final enriched = await _labelService.enrich(duplicated);
+      upsertOrder(enriched);
+      message(
+        MessageModel.success(
+          title: 'OS duplicada',
+          message:
+              asDraft
+                  ? 'Rascunho criado a partir da OS ${source.id}.'
+                  : 'Nova OS criada a partir da ${source.id}.',
+        ),
+      );
+    } catch (_) {
+      message(
+        MessageModel.error(
+          title: 'Duplicação',
+          message: 'Não foi possível duplicar a OS.',
+        ),
+      );
+    }
+  }
+
+  void upsertOrder(OrderModel updated) {
+    if (status.value.isNotEmpty && updated.status != status.value) {
+      orders.removeWhere((order) => order.id == updated.id);
       _recomputeVisible();
+      return;
+    }
+    final index = orders.indexWhere((order) => order.id == updated.id);
+    if (index >= 0) {
+      orders[index] = updated;
+    } else {
+      orders.insert(0, updated);
+    }
+    _recomputeVisible();
+  }
+
+  void removeOrder(String id) {
+    final initial = orders.length;
+    orders.removeWhere((order) => order.id == id);
+    if (orders.length != initial) {
+      _recomputeVisible();
+    } else {
+      visibleOrders.removeWhere((order) => order.id == id);
     }
   }
 }

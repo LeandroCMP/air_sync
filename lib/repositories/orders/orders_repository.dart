@@ -14,7 +14,7 @@ abstract class OrdersRepository {
     required String clientId,
     required String locationId,
     String? equipmentId,
-    required String status,
+    String? status,
     DateTime? scheduledAt,
     String? notes,
     List<String> technicianIds = const [],
@@ -33,6 +33,9 @@ abstract class OrdersRepository {
     List<OrderBillingItemInput>? billingItems,
     num? billingDiscount,
     String? notes,
+    String? clientId,
+    String? locationId,
+    String? equipmentId,
   });
 
   Future<OrderModel> start(String orderId);
@@ -41,7 +44,14 @@ abstract class OrdersRepository {
     required String orderId,
     required List<OrderBillingItemInput> billingItems,
     num discount,
-    String? signatureBase64,
+    required String signatureBase64,
+    String? notes,
+    List<OrderPaymentInput> payments,
+  });
+
+  Future<OrderModel> reschedule({
+    required String orderId,
+    required DateTime scheduledAt,
     String? notes,
   });
 
@@ -67,4 +77,6 @@ abstract class OrdersRepository {
   });
 
   String pdfUrl(String orderId, {String type = 'report'});
+
+  Future<void> delete(String orderId);
 }

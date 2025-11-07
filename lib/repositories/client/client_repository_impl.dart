@@ -178,7 +178,16 @@ class ClientRepositoryImpl implements ClientRepository {
   @override
   Future<ClientModel> getById(String id) async {
     try {
-      final res = await _api.dio.get('$_endpoint/$id');
+      final res = await _api.dio.get(
+        '$_endpoint/$id',
+        options: Options(
+          validateStatus:
+              (status) => status != null && status >= 200 && status < 500,
+        ),
+      );
+      if (res.statusCode == 404) {
+        throw ClientFailure.validation('Cliente nao encontrado');
+      }
       return _mapSingle(res.data);
     } on DioException catch (e) {
       _handleDio(e, fallback: 'Erro ao buscar cliente');

@@ -1,9 +1,12 @@
 import 'package:air_sync/application/ui/input_formatters.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
+import 'package:air_sync/models/client_model.dart';
+import 'package:air_sync/models/collaborator_models.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
@@ -15,7 +18,7 @@ class OrderCreatePage extends GetView<OrderCreateController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Nova Ordem de Serviço')),
+      appBar: AppBar(title: const Text('Nova Ordem de Servico')),
       body: Form(
         key: controller.formKey,
         child: Obx(() {
@@ -43,36 +46,27 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                         title: 'Dados principais',
                         child: Column(
                           children: [
-                            _ClientDropdown(controller: controller),
+                            _ClientSelector(controller: controller),
                             const SizedBox(height: 12),
-                            _LocationDropdown(controller: controller),
+                            _LocationSelector(controller: controller),
                             const SizedBox(height: 12),
-                            _EquipmentDropdown(controller: controller),
+                            _EquipmentSelector(controller: controller),
                             const SizedBox(height: 12),
                             _ScheduledField(
                               controller: controller,
                               scheduledAt: scheduledAt,
                             ),
                             const SizedBox(height: 12),
-                            TextFormField(
-                              controller: controller.techniciansCtrl,
-                              decoration: const InputDecoration(
-                                labelText:
-                                    'Técnicos (IDs separados por vírgula)',
-                                helperText:
-                                    'Opcional. Informe apenas quando precisar atribuir técnicos específicos.',
-                              ),
-                              style: const TextStyle(color: Colors.white),
-                            ),
+                            _TechnicianSelector(controller: controller),
                             const SizedBox(height: 12),
                             TextFormField(
                               controller: controller.notesCtrl,
                               minLines: 2,
                               maxLines: 4,
                               decoration: const InputDecoration(
-                                labelText: 'Observações internas',
+                                labelText: 'Observacoes internas',
                                 helperText:
-                                    'Essas informações ficam visíveis para a equipe.',
+                                    'Essas informacoes ficam visiveis para a equipe.',
                               ),
                               style: const TextStyle(color: Colors.white),
                             ),
@@ -94,10 +88,8 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                               controller: controller.checklistCtrl,
                               decoration: const InputDecoration(
                                 labelText: 'Novo item',
-                                hintText: 'Ex.: Verificar pressão do gás',
+                                hintText: 'Ex.: Verificar pressao do gas',
                               ),
-                              style: const TextStyle(color: Colors.white),
-                              onSubmitted: (_) => controller.addChecklistItem(),
                             ),
                             const SizedBox(height: 12),
                             if (checklist.isEmpty)
@@ -158,9 +150,21 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                                 actionLabel: 'Recarregar',
                                 onAction: controller.refreshInventory,
                               ),
+                            if (materials.isEmpty)
+                              const Padding(
+                                padding: EdgeInsets.symmetric(vertical: 8),
+                                child: Align(
+                                  alignment: Alignment.centerLeft,
+                                  child: Text(
+                                    'Nenhum material adicionado. Utilize o botão acima para incluir itens opcionais.',
+                                    style: TextStyle(color: Colors.white70),
+                                  ),
+                                ),
+                              ),
                             ...List.generate(
                               materials.length,
                               (index) => _MaterialRow(
+                                controller: controller,
                                 entry: materials[index],
                                 index: index,
                                 items: inventoryItems,
@@ -181,7 +185,7 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                       ),
                       const SizedBox(height: 20),
                       _SectionCard(
-                        title: 'Cobrança (opcional)',
+                        title: 'Cobranca (opcional)',
                         action: OutlinedButton.icon(
                           onPressed: controller.addBillingRow,
                           icon: const Icon(Icons.add),
@@ -202,7 +206,7 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                               const Align(
                                 alignment: Alignment.centerLeft,
                                 child: Text(
-                                  'Nenhum item de cobrança informado.',
+                                  'Nenhum item de cobranca informado.',
                                   style: TextStyle(color: Colors.white70),
                                 ),
                               ),
@@ -216,7 +220,7 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                               decoration: const InputDecoration(
                                 labelText: 'Desconto (R\$)',
                                 helperText:
-                                    'Opcional. Caso não haja desconto, deixe em branco.',
+                                    'Opcional. Caso nao haja desconto, deixe em branco.',
                               ),
                               style: const TextStyle(color: Colors.white),
                             ),
@@ -226,11 +230,54 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                       const SizedBox(height: 24),
                       SizedBox(
                         height: 48,
+                        child: Obx(
+                          () =>
+                              controller.isEditingDraft
+                                  ? Row(
+                                    children: [
+                                      Expanded(
+                                        child: OutlinedButton.icon(
+                                          onPressed:
+                                              controller.saveDraftLocally,
+                                          icon: const Icon(
+                                            Icons.save_alt_outlined,
+                                          ),
+                                          label: const Text(
+                                            'Atualizar rascunho',
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      Expanded(
+                                        child: TextButton.icon(
+                                          onPressed:
+                                              controller.deleteDraftLocally,
+                                          icon: const Icon(
+                                            Icons.delete_outline,
+                                          ),
+                                          label: const Text('Excluir rascunho'),
+                                          style: TextButton.styleFrom(
+                                            foregroundColor: Colors.redAccent,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  )
+                                  : OutlinedButton.icon(
+                                    onPressed: controller.saveDraftLocally,
+                                    icon: const Icon(Icons.save_alt_outlined),
+                                    label: const Text('Salvar rascunho local'),
+                                  ),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      SizedBox(
+                        height: 48,
                         child: ElevatedButton.icon(
                           onPressed: controller.submit,
                           icon: const Icon(Icons.save_outlined),
                           label: const Text(
-                            'Criar Ordem de Serviço',
+                            'Criar Ordem de Servico',
                             style: TextStyle(fontWeight: FontWeight.bold),
                           ),
                         ),
@@ -299,120 +346,258 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-class _ClientDropdown extends StatelessWidget {
-  const _ClientDropdown({required this.controller});
+class _ClientSelector extends StatelessWidget {
+  const _ClientSelector({required this.controller});
 
   final OrderCreateController controller;
 
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final options = controller.clients;
-      return DropdownButtonFormField<String>(
-        value: controller.selectedClientId.value,
-        isExpanded: true,
-        dropdownColor: context.themeSurfaceAlt,
-        decoration: const InputDecoration(labelText: 'Cliente *'),
-        style: TextStyle(color: context.themeTextMain),
-        items:
-            options
-                .map(
-                  (client) => DropdownMenuItem(
-                    value: client.id,
-                    child: Text(client.name, overflow: TextOverflow.ellipsis),
-                  ),
-                )
-                .toList(),
-        onChanged: (value) => controller.onClientSelected(value),
-        validator: (value) => value == null ? 'Selecione o cliente' : null,
+      final selectedId = controller.selectedClientId.value;
+      final options = controller.clients.toList(growable: false);
+      ClientModel? selected;
+      for (final client in options) {
+        if (client.id == selectedId) {
+          selected = client;
+          break;
+        }
+      }
+      return FormField<String>(
+        validator: (_) => selectedId == null ? 'Selecione o cliente' : null,
+        builder: (state) {
+          _syncFormFieldValue(state, selectedId);
+          return _SelectorTile(
+            label: 'Cliente *',
+            value: selected?.name,
+            placeholder: 'Selecionar cliente',
+            helperText: options.isEmpty ? 'Nenhum cliente encontrado.' : null,
+            errorText: state.errorText,
+            onTap:
+                options.isEmpty
+                    ? null
+                    : () async {
+                      final picked = await _SinglePickerModal.show<ClientModel>(
+                        context: context,
+                        title: 'Selecionar cliente',
+                        items: options,
+                        initialId: selectedId,
+                        id: (client) => client.id,
+                        titleBuilder: (client) => client.name,
+                        subtitleBuilder: (client) {
+                          if ((client.docNumber ?? '').isNotEmpty) {
+                            return client.docNumber!;
+                          }
+                          return client.primaryPhone;
+                        },
+                      );
+                      if (picked != null) {
+                        controller.onClientSelected(picked.id);
+                        state.didChange(picked.id);
+                      }
+                    },
+            onClear:
+                selectedId == null
+                    ? null
+                    : () {
+                      controller.onClientSelected(null);
+                      state.didChange(null);
+                    },
+          );
+        },
       );
     });
   }
 }
 
-class _LocationDropdown extends StatelessWidget {
-  const _LocationDropdown({required this.controller});
+class _LocationSelector extends StatelessWidget {
+  const _LocationSelector({required this.controller});
 
   final OrderCreateController controller;
 
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final options = controller.locations;
-      return DropdownButtonFormField<String>(
-        value: controller.selectedLocationId.value,
-        isExpanded: true,
-        dropdownColor: context.themeSurfaceAlt,
-        decoration: const InputDecoration(labelText: 'Local *'),
-        style: TextStyle(color: context.themeTextMain),
-        items:
-            options
-                .map(
-                  (location) => DropdownMenuItem(
-                    value: location.id,
-                    child: Text(
-                      _locationLabel(location),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )
-                .toList(),
-        onChanged:
+      final hasClient = controller.selectedClientId.value != null;
+      final options = controller.locations.toList(growable: false);
+      final selectedId = controller.selectedLocationId.value;
+      LocationModel? selected;
+      for (final location in options) {
+        if (location.id == selectedId) {
+          selected = location;
+          break;
+        }
+      }
+
+      return FormField<String>(
+        validator: (_) => selectedId == null ? 'Selecione o local' : null,
+        builder: (state) {
+          _syncFormFieldValue(state, selectedId);
+          final enableSelection = hasClient && options.isNotEmpty;
+          final helper =
+              !hasClient
+                  ? 'Selecione um cliente para listar os locais.'
+                  : options.isEmpty
+                  ? 'Nenhum local cadastrado para este cliente.'
+                  : null;
+          return _SelectorTile(
+            label: 'Local *',
+            value: selected != null ? _locationDescription(selected) : null,
+            placeholder:
+                hasClient ? 'Selecionar local' : 'Cliente nao selecionado',
+            helperText: helper,
+            errorText: state.errorText,
+            enabled: enableSelection,
+            onTap:
+                !enableSelection
+                    ? null
+                    : () async {
+                      final picked =
+                          await _SinglePickerModal.show<LocationModel>(
+                            context: context,
+                            title: 'Selecionar local',
+                            items: options,
+                            initialId: selectedId,
+                            id: (location) => location.id,
+                            titleBuilder: _locationDescription,
+                            subtitleBuilder:
+                                (location) => (location.notes ?? '').trim(),
+                          );
+                      if (picked != null) {
+                        controller.onLocationSelected(picked.id);
+                        state.didChange(picked.id);
+                      }
+                    },
+            onClear:
+                selectedId == null
+                    ? null
+                    : () {
+                      controller.onLocationSelected(null);
+                      state.didChange(null);
+                    },
+          );
+        },
+      );
+    });
+  }
+}
+
+class _EquipmentSelector extends StatelessWidget {
+  const _EquipmentSelector({required this.controller});
+
+  final OrderCreateController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final options = controller.equipments.toList(growable: false);
+      final selectedId = controller.selectedEquipmentId.value;
+      EquipmentModel? selected;
+      for (final equipment in options) {
+        if (equipment.id == selectedId) {
+          selected = equipment;
+          break;
+        }
+      }
+      return _SelectorTile(
+        label: 'Equipamento',
+        value: selected != null ? _equipmentDescription(selected) : null,
+        placeholder:
+            options.isEmpty
+                ? 'Nenhum equipamento cadastrado'
+                : 'Selecionar equipamento (opcional)',
+        helperText:
+            options.isEmpty
+                ? 'Cadastre equipamentos para este cliente/local.'
+                : null,
+        onTap:
             options.isEmpty
                 ? null
-                : (value) => controller.onLocationSelected(value),
-        validator: (value) => value == null ? 'Selecione o local' : null,
+                : () async {
+                  final picked = await _SinglePickerModal.show<EquipmentModel>(
+                    context: context,
+                    title: 'Selecionar equipamento',
+                    items: options,
+                    initialId: selectedId,
+                    id: (equipment) => equipment.id,
+                    titleBuilder: _equipmentDescription,
+                    subtitleBuilder:
+                        (equipment) => (equipment.serial ?? '').trim(),
+                  );
+                  if (picked != null) {
+                    controller.setEquipment(picked.id);
+                  }
+                },
+        onClear:
+            selectedId == null ? null : () => controller.setEquipment(null),
       );
     });
   }
-
-  String _locationLabel(LocationModel model) {
-    final parts = <String>[];
-    if (model.label.isNotEmpty) parts.add(model.label);
-    if ((model.addressLine).isNotEmpty) parts.add(model.addressLine);
-    if (model.cityState.isNotEmpty) parts.add(model.cityState);
-    return parts.join(' • ');
-  }
 }
 
-class _EquipmentDropdown extends StatelessWidget {
-  const _EquipmentDropdown({required this.controller});
+class _TechnicianSelector extends StatelessWidget {
+  const _TechnicianSelector({required this.controller});
 
   final OrderCreateController controller;
 
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final options = controller.equipments;
-      return DropdownButtonFormField<String>(
-        value: controller.selectedEquipmentId.value,
-        isExpanded: true,
-        dropdownColor: context.themeSurfaceAlt,
-        decoration: const InputDecoration(labelText: 'Equipamento (opcional)'),
-        style: TextStyle(color: context.themeTextMain),
-        items:
-            options
-                .map(
-                  (equipment) => DropdownMenuItem(
-                    value: equipment.id,
-                    child: Text(
-                      _equipmentLabel(equipment),
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ),
-                )
-                .toList(),
-        onChanged: options.isEmpty ? null : controller.setEquipment,
+      final technicians = controller.technicians.toList(growable: false);
+      final selected = controller.selectedTechnicians;
+      final selectedIds = controller.selectedTechnicianIds.toList(
+        growable: false,
+      );
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SelectorTile(
+            label: 'Tecnicos',
+            value:
+                selected.isEmpty
+                    ? null
+                    : selected.map((tech) => tech.name).join(', '),
+            placeholder: 'Selecionar tecnicos (opcional)',
+            helperText:
+                technicians.isEmpty
+                    ? 'Nenhum tecnico ativo encontrado.'
+                    : 'Opcional. Atribua tecnicos responsaveis pela OS.',
+            onTap:
+                technicians.isEmpty
+                    ? null
+                    : () async {
+                      final picked = await _TechnicianPickerModal.show(
+                        context: context,
+                        technicians: technicians,
+                        initialSelection: selectedIds,
+                      );
+                      if (picked != null) {
+                        controller.setTechnicians(picked);
+                      }
+                    },
+            onClear:
+                selected.isEmpty ? null : () => controller.setTechnicians([]),
+          ),
+          if (selected.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children:
+                  selected
+                      .map(
+                        (tech) => InputChip(
+                          label: Text(tech.name),
+                          onDeleted: () => controller.removeTechnician(tech.id),
+                        ),
+                      )
+                      .toList(),
+            ),
+          ],
+        ],
       );
     });
-  }
-
-  String _equipmentLabel(EquipmentModel equipment) {
-    final parts = <String>[];
-    if ((equipment.room ?? '').isNotEmpty) parts.add(equipment.room!);
-    if ((equipment.brand ?? '').isNotEmpty) parts.add(equipment.brand!);
-    if ((equipment.model ?? '').isNotEmpty) parts.add(equipment.model!);
-    return parts.isEmpty ? equipment.id : parts.join(' • ');
   }
 }
 
@@ -486,12 +671,14 @@ class _ScheduledField extends StatelessWidget {
 
 class _MaterialRow extends StatelessWidget {
   const _MaterialRow({
+    required this.controller,
     required this.entry,
     required this.index,
     required this.items,
     required this.onRemove,
   });
 
+  final OrderCreateController controller;
   final OrderMaterialDraft entry;
   final int index;
   final List<InventoryItemModel> items;
@@ -499,7 +686,7 @@ class _MaterialRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasItems = items.isNotEmpty;
+    final hasItems = controller.inventoryItems.isNotEmpty || items.isNotEmpty;
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.all(12),
@@ -514,7 +701,7 @@ class _MaterialRow extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  'Material ${index + 1}',
+                  'Material ',
                   style: TextStyle(
                     color: context.themeTextMain,
                     fontWeight: FontWeight.w600,
@@ -529,41 +716,90 @@ class _MaterialRow extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 8),
-          Obx(
-            () => DropdownButtonFormField<String>(
-              value: entry.itemId.value,
-              isExpanded: true,
-              dropdownColor: context.themeSurface,
-              decoration: const InputDecoration(labelText: 'Item do estoque'),
-              style: TextStyle(color: context.themeTextMain),
-              items:
-                  items
-                      .map(
-                        (item) => DropdownMenuItem(
-                          value: item.id,
-                          child: Text(
-                            _inventoryLabel(item),
-                            overflow: TextOverflow.ellipsis,
+          FormField<String>(
+            validator: (_) {
+              if (!hasItems) return null;
+              final selectedId = entry.itemId.value;
+              final qtyText = entry.qtyCtrl.text.replaceAll(',', '.').trim();
+              final qty = double.tryParse(qtyText);
+              final hasQty = qty != null && qty > 0;
+              if (!hasQty && (selectedId == null || selectedId.isEmpty)) {
+                return null;
+              }
+              if ((selectedId ?? '').isEmpty) {
+                return 'Selecione o item';
+              }
+              if (!hasQty) {
+                return 'Informe a quantidade';
+              }
+              return null;
+            },
+            builder: (state) {
+              return Obx(() {
+                final selectedId = entry.itemId.value;
+                _syncFormFieldValue(state, selectedId);
+                final source =
+                    controller.inventoryItems.isNotEmpty
+                        ? controller.inventoryItems
+                        : items;
+                InventoryItemModel? selected;
+                for (final item in source) {
+                  if (item.id == selectedId) {
+                    selected = item;
+                    break;
+                  }
+                }
+                return _SelectorTile(
+                  label: 'Item do estoque',
+                  value: selected != null ? _inventoryValue(selected) : null,
+                  placeholder:
+                      hasItems ? 'Selecionar item' : 'Nenhum item disponivel',
+                  helperText:
+                      hasItems
+                          ? null
+                          : 'Sem itens ativos. Recarregue ou cadastre novos itens.',
+                  errorText: state.errorText,
+                  enabled: hasItems,
+                  onTap: () async {
+                    if (!await controller.ensureInventoryLoaded()) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text(
+                            'Nenhum item de estoque disponível no momento.',
                           ),
                         ),
-                      )
-                      .toList(),
-              onChanged:
-                  hasItems ? (value) => entry.itemId.value = value : null,
-              validator: (value) {
-                if (!hasItems) return null;
-                return value == null ? 'Selecione o item' : null;
-              },
-            ),
+                      );
+                      return;
+                    }
+                    final list = controller.inventoryItems.toList();
+                    if (list.isEmpty) return;
+                    final picked =
+                        await _SinglePickerModal.show<InventoryItemModel>(
+                          context: context,
+                          title: 'Selecionar item do estoque',
+                          items: list,
+                          initialId: selectedId,
+                          id: (item) => item.id,
+                          titleBuilder: (item) => item.name,
+                          subtitleBuilder: _inventorySummary,
+                        );
+                    if (picked != null) {
+                      entry.itemId.value = picked.id;
+                      entry.itemName.value = picked.description;
+                      state.didChange(picked.id);
+                    }
+                  },
+                  onClear:
+                      selectedId == null
+                          ? null
+                          : () {
+                            entry.clearSelection();
+                            state.didChange(null);
+                          },
+                );
+              });
+            },
           ),
-          if (!hasItems)
-            const Padding(
-              padding: EdgeInsets.only(top: 4),
-              child: Text(
-                'Nenhum item disponível no momento.',
-                style: TextStyle(color: Colors.white70, fontSize: 12),
-              ),
-            ),
           const SizedBox(height: 12),
           TextField(
             controller: entry.qtyCtrl,
@@ -574,13 +810,6 @@ class _MaterialRow extends StatelessWidget {
         ],
       ),
     );
-  }
-
-  String _inventoryLabel(InventoryItemModel item) {
-    final buffer = StringBuffer(item.name);
-    if (item.sku.isNotEmpty) buffer.write(' • ${item.sku}');
-    buffer.write(' • Saldo: ${item.onHand.toStringAsFixed(2)}');
-    return buffer.toString();
   }
 }
 
@@ -634,8 +863,8 @@ class _BillingRow extends StatelessWidget {
               decoration: const InputDecoration(labelText: 'Tipo'),
               style: TextStyle(color: context.themeTextMain),
               items: const [
-                DropdownMenuItem(value: 'service', child: Text('Serviço')),
-                DropdownMenuItem(value: 'part', child: Text('Peça')),
+                DropdownMenuItem(value: 'service', child: Text('Servico')),
+                DropdownMenuItem(value: 'part', child: Text('Peca')),
               ],
               onChanged:
                   (value) => entry.type.value = value ?? entry.type.value,
@@ -644,7 +873,7 @@ class _BillingRow extends StatelessWidget {
           const SizedBox(height: 12),
           TextField(
             controller: entry.nameCtrl,
-            decoration: const InputDecoration(labelText: 'Descrição'),
+            decoration: const InputDecoration(labelText: 'Descricao'),
             style: const TextStyle(color: Colors.white),
           ),
           const SizedBox(height: 12),
@@ -669,7 +898,7 @@ class _BillingRow extends StatelessWidget {
                   ),
                   inputFormatters: [MoneyInputFormatter()],
                   decoration: const InputDecoration(
-                    labelText: 'Valor unitário (R\$)',
+                    labelText: 'Valor unitario (R\$)',
                   ),
                   style: const TextStyle(color: Colors.white),
                 ),
@@ -742,4 +971,406 @@ class _InlineMessage extends StatelessWidget {
       ),
     );
   }
+}
+
+class _SelectorTile extends StatelessWidget {
+  const _SelectorTile({
+    required this.label,
+    this.value,
+    required this.placeholder,
+    this.helperText,
+    this.errorText,
+    this.onTap,
+    this.onClear,
+    this.enabled = true,
+  });
+
+  final String label;
+  final String? value;
+  final String placeholder;
+  final String? helperText;
+  final String? errorText;
+  final VoidCallback? onTap;
+  final VoidCallback? onClear;
+  final bool enabled;
+
+  @override
+  Widget build(BuildContext context) {
+    final surface = context.themeSurfaceAlt;
+    final tileColor = enabled ? surface : surface.withValues(alpha: 0.5);
+    final hasValue = value != null && value!.trim().isNotEmpty;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: enabled ? onTap : null,
+          borderRadius: BorderRadius.circular(12),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+            decoration: BoxDecoration(
+              color: tileColor,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color:
+                    errorText != null
+                        ? Theme.of(context).colorScheme.error
+                        : Colors.white24,
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        label,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 12,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        hasValue ? value! : placeholder,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color:
+                              hasValue ? context.themeTextMain : Colors.white54,
+                          fontWeight:
+                              hasValue ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                if (hasValue && onClear != null)
+                  IconButton(
+                    onPressed: onClear,
+                    icon: const Icon(Icons.close, size: 18),
+                    splashRadius: 20,
+                  )
+                else
+                  Icon(
+                    enabled ? Icons.search : Icons.block,
+                    color: enabled ? Colors.white70 : Colors.white30,
+                  ),
+              ],
+            ),
+          ),
+        ),
+        if (helperText != null && helperText!.isNotEmpty)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              helperText!,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+            ),
+          ),
+        if (errorText != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              errorText!,
+              style: TextStyle(
+                color: Theme.of(context).colorScheme.error,
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ),
+      ],
+    );
+  }
+}
+
+class _ModalHeader extends StatelessWidget {
+  const _ModalHeader({required this.title});
+
+  final String title;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 12),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w600),
+            ),
+          ),
+          IconButton(
+            onPressed: () => Navigator.of(context).maybePop(),
+            icon: const Icon(Icons.close),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SinglePickerModal {
+  static Future<T?> show<T>({
+    required BuildContext context,
+    required String title,
+    required List<T> items,
+    required String? initialId,
+    required String Function(T) id,
+    required String Function(T) titleBuilder,
+    String Function(T)? subtitleBuilder,
+  }) async {
+    if (items.isEmpty) return null;
+    var query = '';
+    return showModalBottomSheet<T>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (ctx) {
+        final maxHeight = MediaQuery.of(ctx).size.height * 0.75;
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (ctx, setState) {
+              final lowerQuery = query.toLowerCase();
+              final filtered =
+                  lowerQuery.isEmpty
+                      ? items
+                      : items.where((item) {
+                        final titleText =
+                            titleBuilder(item).toLowerCase().trim();
+                        final subtitleText =
+                            (subtitleBuilder?.call(item) ?? '')
+                                .toLowerCase()
+                                .trim();
+                        return titleText.contains(lowerQuery) ||
+                            subtitleText.contains(lowerQuery);
+                      }).toList();
+
+              return SizedBox(
+                height: maxHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    _ModalHeader(title: title),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: TextField(
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Pesquisar',
+                          prefixIcon: Icon(Icons.search),
+                        ),
+                        onChanged:
+                            (value) => setState(() => query = value.trim()),
+                      ),
+                    ),
+                    if (filtered.isEmpty)
+                      const Expanded(
+                        child: Center(
+                          child: Text(
+                            'Nenhum resultado encontrado.',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ListView.separated(
+                          itemCount: filtered.length,
+                          separatorBuilder: (_, __) => const Divider(height: 1),
+                          itemBuilder: (ctx, index) {
+                            final item = filtered[index];
+                            final itemId = id(item);
+                            final subtitle = subtitleBuilder?.call(item);
+                            return ListTile(
+                              onTap: () => Navigator.of(ctx).pop(item),
+                              title: Text(titleBuilder(item)),
+                              subtitle:
+                                  (subtitle != null &&
+                                          subtitle.trim().isNotEmpty)
+                                      ? Text(subtitle.trim())
+                                      : null,
+                              trailing:
+                                  itemId == initialId
+                                      ? const Icon(
+                                        Icons.check,
+                                        color: Colors.white70,
+                                      )
+                                      : null,
+                            );
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _TechnicianPickerModal {
+  static Future<List<String>?> show({
+    required BuildContext context,
+    required List<CollaboratorModel> technicians,
+    required List<String> initialSelection,
+  }) async {
+    if (technicians.isEmpty) return null;
+    final selected = initialSelection.toSet();
+    var query = '';
+    return showModalBottomSheet<List<String>>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      builder: (ctx) {
+        final maxHeight = MediaQuery.of(ctx).size.height * 0.8;
+        return SafeArea(
+          child: StatefulBuilder(
+            builder: (ctx, setState) {
+              final lowerQuery = query.toLowerCase();
+              final filtered =
+                  lowerQuery.isEmpty
+                      ? technicians
+                      : technicians.where((tech) {
+                        final name = tech.name.toLowerCase();
+                        final email = tech.email.toLowerCase();
+                        return name.contains(lowerQuery) ||
+                            email.contains(lowerQuery);
+                      }).toList();
+
+              return SizedBox(
+                height: maxHeight,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const _ModalHeader(title: 'Selecionar tecnicos'),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                      child: TextField(
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                          labelText: 'Pesquisar',
+                          prefixIcon: Icon(Icons.search),
+                        ),
+                        onChanged:
+                            (value) => setState(() => query = value.trim()),
+                      ),
+                    ),
+                    if (filtered.isEmpty)
+                      const Expanded(
+                        child: Center(
+                          child: Text(
+                            'Nenhum tecnico encontrado.',
+                            style: TextStyle(color: Colors.white70),
+                          ),
+                        ),
+                      )
+                    else
+                      Expanded(
+                        child: ListView.builder(
+                          itemCount: filtered.length,
+                          itemBuilder: (ctx, index) {
+                            final tech = filtered[index];
+                            final checked = selected.contains(tech.id);
+                            return CheckboxListTile(
+                              value: checked,
+                              onChanged: (_) {
+                                setState(() {
+                                  if (checked) {
+                                    selected.remove(tech.id);
+                                  } else {
+                                    selected.add(tech.id);
+                                  }
+                                });
+                              },
+                              title: Text(tech.name),
+                              subtitle: Text(tech.email),
+                            );
+                          },
+                        ),
+                      ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+                      child: Row(
+                        children: [
+                          TextButton(
+                            onPressed:
+                                selected.isEmpty
+                                    ? null
+                                    : () => setState(selected.clear),
+                            child: const Text('Limpar'),
+                          ),
+                          const Spacer(),
+                          ElevatedButton(
+                            onPressed:
+                                () => Navigator.of(ctx).pop(selected.toList()),
+                            child: const Text('Aplicar'),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
+  }
+}
+
+String _locationDescription(LocationModel model) {
+  final parts = <String>[];
+  if (model.label.trim().isNotEmpty) parts.add(model.label.trim());
+  if (model.addressLine.isNotEmpty) parts.add(model.addressLine);
+  if (model.cityState.isNotEmpty) parts.add(model.cityState);
+  if (parts.isEmpty) return 'Local ${model.id}';
+  return parts.join(' - ');
+}
+
+String _equipmentDescription(EquipmentModel equipment) {
+  final parts = <String>[];
+  if ((equipment.room ?? '').trim().isNotEmpty) {
+    parts.add(equipment.room!.trim());
+  }
+  if ((equipment.brand ?? '').trim().isNotEmpty) {
+    parts.add(equipment.brand!.trim());
+  }
+  if ((equipment.model ?? '').trim().isNotEmpty) {
+    parts.add(equipment.model!.trim());
+  }
+  if ((equipment.type ?? '').trim().isNotEmpty) {
+    parts.add(equipment.type!.trim());
+  }
+  if (parts.isEmpty) return 'Equipamento ${equipment.id}';
+  return parts.join(' - ');
+}
+
+String _inventoryValue(InventoryItemModel item) {
+  final summary = _inventorySummary(item);
+  if (summary.isEmpty) return item.name;
+  return '${item.name} - $summary';
+}
+
+String _inventorySummary(InventoryItemModel item) {
+  final parts = <String>[];
+  if (item.sku.isNotEmpty) parts.add('SKU ${item.sku}');
+  parts.add('Saldo ${item.onHand.toStringAsFixed(2)} ${item.unit}');
+  return parts.join(' | ');
+}
+
+void _syncFormFieldValue(FormFieldState<String> state, String? value) {
+  if (state.value == value) return;
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (state.mounted) {
+      state.didChange(value);
+    }
+  });
 }

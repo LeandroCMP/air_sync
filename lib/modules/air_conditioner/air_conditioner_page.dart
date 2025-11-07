@@ -1,13 +1,16 @@
+import 'package:air_sync/application/ui/input_formatters.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import './air_conditioner_controller.dart';
 
 class AirConditionerPage extends GetView<AirConditionerController> {
-    
-    const AirConditionerPage({super.key});
+  const AirConditionerPage({super.key});
 
-    void showAddAirConditionerModal(BuildContext context, AirConditionerController controller) {
+  void showAddAirConditionerModal(
+    BuildContext context,
+    AirConditionerController controller,
+  ) {
     final formKey = GlobalKey<FormState>();
 
     showModalBottomSheet(
@@ -55,14 +58,15 @@ class AirConditionerPage extends GetView<AirConditionerController> {
                   ),
                   const SizedBox(height: 10),
                   TextFormField(
-                   // controller: controller.phoneController,
-                   
+                    // controller: controller.phoneController,
                     validator:
                         (value) =>
                             value == null || value.isEmpty
                                 ? 'Informe o telefone'
                                 : null,
                     style: const TextStyle(color: Colors.white),
+                    keyboardType: TextInputType.phone,
+                    inputFormatters: [PhoneInputFormatter()],
                     decoration: const InputDecoration(
                       labelText: 'Telefone',
                       labelStyle: TextStyle(color: Colors.white),
@@ -97,7 +101,6 @@ class AirConditionerPage extends GetView<AirConditionerController> {
                           return Theme(data: ThemeData.dark(), child: child!);
                         },
                       );
-                      
                     },
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
@@ -119,7 +122,7 @@ class AirConditionerPage extends GetView<AirConditionerController> {
                       ),
                       onPressed: () async {
                         if (formKey.currentState!.validate()) {
-                         // await controller.registerClient();
+                          // await controller.registerClient();
                         }
                       },
                       child: Text(
@@ -150,77 +153,75 @@ class AirConditionerPage extends GetView<AirConditionerController> {
     );
   }
 
-    @override
-    Widget build(BuildContext context) {
-        return Scaffold(
-            appBar: AppBar(
-              iconTheme: IconThemeData(color: Colors.white70),
-              backgroundColor: context.themeDark,
-              centerTitle: true,
-              title: Text('Equipamentos', 
-              style: TextStyle(color: Colors.white),),
-              elevation: 0,
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        iconTheme: IconThemeData(color: Colors.white70),
+        backgroundColor: context.themeDark,
+        centerTitle: true,
+        title: Text('Equipamentos', style: TextStyle(color: Colors.white)),
+        elevation: 0,
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: context.themeGreen,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
+        onPressed: () => showAddAirConditionerModal(context, controller),
+        child: const Icon(Icons.add, color: Colors.white, size: 42),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          children: [
+            Container(
+              decoration: BoxDecoration(
+                color: context.themeGray,
+                borderRadius: BorderRadius.circular(15),
               ),
-            floatingActionButton: FloatingActionButton(
-              backgroundColor: context.themeGreen,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(100)),
-              onPressed: () => showAddAirConditionerModal(context, controller),
-              child: const Icon(Icons.add, color: Colors.white, size: 42),
-            ),
-            body: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                children: [
-                  Container(
-                    decoration: BoxDecoration(
-                      color: context.themeGray,
-                      borderRadius: BorderRadius.circular(15),
-                    ),
-                    child: ListTile(
-                      iconColor: Colors.white70,
-                      leading: Icon(
-                        Icons.maps_home_work_outlined,
-                        size: 32,
-                        ),
-                      contentPadding: EdgeInsets.all(10),
-                      trailing: InkWell(
-                        onTap: (){},
-                        child: Icon(
-                          Icons.delete_outline_sharp, 
-                          color: Colors.red[900],
-                          size: 28,
-                          ),
-                      ),
-                      title: Text(
-                        controller.residence.value?.name ?? '',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white70
-                        ),
-                      ),
-                    ),
+              child: ListTile(
+                iconColor: Colors.white70,
+                leading: Icon(Icons.maps_home_work_outlined, size: 32),
+                contentPadding: EdgeInsets.all(10),
+                trailing: InkWell(
+                  onTap: () {},
+                  child: Icon(
+                    Icons.delete_outline_sharp,
+                    color: Colors.red[900],
+                    size: 28,
                   ),
-                  const SizedBox(height: 20),
-                  Text(
-                        'Equipamentos',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: Colors.white,fontSize: 20,
-                        ),
-                      ),
-                  const SizedBox(height: 10),
-                  Expanded(
-                    child: ListView.separated(
-                      separatorBuilder: (context, index) => const SizedBox(
-                        height: 10, child: Divider(color: Colors.white70,),
-                        ),
-                      itemCount: (controller.residence.value?.airConditioners ?? const []).length,
-                      itemBuilder: (context, index) {
-                       return Container(height: 100, width: 100, color: Colors.red,);
-                      }, 
-                    ),
-                  ),
-                ],
+                ),
+                title: Text(
+                  controller.residence.value?.name ?? '',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.white70),
+                ),
               ),
             ),
-        );
-    }
+            const SizedBox(height: 20),
+            Text(
+              'Equipamentos',
+              textAlign: TextAlign.center,
+              style: TextStyle(color: Colors.white, fontSize: 20),
+            ),
+            const SizedBox(height: 10),
+            Expanded(
+              child: ListView.separated(
+                separatorBuilder:
+                    (context, index) => const SizedBox(
+                      height: 10,
+                      child: Divider(color: Colors.white70),
+                    ),
+                itemCount:
+                    (controller.residence.value?.airConditioners ?? const [])
+                        .length,
+                itemBuilder: (context, index) {
+                  return Container(height: 100, width: 100, color: Colors.red);
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }

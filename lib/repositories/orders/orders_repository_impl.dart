@@ -1,4 +1,4 @@
-﻿import 'package:air_sync/application/core/network/api_client.dart';
+import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/models/order_model.dart';
 import 'package:dio/dio.dart' as dio;
 import 'package:get/get.dart';
@@ -56,7 +56,7 @@ class OrdersRepositoryImpl implements OrdersRepository {
     required String clientId,
     required String locationId,
     String? equipmentId,
-    required String status,
+    String? status,
     DateTime? scheduledAt,
     String? notes,
     List<String> technicianIds = const [],
@@ -65,24 +65,40 @@ class OrdersRepositoryImpl implements OrdersRepository {
     List<OrderBillingItemInput> billingItems = const [],
     num billingDiscount = 0,
   }) async {
-    final payload = <String, dynamic>{
-      'clientId': clientId,
-      'locationId': locationId,
-      'status': status,
-      if (equipmentId != null && equipmentId.isNotEmpty)
-        'equipmentId': equipmentId,
-      if (scheduledAt != null)
-        'scheduledAt': scheduledAt.toUtc().toIso8601String(),
-      if (notes != null && notes.isNotEmpty) 'notes': notes,
-      if (technicianIds.isNotEmpty) 'technicianIds': technicianIds,
-      if (checklist.isNotEmpty) 'checklist': checklist.toJsonList(),
-      if (materials.isNotEmpty) 'materials': materials.toJsonList(),
-      if (billingItems.isNotEmpty) 'billingItems': billingItems.toJsonList(),
-      if (billingDiscount != 0) 'billingDiscount': billingDiscount,
-    };
+    Future<OrderModel> send(bool includeMetadata) async {
+      final payload = <String, dynamic>{
+        'clientId': clientId,
+        'locationId': locationId,
+        if (status != null && status.isNotEmpty) 'status': status,
+        if (equipmentId != null && equipmentId.isNotEmpty)
+          'equipmentId': equipmentId,
+        if (scheduledAt != null)
+          'scheduledAt': scheduledAt.toUtc().toIso8601String(),
+        if (notes != null && notes.isNotEmpty) 'notes': notes,
+        if (technicianIds.isNotEmpty) 'technicianIds': technicianIds,
+        if (checklist.isNotEmpty) 'checklist': checklist.toJsonList(),
+        if (materials.isNotEmpty)
+          'materials': materials.toJsonList(
+            includeMetadata: includeMetadata,
+          ),
+        if (billingItems.isNotEmpty)
+          'billingItems': billingItems.toJsonList(),
+        if (billingDiscount != 0) 'billingDiscount': billingDiscount,
+      };
+      final res = await _dio.post('/v1/orders', data: payload);
+      return OrderModel.fromMap(_asMap(res.data));
+    }
 
-    final res = await _dio.post('/v1/orders', data: payload);
-    return OrderModel.fromMap(_asMap(res.data));
+    try {
+      return await send(true);
+    } on dio.DioException catch (error) {
+      final shouldRetry =
+          materials.isNotEmpty && _isMaterialNameValidationError(error);
+      if (shouldRetry) {
+        return await send(false);
+      }
+      rethrow;
+    }
   }
 
   @override
@@ -95,6 +111,9 @@ class OrdersRepositoryImpl implements OrdersRepository {
     List<OrderBillingItemInput>? billingItems,
     num? billingDiscount,
     String? notes,
+    String? clientId,
+    String? locationId,
+    String? equipmentId,
   }) async {
     final payload = <String, dynamic>{};
     if (status != null) payload['status'] = status;
@@ -108,6 +127,9 @@ class OrdersRepositoryImpl implements OrdersRepository {
     }
     if (billingDiscount != null) payload['billingDiscount'] = billingDiscount;
     if (notes != null) payload['notes'] = notes;
+    if (clientId != null) payload['clientId'] = clientId;
+    if (locationId != null) payload['locationId'] = locationId;
+    if (equipmentId != null) payload['equipmentId'] = equipmentId;
 
     final res = await _dio.patch('/v1/orders/$orderId', data: payload);
     return OrderModel.fromMap(_asMap(res.data));
@@ -124,19 +146,40 @@ class OrdersRepositoryImpl implements OrdersRepository {
     required String orderId,
     required List<OrderBillingItemInput> billingItems,
     num discount = 0,
-    String? signatureBase64,
+    required String signatureBase64,
     String? notes,
+    List<OrderPaymentInput> payments = const [],
   }) async {
+    if (signatureBase64.isEmpty) {
+      throw ArgumentError('signatureBase64 is required to finalizar a ordem.');
+    }
     final payload = <String, dynamic>{
       'billingItems': billingItems.toJsonList(),
       'discount': discount,
+      'signatureBase64': signatureBase64,
+      'payments': payments.toJsonList(),
     };
-    if (signatureBase64 != null && signatureBase64.isNotEmpty) {
-      payload['signatureBase64'] = signatureBase64;
-    }
     if (notes != null && notes.isNotEmpty) payload['notes'] = notes;
 
     final res = await _dio.post('/v1/orders/$orderId/finish', data: payload);
+    return OrderModel.fromMap(_asMap(res.data));
+  }
+
+  @override
+  Future<OrderModel> reschedule({
+    required String orderId,
+    required DateTime scheduledAt,
+    String? notes,
+  }) async {
+    final payload = <String, dynamic>{
+      'scheduledAt': scheduledAt.toUtc().toIso8601String(),
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+    };
+
+    final res = await _dio.post(
+      '/v1/orders/$orderId/reschedule',
+      data: payload,
+    );
     return OrderModel.fromMap(_asMap(res.data));
   }
 
@@ -146,10 +189,25 @@ class OrdersRepositoryImpl implements OrdersRepository {
     List<OrderMaterialInput> materials,
   ) async {
     if (materials.isEmpty) return;
-    await _dio.post(
-      '/v1/orders/$orderId/materials/reserve',
-      data: {'materials': materials.toJsonList()},
-    );
+    Future<void> send(bool includeMetadata) async {
+      await _dio.post(
+        '/v1/orders/$orderId/materials/reserve',
+        data: {
+          'materials': materials.toJsonList(includeMetadata: includeMetadata),
+        },
+      );
+    }
+
+    try {
+      await send(true);
+    } on dio.DioException catch (error) {
+      final shouldRetry = _isMaterialNameValidationError(error);
+      if (shouldRetry) {
+        await send(false);
+        return;
+      }
+      rethrow;
+    }
   }
 
   @override
@@ -158,10 +216,25 @@ class OrdersRepositoryImpl implements OrdersRepository {
     List<OrderMaterialInput> materials,
   ) async {
     if (materials.isEmpty) return;
-    await _dio.post(
-      '/v1/orders/$orderId/materials/deduct',
-      data: {'materials': materials.toJsonList()},
-    );
+    Future<void> send(bool includeMetadata) async {
+      await _dio.post(
+        '/v1/orders/$orderId/materials/deduct',
+        data: {
+          'materials': materials.toJsonList(includeMetadata: includeMetadata),
+        },
+      );
+    }
+
+    try {
+      await send(true);
+    } on dio.DioException catch (error) {
+      final shouldRetry = _isMaterialNameValidationError(error);
+      if (shouldRetry) {
+        await send(false);
+        return;
+      }
+      rethrow;
+    }
   }
 
   @override
@@ -211,6 +284,38 @@ class OrdersRepositoryImpl implements OrdersRepository {
   String pdfUrl(String orderId, {String type = 'report'}) {
     final base = _dio.options.baseUrl;
     return '$base/v1/orders/$orderId/pdf?type=$type';
+  }
+
+  @override
+  Future<void> delete(String orderId) => _dio.delete('/v1/orders/$orderId');
+
+  bool _isMaterialNameValidationError(dio.DioException error) {
+    final status = error.response?.statusCode ?? 0;
+    if (status != 400 && status != 422) return false;
+    return _containsMaterialNameFlag(error.response?.data);
+  }
+
+  bool _containsMaterialNameFlag(dynamic source) {
+    if (source == null) return false;
+    if (source is String) {
+      final normalized = source.toLowerCase();
+      return normalized.contains('itemname') ||
+          normalized.contains('material item name') ||
+          normalized.contains('property name should not exist');
+    }
+    if (source is Map) {
+      for (final value in source.values) {
+        if (_containsMaterialNameFlag(value)) return true;
+      }
+      return false;
+    }
+    if (source is Iterable) {
+      for (final value in source) {
+        if (_containsMaterialNameFlag(value)) return true;
+      }
+      return false;
+    }
+    return _containsMaterialNameFlag(source.toString());
   }
 
   Map<String, dynamic> _asMap(dynamic data) {

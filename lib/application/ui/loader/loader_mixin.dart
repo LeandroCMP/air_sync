@@ -1,6 +1,5 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:loading_animation_widget/loading_animation_widget.dart';
 
 // Overlay global de loading com lógica robusta contra corridas de estado.
 class _GlobalLoaderController {
@@ -72,11 +71,19 @@ mixin LoaderMixin on GetxController {
           '/equipments',
           '/fleet',
           '/orders',
+          '/OrdersPage',
           '/purchases',
           '/inventory',
           '/users',
+          '/login',
+          '/OrderDetailPage',
+          '/OrderCreatePage',
+          'OrderDetailPage',
+          'OrderCreatePage',
+          'OrdersPage',
         };
-        if (inlineRoutes.contains(Get.currentRoute)) {
+        final currentRoute = Get.currentRoute;
+        if (currentRoute.isEmpty || inlineRoutes.contains(currentRoute)) {
           _GlobalLoaderController.incrementOnly();
         } else {
           _GlobalLoaderController.open();

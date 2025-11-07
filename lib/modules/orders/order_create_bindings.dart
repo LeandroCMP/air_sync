@@ -16,13 +16,24 @@ import 'package:air_sync/services/locations/locations_service.dart';
 import 'package:air_sync/services/locations/locations_service_impl.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:air_sync/services/inventory/inventory_service_impl.dart';
+import 'package:air_sync/repositories/users/users_repository.dart';
+import 'package:air_sync/repositories/users/users_repository_impl.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:air_sync/services/orders/orders_service_impl.dart';
+import 'package:air_sync/services/orders/order_label_service.dart';
+import 'package:air_sync/models/order_draft_model.dart';
+import 'package:air_sync/services/orders/order_draft_storage.dart';
+import 'package:air_sync/services/users/users_service.dart';
+import 'package:air_sync/services/users/users_service_impl.dart';
 import 'package:get/get.dart';
 
 import 'order_create_controller.dart';
 
 class OrderCreateBindings implements Bindings {
+  OrderCreateBindings({this.initialDraft});
+
+  final OrderDraftModel? initialDraft;
+
   @override
   void dependencies() {
     if (!Get.isRegistered<OrdersRepository>()) {
@@ -84,6 +95,32 @@ class OrderCreateBindings implements Bindings {
       );
     }
 
+    if (!Get.isRegistered<UsersRepository>()) {
+      Get.lazyPut<UsersRepository>(() => UsersRepositoryImpl(), fenix: true);
+    }
+    if (!Get.isRegistered<UsersService>()) {
+      Get.lazyPut<UsersService>(
+        () => UsersServiceImpl(repository: Get.find()),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<OrderLabelService>()) {
+      Get.lazyPut<OrderLabelService>(
+        () => OrderLabelService(
+          clientService: Get.find(),
+          locationsService: Get.find(),
+          equipmentsService: Get.find(),
+          inventoryService: Get.find(),
+        ),
+        fenix: true,
+      );
+    }
+
+    if (!Get.isRegistered<OrderDraftStorage>()) {
+      Get.lazyPut<OrderDraftStorage>(OrderDraftStorage.new, fenix: true);
+    }
+
     Get.put(
       OrderCreateController(
         ordersService: Get.find(),
@@ -91,6 +128,10 @@ class OrderCreateBindings implements Bindings {
         locationsService: Get.find(),
         equipmentsService: Get.find(),
         inventoryService: Get.find(),
+        labelService: Get.find(),
+        usersService: Get.find(),
+        draftStorage: Get.find(),
+        initialDraft: initialDraft,
       ),
     );
   }

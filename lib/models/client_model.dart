@@ -7,11 +7,11 @@ DateTime? _parseDate(dynamic value) {
   if (value is String) {
     final text = value.trim();
     if (text.isEmpty) return null;
-    try {
-      return DateTime.parse(text).toUtc();
-    } catch (_) {
-      return null;
+    final parsed = DateTime.tryParse(text);
+    if (parsed != null) {
+      return parsed.toUtc();
     }
+    return null;
   }
   return null;
 }
