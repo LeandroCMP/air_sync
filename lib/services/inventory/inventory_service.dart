@@ -1,4 +1,6 @@
+import 'package:air_sync/models/inventory_category_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
+import 'package:air_sync/models/inventory_rebalance_model.dart';
 
 abstract class InventoryService {
   Future<InventoryItemModel> registerItem({
@@ -11,6 +13,9 @@ abstract class InventoryService {
     String? supplierId,
     double? avgCost,
     double? sellPrice,
+    String? categoryId,
+    double? markupPercent,
+    String? pricingMode,
   });
   Future<List<InventoryItemModel>> getItems({
     String? userId,
@@ -37,6 +42,7 @@ abstract class InventoryService {
   });
   Future<InventoryItemModel> getItem(String id);
   Future<void> patchItem(String id, Map<String, dynamic> changes);
+  Future<List<InventoryCostHistoryEntry>> getCostHistory(String id);
   Future<List<StockLevelModel>> getStockLevels({
     String? itemId,
     String? locationId,
@@ -65,4 +71,22 @@ abstract class InventoryService {
     DateTime? startDate,
     DateTime? endDate,
   });
+
+  Future<List<InventoryCategoryModel>> listCategories({String? search});
+  Future<InventoryCategoryModel> createCategory({
+    required String name,
+    required double markupPercent,
+    String? description,
+  });
+  Future<InventoryCategoryModel> updateCategory({
+    required String id,
+    String? name,
+    double? markupPercent,
+    String? description,
+  });
+  Future<void> deleteCategory(String id);
+
+  Future<List<InventoryRebalanceSuggestion>> rebalance({int days = 30});
+
+  Future<List<InventoryRebalanceSuggestion>> purchaseForecast({int days = 30});
 }

@@ -8,6 +8,8 @@ import 'package:air_sync/repositories/locations/locations_repository.dart';
 import 'package:air_sync/repositories/locations/locations_repository_impl.dart';
 import 'package:air_sync/repositories/orders/orders_repository.dart';
 import 'package:air_sync/repositories/orders/orders_repository_impl.dart';
+import 'package:air_sync/repositories/purchases/purchases_repository.dart';
+import 'package:air_sync/repositories/purchases/purchases_repository_impl.dart';
 import 'package:air_sync/services/client/client_service.dart';
 import 'package:air_sync/services/client/client_service_impl.dart';
 import 'package:air_sync/services/equipments/equipments_service.dart';
@@ -20,6 +22,8 @@ import 'package:air_sync/services/orders/order_label_service.dart';
 import 'package:air_sync/services/orders/order_draft_storage.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:air_sync/services/orders/orders_service_impl.dart';
+import 'package:air_sync/services/purchases/purchases_service.dart';
+import 'package:air_sync/services/purchases/purchases_service_impl.dart';
 import 'package:get/get.dart';
 import './orders_controller.dart';
 
@@ -27,7 +31,25 @@ class OrdersBindings implements Bindings {
   @override
   void dependencies() {
     Get.lazyPut<OrdersRepository>(() => OrdersRepositoryImpl());
-    Get.lazyPut<OrdersService>(() => OrdersServiceImpl(repo: Get.find()));
+    if (!Get.isRegistered<PurchasesRepository>()) {
+      Get.lazyPut<PurchasesRepository>(
+        () => PurchasesRepositoryImpl(),
+        fenix: true,
+      );
+    }
+    if (!Get.isRegistered<PurchasesService>()) {
+      Get.lazyPut<PurchasesService>(
+        () => PurchasesServiceImpl(repo: Get.find()),
+        fenix: true,
+      );
+    }
+    Get.lazyPut<OrdersService>(
+      () => OrdersServiceImpl(
+        repo: Get.find(),
+        purchasesService:
+            Get.isRegistered<PurchasesService>() ? Get.find<PurchasesService>() : null,
+      ),
+    );
     if (!Get.isRegistered<OrderDraftStorage>()) {
       Get.lazyPut<OrderDraftStorage>(OrderDraftStorage.new, fenix: true);
     }

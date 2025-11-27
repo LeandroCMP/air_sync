@@ -1,9 +1,9 @@
 import 'package:air_sync/models/equipment_model.dart';
-import 'package:air_sync/models/maintenance_model.dart';
 
 abstract class EquipmentsRepository {
   Future<List<EquipmentModel>> listByClient(String clientId);
   Future<List<EquipmentModel>> listBy(String clientId, {String? locationId});
+
   Future<EquipmentModel> create({
     required String clientId,
     required String locationId,
@@ -16,6 +16,7 @@ abstract class EquipmentsRepository {
     String? serial,
     String? notes,
   });
+
   Future<EquipmentModel> update({
     required String id,
     String? locationId,
@@ -29,6 +30,7 @@ abstract class EquipmentsRepository {
     String? notes,
     bool includeNotes = false,
   });
+
   Future<void> delete(String id);
 
   // Manutenção
@@ -42,6 +44,7 @@ abstract class EquipmentsRepository {
     String? toClientId,
     String? notes,
   });
+
   Future<void> replace(
     String id, {
     required Map<String, dynamic> newEquipment,
@@ -49,4 +52,6 @@ abstract class EquipmentsRepository {
   });
 
   // Relatório PDF (gera URL para abrir no navegador)
+  String reportUrl(String id, {String? newOwner});
 }
+

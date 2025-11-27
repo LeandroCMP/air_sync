@@ -13,8 +13,15 @@ class PurchasesServiceImpl implements PurchasesService {
     String status = 'ordered',
     double? freight,
     String? notes,
-  }) =>
-      _repo.create(supplierId: supplierId, items: items, status: status, freight: freight, notes: notes);
+    DateTime? paymentDueDate,
+  }) => _repo.create(
+    supplierId: supplierId,
+    items: items,
+    status: status,
+    freight: freight,
+    notes: notes,
+    paymentDueDate: paymentDueDate,
+  );
 
   @override
   Future<List<PurchaseModel>> list() => _repo.list();
@@ -31,12 +38,30 @@ class PurchasesServiceImpl implements PurchasesService {
     String? status,
     double? freight,
     String? notes,
+    DateTime? paymentDueDate,
   }) => _repo.update(
-        id: id,
-        supplierId: supplierId,
-        items: items,
-        status: status,
-        freight: freight,
-        notes: notes,
-      );
+    id: id,
+    supplierId: supplierId,
+    items: items,
+    status: status,
+    freight: freight,
+    notes: notes,
+    paymentDueDate: paymentDueDate,
+  );
+
+  @override
+  Future<PurchaseModel> cancel({required String id, String? reason}) =>
+      _repo.cancel(id: id, reason: reason);
+
+  @override
+  Future<PurchaseModel> submit(String id, {String? notes}) =>
+      _repo.submit(id, notes: notes);
+
+  @override
+  Future<PurchaseModel> approve(String id, {String? notes}) =>
+      _repo.approve(id, notes: notes);
+
+  @override
+  Future<PurchaseModel> markAsOrdered(String id, {String? externalId}) =>
+      _repo.markAsOrdered(id, externalId: externalId);
 }

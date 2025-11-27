@@ -25,6 +25,8 @@ class OrderModel {
   final String? clientName;
   final String? locationLabel;
   final String? equipmentLabel;
+  final String? costCenterId;
+  final String? costCenterName;
   final List<OrderPaymentEntry> payments;
   final double paymentGrossTotal;
   final double paymentFeeTotal;
@@ -54,6 +56,8 @@ class OrderModel {
     this.clientName,
     this.locationLabel,
     this.equipmentLabel,
+    this.costCenterId,
+    this.costCenterName,
     this.payments = const [],
     this.paymentGrossTotal = 0,
     this.paymentFeeTotal = 0,
@@ -72,6 +76,13 @@ class OrderModel {
     final note = (notes ?? '').toLowerCase().trim();
     return note.startsWith('[rascunho');
   }
+
+  double get materialsCostTotal => materials.fold<double>(
+    0,
+    (sum, item) => sum + (item.unitCost ?? 0) * item.qty.toDouble(),
+  );
+
+  double get estimatedMargin => billing.total.toDouble() - materialsCostTotal;
 
   static String _normalizeTimezone(String input) {
     final tzMatch = RegExp(r'([+-]\d{2})(\d{2})$').firstMatch(input);
@@ -272,6 +283,15 @@ class OrderModel {
       equipmentLabel = _string(map, ['equipmentName', 'equipmentLabel']);
     }
 
+    final costCenterId = _string(map, ['costCenterId', 'cost_center_id']);
+    String? costCenterName =
+        _string(map, ['costCenterName', 'costCenterLabel', 'cost_center_name']);
+    final costCenterMap = map['costCenter'];
+    if (costCenterName == null && costCenterMap is Map) {
+      costCenterName =
+          _string(costCenterMap, ['name']) ?? _string(costCenterMap, ['label']);
+    }
+
     return OrderModel(
       id: id ?? '',
       clientId: clientId,
@@ -295,6 +315,8 @@ class OrderModel {
       clientName: clientName,
       locationLabel: locationLabel,
       equipmentLabel: equipmentLabel,
+      costCenterId: costCenterId,
+      costCenterName: costCenterName,
       payments: payments,
       paymentGrossTotal: paymentGrossTotal,
       paymentFeeTotal: paymentFeeTotal,
@@ -320,6 +342,8 @@ class OrderModel {
     String? clientName,
     String? locationLabel,
     String? equipmentLabel,
+    String? costCenterId,
+    String? costCenterName,
     List<OrderPaymentEntry>? payments,
     double? paymentGrossTotal,
     double? paymentFeeTotal,
@@ -349,6 +373,8 @@ class OrderModel {
       clientName: clientName ?? this.clientName,
       locationLabel: locationLabel ?? this.locationLabel,
       equipmentLabel: equipmentLabel ?? this.equipmentLabel,
+      costCenterId: costCenterId ?? this.costCenterId,
+      costCenterName: costCenterName ?? this.costCenterName,
       payments: payments ?? this.payments,
       paymentGrossTotal: paymentGrossTotal ?? this.paymentGrossTotal,
       paymentFeeTotal: paymentFeeTotal ?? this.paymentFeeTotal,
@@ -399,6 +425,7 @@ class OrderMaterialItem {
   final String? itemName;
   final String? description;
   final double? unitPrice;
+  final double? unitCost;
 
   OrderMaterialItem({
     required this.itemId,
@@ -408,6 +435,7 @@ class OrderMaterialItem {
     this.itemName,
     this.description,
     this.unitPrice,
+    this.unitCost,
   });
 
   factory OrderMaterialItem.fromMap(Map<String, dynamic> map) {
@@ -427,13 +455,25 @@ class OrderMaterialItem {
         'description',
         'itemDescription',
       ]),
-      description: _string(map, ['description', 'itemDescription']) ??
+      description:
+          _string(map, ['description', 'itemDescription']) ??
           _string(map, ['itemName', 'name']),
       unitPrice: _parseNullableDouble(map['unitPrice'] ?? map['price']),
+      unitCost: _parseNullableDouble(
+        map['unitCost'] ?? map['cost'] ?? map['avgCost'],
+      ),
     );
   }
 
-  Map<String, dynamic> toJson() => {'itemId': itemId, 'qty': qty};
+  Map<String, dynamic> toJson() => {
+    'itemId': itemId,
+    'qty': qty,
+    if (unitCost != null) 'unitCost': unitCost,
+    if (itemName != null) 'itemName': itemName,
+    if (description != null) 'description': description,
+  };
+
+  double get lineCost => (unitCost ?? 0) * qty.toDouble();
 
   OrderMaterialItem copyWith({
     String? itemId,
@@ -443,6 +483,7 @@ class OrderMaterialItem {
     String? itemName,
     String? description,
     double? unitPrice,
+    double? unitCost,
   }) {
     return OrderMaterialItem(
       itemId: itemId ?? this.itemId,
@@ -452,6 +493,7 @@ class OrderMaterialItem {
       itemName: itemName ?? this.itemName,
       description: description ?? this.description,
       unitPrice: unitPrice ?? this.unitPrice,
+      unitCost: unitCost ?? this.unitCost,
     );
   }
 }
@@ -643,19 +685,20 @@ class OrderMaterialInput {
   final num qty;
   final String? itemName;
   final String? description;
+  final double? unitPrice;
+  final double? unitCost;
 
   OrderMaterialInput({
     required this.itemId,
     required this.qty,
     this.itemName,
     this.description,
+    this.unitPrice,
+    this.unitCost,
   });
 
   Map<String, dynamic> toJson({bool includeMetadata = true}) {
-    final map = <String, dynamic>{
-      'itemId': itemId,
-      'qty': qty,
-    };
+    final map = <String, dynamic>{'itemId': itemId, 'qty': qty};
     if (includeMetadata) {
       if (itemName != null && itemName!.trim().isNotEmpty) {
         map['itemName'] = itemName!.trim();
@@ -663,6 +706,12 @@ class OrderMaterialInput {
       if (description != null && description!.trim().isNotEmpty) {
         map['description'] = description!.trim();
       }
+    }
+    if (unitPrice != null) {
+      map['unitPrice'] = unitPrice;
+    }
+    if (unitCost != null) {
+      map['unitCost'] = unitCost;
     }
     return map;
   }
@@ -695,9 +744,9 @@ extension OrderChecklistInputX on Iterable<OrderChecklistInput> {
 }
 
 extension OrderMaterialInputX on Iterable<OrderMaterialInput> {
-  List<Map<String, dynamic>> toJsonList({bool includeMetadata = true}) =>
-      map((e) => e.toJson(includeMetadata: includeMetadata))
-          .toList(growable: false);
+  List<Map<String, dynamic>> toJsonList({bool includeMetadata = true}) => map(
+    (e) => e.toJson(includeMetadata: includeMetadata),
+  ).toList(growable: false);
 }
 
 extension OrderBillingItemInputX on Iterable<OrderBillingItemInput> {

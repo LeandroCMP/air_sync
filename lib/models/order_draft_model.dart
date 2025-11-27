@@ -9,6 +9,7 @@ class OrderDraftMaterial {
     this.description,
     this.qty,
     this.unitPrice,
+    this.unitCost,
   });
 
   final String? itemId;
@@ -16,14 +17,16 @@ class OrderDraftMaterial {
   final String? description;
   final double? qty;
   final double? unitPrice;
+  final double? unitCost;
 
   Map<String, dynamic> toMap() => {
-        'itemId': itemId,
-        'itemName': itemName,
-        'description': description,
-        'qty': qty,
-        'unitPrice': unitPrice,
-      };
+    'itemId': itemId,
+    'itemName': itemName,
+    'description': description,
+    'qty': qty,
+    'unitPrice': unitPrice,
+    'unitCost': unitCost,
+  };
 
   factory OrderDraftMaterial.fromMap(Map<String, dynamic> map) {
     return OrderDraftMaterial(
@@ -33,6 +36,8 @@ class OrderDraftMaterial {
       qty: map['qty'] is num ? (map['qty'] as num).toDouble() : null,
       unitPrice:
           map['unitPrice'] is num ? (map['unitPrice'] as num).toDouble() : null,
+      unitCost:
+          map['unitCost'] is num ? (map['unitCost'] as num).toDouble() : null,
     );
   }
 }
@@ -51,11 +56,11 @@ class OrderDraftBillingItem {
   final double unitPrice;
 
   Map<String, dynamic> toMap() => {
-        'type': type,
-        'name': name,
-        'qty': qty,
-        'unitPrice': unitPrice,
-      };
+    'type': type,
+    'name': name,
+    'qty': qty,
+    'unitPrice': unitPrice,
+  };
 
   factory OrderDraftBillingItem.fromMap(Map<String, dynamic> map) {
     return OrderDraftBillingItem(
@@ -67,12 +72,8 @@ class OrderDraftBillingItem {
     );
   }
 
-  OrderBillingItem toBillingItem() => OrderBillingItem(
-        type: type,
-        name: name,
-        qty: qty,
-        unitPrice: unitPrice,
-      );
+  OrderBillingItem toBillingItem() =>
+      OrderBillingItem(type: type, name: name, qty: qty, unitPrice: unitPrice);
 }
 
 class OrderDraftModel {
@@ -86,6 +87,7 @@ class OrderDraftModel {
     this.clientName,
     this.locationLabel,
     this.equipmentLabel,
+    this.costCenterId,
     this.scheduledAt,
     this.technicianIds = const [],
     this.checklist = const [],
@@ -104,6 +106,7 @@ class OrderDraftModel {
   final String? clientName;
   final String? locationLabel;
   final String? equipmentLabel;
+  final String? costCenterId;
   final DateTime? scheduledAt;
   final List<String> technicianIds;
   final List<String> checklist;
@@ -116,32 +119,35 @@ class OrderDraftModel {
       'draft:${DateTime.now().microsecondsSinceEpoch}';
 
   Map<String, dynamic> toMap() => {
-        'id': id,
-        'createdAt': createdAt.toIso8601String(),
-        'updatedAt': updatedAt.toIso8601String(),
-        'clientId': clientId,
-        'locationId': locationId,
-        'equipmentId': equipmentId,
-        'clientName': clientName,
-        'locationLabel': locationLabel,
-        'equipmentLabel': equipmentLabel,
-        'scheduledAt': scheduledAt?.toIso8601String(),
-        'technicianIds': technicianIds,
-        'checklist': checklist,
-        'materials': materials.map((m) => m.toMap()).toList(),
-        'billingItems': billingItems.map((b) => b.toMap()).toList(),
-        'billingDiscount': billingDiscount,
-        'notes': notes,
-      };
+    'id': id,
+    'createdAt': createdAt.toIso8601String(),
+    'updatedAt': updatedAt.toIso8601String(),
+    'clientId': clientId,
+    'locationId': locationId,
+    'equipmentId': equipmentId,
+    'clientName': clientName,
+    'locationLabel': locationLabel,
+    'equipmentLabel': equipmentLabel,
+    'costCenterId': costCenterId,
+    'scheduledAt': scheduledAt?.toIso8601String(),
+    'technicianIds': technicianIds,
+    'checklist': checklist,
+    'materials': materials.map((m) => m.toMap()).toList(),
+    'billingItems': billingItems.map((b) => b.toMap()).toList(),
+    'billingDiscount': billingDiscount,
+    'notes': notes,
+  };
 
   String toJson() => jsonEncode(toMap());
 
   factory OrderDraftModel.fromMap(Map<String, dynamic> map) {
     return OrderDraftModel(
       id: map['id']?.toString() ?? generateId(),
-      createdAt: DateTime.tryParse(map['createdAt']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(map['createdAt']?.toString() ?? '') ??
           DateTime.now(),
-      updatedAt: DateTime.tryParse(map['updatedAt']?.toString() ?? '') ??
+      updatedAt:
+          DateTime.tryParse(map['updatedAt']?.toString() ?? '') ??
           DateTime.now(),
       clientId: map['clientId'] as String?,
       locationId: map['locationId'] as String?,
@@ -149,26 +155,31 @@ class OrderDraftModel {
       clientName: map['clientName'] as String?,
       locationLabel: map['locationLabel'] as String?,
       equipmentLabel: map['equipmentLabel'] as String?,
-      scheduledAt: map['scheduledAt'] == null
-          ? null
-          : DateTime.tryParse(map['scheduledAt'].toString()),
-      technicianIds: _list(map['technicianIds']).map((e) => e.toString()).toList(),
+      costCenterId: map['costCenterId'] as String?,
+      scheduledAt:
+          map['scheduledAt'] == null
+              ? null
+              : DateTime.tryParse(map['scheduledAt'].toString()),
+      technicianIds:
+          _list(map['technicianIds']).map((e) => e.toString()).toList(),
       checklist: _list(map['checklist']).map((e) => e.toString()).toList(),
-      materials: _list(map['materials'])
-          .whereType<Map>()
-          .map((e) => OrderDraftMaterial.fromMap(Map<String, dynamic>.from(e)))
-          .toList(),
-      billingItems: _list(map['billingItems'])
-          .whereType<Map>()
-          .map(
-            (e) => OrderDraftBillingItem.fromMap(
-              Map<String, dynamic>.from(e),
-            ),
-          )
-          .toList(),
-      billingDiscount: map['billingDiscount'] is num
-          ? map['billingDiscount'] as num
-          : 0,
+      materials:
+          _list(map['materials'])
+              .whereType<Map>()
+              .map(
+                (e) => OrderDraftMaterial.fromMap(Map<String, dynamic>.from(e)),
+              )
+              .toList(),
+      billingItems:
+          _list(map['billingItems'])
+              .whereType<Map>()
+              .map(
+                (e) =>
+                    OrderDraftBillingItem.fromMap(Map<String, dynamic>.from(e)),
+              )
+              .toList(),
+      billingDiscount:
+          map['billingDiscount'] is num ? map['billingDiscount'] as num : 0,
       notes: map['notes'] as String?,
     );
   }
@@ -177,9 +188,12 @@ class OrderDraftModel {
       OrderDraftModel.fromMap(jsonDecode(source) as Map<String, dynamic>);
 
   OrderModel toOrderModel() {
-    final billingItemsList = billingItems.map((e) => e.toBillingItem()).toList();
-    final subtotal =
-        billingItemsList.fold<num>(0, (sum, item) => sum + item.lineTotal);
+    final billingItemsList =
+        billingItems.map((e) => e.toBillingItem()).toList();
+    final subtotal = billingItemsList.fold<num>(
+      0,
+      (sum, item) => sum + item.lineTotal,
+    );
     final billing = OrderBilling(
       items: billingItemsList,
       subtotal: subtotal,
@@ -187,19 +201,20 @@ class OrderDraftModel {
       total: subtotal - billingDiscount,
       status: 'pending',
     );
-    final materialsList = materials
-        .map(
-          (m) => OrderMaterialItem(
-            itemId: (m.itemId ?? '').isEmpty ? 'draft_item' : m.itemId!,
-            qty: m.qty ?? 0,
-            reserved: false,
-            deductedAt: null,
-            itemName: m.itemName,
-            description: m.description ?? m.itemName,
-            unitPrice: m.unitPrice,
-          ),
-        )
-        .toList();
+    final materialsList =
+        materials
+            .map(
+              (m) => OrderMaterialItem(
+                itemId: (m.itemId ?? '').isEmpty ? 'draft_item' : m.itemId!,
+                qty: m.qty ?? 0,
+                reserved: false,
+                deductedAt: null,
+                itemName: m.itemName,
+                description: m.description ?? m.itemName,
+                unitPrice: m.unitPrice,
+              ),
+            )
+            .toList();
     return OrderModel(
       id: id,
       clientId: clientId ?? '',
@@ -210,7 +225,8 @@ class OrderDraftModel {
       startedAt: null,
       finishedAt: null,
       technicianIds: technicianIds,
-      checklist: checklist.map((item) => OrderChecklistItem(item: item)).toList(),
+      checklist:
+          checklist.map((item) => OrderChecklistItem(item: item)).toList(),
       materials: materialsList,
       billing: billing,
       timesheet: OrderTimesheet.empty(),
@@ -223,6 +239,7 @@ class OrderDraftModel {
       clientName: clientName,
       locationLabel: locationLabel,
       equipmentLabel: equipmentLabel,
+      costCenterId: costCenterId,
     );
   }
 
@@ -238,30 +255,34 @@ class OrderDraftModel {
       clientName: source.clientName,
       locationLabel: source.locationLabel,
       equipmentLabel: source.equipmentLabel,
+      costCenterId: source.costCenterId,
       scheduledAt: null,
       technicianIds: List<String>.from(source.technicianIds),
       checklist: source.checklist.map((item) => item.item).toList(),
-      materials: source.materials
-          .map(
-            (item) => OrderDraftMaterial(
-              itemId: item.itemId.isEmpty ? null : item.itemId,
-              itemName: item.itemName,
-              description: item.description ?? item.itemName,
-              qty: item.qty.toDouble(),
-              unitPrice: item.unitPrice,
-            ),
-          )
-          .toList(),
-      billingItems: source.billing.items
-          .map(
-            (item) => OrderDraftBillingItem(
-              type: item.type,
-              name: item.name,
-              qty: item.qty.toDouble(),
-              unitPrice: item.unitPrice.toDouble(),
-            ),
-          )
-          .toList(),
+      materials:
+          source.materials
+              .map(
+                (item) => OrderDraftMaterial(
+                  itemId: item.itemId.isEmpty ? null : item.itemId,
+                  itemName: item.itemName,
+                  description: item.description ?? item.itemName,
+                  qty: item.qty.toDouble(),
+                  unitPrice: item.unitPrice,
+                  unitCost: item.unitCost,
+                ),
+              )
+              .toList(),
+      billingItems:
+          source.billing.items
+              .map(
+                (item) => OrderDraftBillingItem(
+                  type: item.type,
+                  name: item.name,
+                  qty: item.qty.toDouble(),
+                  unitPrice: item.unitPrice.toDouble(),
+                ),
+              )
+              .toList(),
       billingDiscount: source.billing.discount,
       notes: source.notes,
     );

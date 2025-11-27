@@ -13,9 +13,46 @@ class AuthServiceImpl implements AuthService {
       _authRepository.auth(email, password);
 
   @override
-  Future<void> logout() => _authRepository.logout();
+  Future<UserModel> fetchProfile() => _authRepository.me();
 
   @override
-  Future<void> resetPassword(String email) =>
-      _authRepository.resetPassword(email);
+  Future<UserModel> updateProfile({
+    String? name,
+    String? email,
+    String? phone,
+    String? document,
+  }) =>
+      _authRepository.updateProfile(
+        name: name,
+        email: email,
+        phone: phone,
+        document: document,
+      );
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) =>
+      _authRepository.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
+
+  @override
+  Future<void> requestPasswordReset(String email) =>
+      _authRepository.requestPasswordReset(email);
+
+  @override
+  Future<void> resetPasswordWithToken({
+    required String token,
+    required String newPassword,
+  }) =>
+      _authRepository.resetPasswordWithToken(
+        token: token,
+        newPassword: newPassword,
+      );
+
+  @override
+  Future<void> logout() => _authRepository.logout();
 }

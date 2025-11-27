@@ -105,7 +105,7 @@ Future<Uint8List> buildEquipmentReportPdf({
         borderRadius: pw.BorderRadius.circular(8),
         border: pw.Border.all(color: borderColor, width: 0.4),
       ),
-      child: pw.Table.fromTextArray(
+      child: pw.TableHelper.fromTextArray(
         cellAlignment: pw.Alignment.centerLeft,
         headerStyle: pw.TextStyle(
           font: boldFont,

@@ -58,7 +58,9 @@ class _OrderUpdateSheet extends StatelessWidget {
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
-                  color: context.theme.dialogBackgroundColor,
+                  color:
+                      Theme.of(context).dialogTheme.backgroundColor ??
+                      Theme.of(context).colorScheme.surface,
                   borderRadius: const BorderRadius.vertical(
                     top: Radius.circular(20),
                   ),
@@ -261,6 +263,7 @@ class OrderUpdateSheetController extends GetxController {
       lastDate: DateTime(now.year + 2),
     );
     if (selectedDate == null) return;
+    if (!context.mounted) return;
     final selectedTime = await showTimePicker(
       context: context,
       initialTime: TimeOfDay.fromDateTime(initial),

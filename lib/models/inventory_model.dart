@@ -269,6 +269,38 @@ DateTime? _parseDate(dynamic value) {
   return DateTime.tryParse(text);
 }
 
+class InventoryCostHistoryEntry {
+  final double cost;
+  final DateTime at;
+  final String? source;
+
+  const InventoryCostHistoryEntry({
+    required this.cost,
+    required this.at,
+    this.source,
+  });
+
+  factory InventoryCostHistoryEntry.fromMap(Map<String, dynamic> map) {
+    double parseDouble(dynamic value) {
+      if (value == null) return 0;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value.toString()) ?? 0;
+    }
+
+    return InventoryCostHistoryEntry(
+      cost: parseDouble(map['cost']),
+      at: _parseMovementDate(map['at'] ?? map['date']),
+      source: map['source']?.toString(),
+    );
+  }
+
+  Map<String, dynamic> toMap() => {
+        'cost': cost,
+        'at': at.toIso8601String(),
+        if (source != null) 'source': source,
+      };
+}
+
 class InventoryItemModel {
   final String id;
   final String userId;
@@ -283,6 +315,14 @@ class InventoryItemModel {
   final String? supplierId;
   final double? avgCost;
   final double? sellPrice;
+  final String? categoryId;
+  final double? markupPercent;
+  final String pricingMode; // manual | category
+  final double? suggestedSellPrice;
+  final double? priceDeviationPercent;
+  final double? priceDeviationValue;
+  final double? lastPurchaseCost;
+  final List<InventoryCostHistoryEntry> costHistory;
   final DateTime? createdAt;
   final DateTime? updatedAt;
   final DateTime? deletedAt;
@@ -308,6 +348,14 @@ class InventoryItemModel {
     this.supplierId,
     this.avgCost,
     this.sellPrice,
+    this.categoryId,
+    this.markupPercent,
+    this.pricingMode = 'manual',
+    this.suggestedSellPrice,
+    this.priceDeviationPercent,
+    this.priceDeviationValue,
+    this.lastPurchaseCost,
+    this.costHistory = const [],
     this.createdAt,
     this.updatedAt,
     this.deletedAt,
@@ -331,6 +379,19 @@ class InventoryItemModel {
         'supplierId': supplierId,
       if (avgCost != null) 'avgCost': avgCost,
       if (sellPrice != null) 'sellPrice': sellPrice,
+      if (categoryId != null && categoryId!.isNotEmpty)
+        'categoryId': categoryId,
+      if (markupPercent != null) 'markupPercent': markupPercent,
+      'pricingMode': pricingMode,
+      if (suggestedSellPrice != null)
+        'suggestedSellPrice': suggestedSellPrice,
+      if (priceDeviationPercent != null)
+        'priceDeviationPercent': priceDeviationPercent,
+      if (priceDeviationValue != null)
+        'priceDeviationValue': priceDeviationValue,
+      if (lastPurchaseCost != null) 'lastPurchaseCost': lastPurchaseCost,
+      if (costHistory.isNotEmpty)
+        'costHistory': costHistory.map((e) => e.toMap()).toList(),
       if (createdAt != null) 'createdAt': createdAt!.toIso8601String(),
       if (updatedAt != null) 'updatedAt': updatedAt!.toIso8601String(),
       if (deletedAt != null) 'deletedAt': deletedAt!.toIso8601String(),
@@ -349,7 +410,16 @@ class InventoryItemModel {
     final maxQtyRaw = map['maxQty'] ?? map['maxQuantity'];
     final avgCostRaw = map['avgCost'] ?? map['averageCost'];
     final sellPriceRaw = map['sellPrice'] ?? map['price'];
-    List<StockMovementModel> _parseMovements(dynamic source) {
+    final categoryIdRaw = map['categoryId'];
+    final markupRaw = map['markupPercent'] ?? map['markup'];
+    final pricingModeRaw = (map['pricingMode'] ?? 'manual').toString();
+    final suggestedSellPriceRaw = map['suggestedSellPrice'];
+    final priceDeviationPercentRaw =
+        map['priceDeviationPercent'] ?? map['priceDeviationPct'];
+    final priceDeviationValueRaw = map['priceDeviationValue'];
+    final lastPurchaseCostRaw =
+        map['lastPurchaseCost'] ?? map['lastCost'] ?? map['recentCost'];
+    List<StockMovementModel> parseMovements(dynamic source) {
       if (source == null) return const [];
       final list = <StockMovementModel>[];
       if (source is List) {
@@ -368,7 +438,7 @@ class InventoryItemModel {
             source['data'] ??
             source['results'] ??
             source['movements'];
-        list.addAll(_parseMovements(nested));
+        list.addAll(parseMovements(nested));
       }
       return list;
     }
@@ -378,6 +448,25 @@ class InventoryItemModel {
         map['movementHistory'] ??
         map['history'] ??
         map['stockMovements'];
+    final costHistoryRaw =
+        map['costHistory'] ??
+        map['cost_history'] ??
+        map['costHistoryEntries'] ??
+        map['costHistoryList'];
+    final parsedCostHistory = <InventoryCostHistoryEntry>[];
+    if (costHistoryRaw is List) {
+      for (final entry in costHistoryRaw) {
+        if (entry is Map) {
+          try {
+            parsedCostHistory.add(
+              InventoryCostHistoryEntry.fromMap(
+                Map<String, dynamic>.from(entry),
+              ),
+            );
+          } catch (_) {}
+        }
+      }
+    }
     final rawEntries = (map['entries'] as List<dynamic>? ?? []);
     final parsedEntries =
         rawEntries
@@ -385,7 +474,7 @@ class InventoryItemModel {
               (e) => InventoryEntryModel.fromMap(Map<String, dynamic>.from(e)),
             )
             .toList();
-    final apiMovements = _parseMovements(movementsRaw);
+    final apiMovements = parseMovements(movementsRaw);
     final fallbackMovements =
         apiMovements.isNotEmpty
             ? apiMovements
@@ -412,6 +501,17 @@ class InventoryItemModel {
       supplierId: _normalizeString(supplierIdRaw),
       avgCost: _parseNullableDouble(avgCostRaw),
       sellPrice: _parseNullableDouble(sellPriceRaw),
+      categoryId: _normalizeString(categoryIdRaw),
+      markupPercent: _parseNullableDouble(markupRaw),
+      pricingMode: pricingModeRaw.isEmpty
+          ? 'manual'
+          : pricingModeRaw.toLowerCase(),
+      suggestedSellPrice: _parseNullableDouble(suggestedSellPriceRaw),
+      priceDeviationPercent:
+          _parseNullableDouble(priceDeviationPercentRaw),
+      priceDeviationValue: _parseNullableDouble(priceDeviationValueRaw),
+      lastPurchaseCost: _parseNullableDouble(lastPurchaseCostRaw),
+      costHistory: parsedCostHistory,
       createdAt: _parseDate(map['createdAt']),
       updatedAt: _parseDate(map['updatedAt']),
       deletedAt: _parseDate(map['deletedAt']),
@@ -434,6 +534,14 @@ class InventoryItemModel {
     String? supplierId,
     double? avgCost,
     double? sellPrice,
+    String? categoryId,
+    double? markupPercent,
+    String? pricingMode,
+    double? suggestedSellPrice,
+    double? priceDeviationPercent,
+    double? priceDeviationValue,
+    double? lastPurchaseCost,
+    List<InventoryCostHistoryEntry>? costHistory,
     DateTime? createdAt,
     DateTime? updatedAt,
     DateTime? deletedAt,
@@ -454,6 +562,15 @@ class InventoryItemModel {
       supplierId: supplierId ?? this.supplierId,
       avgCost: avgCost ?? this.avgCost,
       sellPrice: sellPrice ?? this.sellPrice,
+      categoryId: categoryId ?? this.categoryId,
+      markupPercent: markupPercent ?? this.markupPercent,
+      pricingMode: pricingMode ?? this.pricingMode,
+      suggestedSellPrice: suggestedSellPrice ?? this.suggestedSellPrice,
+      priceDeviationPercent:
+          priceDeviationPercent ?? this.priceDeviationPercent,
+      priceDeviationValue: priceDeviationValue ?? this.priceDeviationValue,
+      lastPurchaseCost: lastPurchaseCost ?? this.lastPurchaseCost,
+      costHistory: costHistory ?? this.costHistory,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
       deletedAt: deletedAt ?? this.deletedAt,

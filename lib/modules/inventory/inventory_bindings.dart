@@ -13,7 +13,6 @@ class InventoryBindings implements Bindings {
         Get.lazyPut<InventoryService>(
           () => InventoryServiceImpl(inventoryRepository: Get.find()));
         Get.put(InventoryController(
-          authServiceApplication: Get.find(), 
           inventoryService: Get.find()),
         );
     }

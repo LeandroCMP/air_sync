@@ -1,6 +1,7 @@
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/application/utils/formatters/cpf_cnpj_input_formatter.dart';
 import 'package:air_sync/application/utils/formatters/phone_input_formatter.dart';
+import 'package:air_sync/application/utils/formatters/upper_case_input_formatter.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -18,14 +19,6 @@ class ClientPage extends GetView<ClientController> {
         backgroundColor: context.themeDark,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Clientes', style: TextStyle(color: Colors.white)),
-        bottom: PreferredSize(
-          preferredSize: const Size.fromHeight(68),
-          child: Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 16),
-            child: _SearchField(controller: controller),
-          ),
-        ),
-        actions: const [_ClientFilterToggle()],
       ),
       floatingActionButton: FloatingActionButton.extended(
         backgroundColor: context.themeGreen,
@@ -33,192 +26,96 @@ class ClientPage extends GetView<ClientController> {
         label: const Text('Novo', style: TextStyle(color: Colors.white)),
         onPressed: () => showClientFormSheet(context, controller),
       ),
-      body: const _ClientList(),
-    );
-  }
-}
+      body: SafeArea(
+        child: Obx(() {
+          final isInitialLoading =
+              controller.isFetching.value && controller.clients.isEmpty;
+          if (isInitialLoading) {
+            return const Center(child: CircularProgressIndicator());
+          }
 
-class _ClientFilterToggle extends StatelessWidget {
-  const _ClientFilterToggle();
+          final summaryEntries = _buildClientSummaryEntries(controller);
+          final sections = _buildClientSections(controller);
+          final includeDeleted = controller.includeDeleted.value;
+          final isFetching = controller.isFetching.value;
+          final isLoadingMore = controller.isLoadingMore.value;
+          final hasSections = sections.isNotEmpty;
 
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final controller = Get.find<ClientController>();
-      final includeDeleted = controller.includeDeleted.value;
-      return IconButton(
-        tooltip:
-            includeDeleted ? 'Exibindo clientes inativos' : 'Ocultar inativos',
-        icon: Icon(
-          includeDeleted ? Icons.visibility : Icons.visibility_off,
-          color: Colors.white,
-        ),
-        onPressed: controller.toggleIncludeDeleted,
-      );
-    });
-  }
-}
-
-class _ClientList extends StatelessWidget {
-  const _ClientList();
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final controller = Get.find<ClientController>();
-      final items = controller.clients;
-      final isLoadingInitial =
-          controller.isFetching.value && controller.clients.isEmpty;
-
-      if (isLoadingInitial) {
-        return const Center(child: CircularProgressIndicator());
-      }
-
-      if (items.isEmpty) {
-        return RefreshIndicator(
-          onRefresh: controller.refreshClients,
-          child: ListView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+          return Column(
             children: [
-              const Icon(
-                Icons.people_alt_outlined,
-                size: 72,
-                color: Colors.white54,
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+                child: _ClientSearchField(controller: controller),
               ),
-              const SizedBox(height: 16),
-              const Text(
-                'Nenhum cliente encontrado',
-                textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 18, color: Colors.white),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                controller.includeDeleted.value
-                    ? 'Ajuste os filtros ou cadastre um novo cliente.'
-                    : 'Cadastre um novo cliente usando o botão abaixo.',
-                textAlign: TextAlign.center,
-                style: const TextStyle(color: Colors.white70),
-              ),
-              const SizedBox(height: 24),
-              ElevatedButton.icon(
-                onPressed: () => showClientFormSheet(context, controller),
-                icon: const Icon(Icons.add),
-                label: const Text('Cadastrar cliente'),
+              if (isFetching) const LinearProgressIndicator(minHeight: 2),
+              Expanded(
+                child: RefreshIndicator(
+                  onRefresh: controller.refreshClients,
+                  child: CustomScrollView(
+                    controller: controller.scrollController,
+                    physics: const BouncingScrollPhysics(
+                      parent: AlwaysScrollableScrollPhysics(),
+                    ),
+                    slivers: [
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+                          child: _ClientFilterPanel(controller: controller),
+                        ),
+                      ),
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 4, 16, 12),
+                          child: _ClientSummaryRow(
+                            entries: summaryEntries,
+                            selectedKey: controller.statusFilter.value,
+                            onSelect: controller.setStatusFilter,
+                          ),
+                        ),
+                      ),
+                      if (hasSections)
+                        SliverList(
+                          delegate: SliverChildListDelegate(sections),
+                        )
+                      else
+                        SliverFillRemaining(
+                          hasScrollBody: false,
+                          child: _EmptyClients(
+                            includeDeleted: includeDeleted,
+                            hasAnyClients: controller.clients.isNotEmpty,
+                            activeFilter: controller.statusFilter.value,
+                            hasSearch: controller.searchTerm.value.isNotEmpty,
+                            onResetFilters: () {
+                              if (controller.statusFilter.value != 'all') {
+                                controller.setStatusFilter('all');
+                              }
+                              if (controller.searchTerm.value.isNotEmpty) {
+                                controller.clearSearch();
+                              }
+                            },
+                            onCreate: () =>
+                                showClientFormSheet(context, controller),
+                          ),
+                        ),
+                      SliverToBoxAdapter(
+                        child:
+                            isLoadingMore
+                                ? const Padding(
+                                  padding: EdgeInsets.symmetric(vertical: 16),
+                                  child: Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                )
+                                : const SizedBox.shrink(),
+                      ),
+                      const SliverPadding(padding: EdgeInsets.only(bottom: 24)),
+                    ],
+                  ),
+                ),
               ),
             ],
-          ),
-        );
-      }
-
-      return Column(
-        children: [
-          const SizedBox(height: 8),
-          const _ClientSummary(),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: controller.refreshClients,
-              child: ListView.separated(
-                controller: controller.scrollController,
-                padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-                itemCount: items.length,
-                separatorBuilder: (_, __) => const SizedBox(height: 12),
-                itemBuilder: (context, index) {
-                  final client = items[index];
-                  return Obx(() {
-                    final isDeleting = controller.deletingIds.contains(
-                      client.id,
-                    );
-                    return _ClientCard(
-                      client: client,
-                      isDeleting: isDeleting,
-                      onTap:
-                          () =>
-                              Get.toNamed('/client/details', arguments: client),
-                      onEdit:
-                          () => showClientFormSheet(
-                            context,
-                            controller,
-                            client: client,
-                          ),
-                      onDelete:
-                          () => _confirmDeletion(context, controller, client),
-                    );
-                  });
-                },
-              ),
-            ),
-          ),
-          Obx(() {
-            if (!controller.isLoadingMore.value) {
-              return const SizedBox.shrink();
-            }
-            return const Padding(
-              padding: EdgeInsets.symmetric(vertical: 12),
-              child: CircularProgressIndicator(),
-            );
-          }),
-        ],
-      );
-    });
-  }
-}
-
-class _ClientSummary extends StatelessWidget {
-  const _ClientSummary();
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final controller = Get.find<ClientController>();
-      final includeDeleted = controller.includeDeleted.value;
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            FilterChip(
-              label: Text(
-                includeDeleted ? 'Exibindo inativos' : 'Somente ativos',
-              ),
-              selected: includeDeleted,
-              onSelected: (_) => controller.toggleIncludeDeleted(),
-            ),
-            const SizedBox(width: 12),
-            Chip(
-              avatar: const Icon(Icons.people, size: 18),
-              label: Text('${controller.clients.length} cliente(s)'),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-}
-
-class _SearchField extends StatelessWidget {
-  const _SearchField({required this.controller});
-
-  final ClientController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextField(
-      controller: controller.searchController,
-      onChanged: controller.onSearchChanged,
-      style: const TextStyle(color: Colors.white),
-      decoration: InputDecoration(
-        filled: true,
-        fillColor: context.themeLightGray,
-        hintText: 'Buscar por nome ou documento',
-        hintStyle: const TextStyle(color: Colors.white70),
-        prefixIcon: const Icon(Icons.search, color: Colors.white70),
-        suffixIcon: Obx(() {
-          if (controller.searchTerm.value.isEmpty) {
-            return const SizedBox.shrink();
-          }
-          return IconButton(
-            tooltip: 'Limpar busca',
-            icon: const Icon(Icons.clear, color: Colors.white70),
-            onPressed: controller.clearSearch,
           );
         }),
       ),
@@ -247,6 +144,30 @@ class _ClientCard extends StatelessWidget {
     final doc = client.docNumber?.trim();
     final primaryPhone = client.primaryPhone;
     final primaryEmail = client.primaryEmail;
+    final tagLabels =
+        client.tags
+            .map((tag) => tag.trim())
+            .where((tag) => tag.isNotEmpty)
+            .toList();
+    final badges = <Widget>[];
+    if (client.isDeleted) {
+      badges.add(
+        const _ClientBadge(
+          label: 'Inativo',
+          color: Colors.redAccent,
+          icon: Icons.pause_circle_outline,
+        ),
+      );
+    }
+    badges.addAll(
+      tagLabels.map(
+        (tag) => _ClientBadge(
+          label: tag,
+          color: theme.colorScheme.primary,
+          icon: Icons.label_important_outline,
+        ),
+      ),
+    );
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -258,6 +179,14 @@ class _ClientCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (badges.isNotEmpty) ...[
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  children: badges,
+                ),
+                const SizedBox(height: 12),
+              ],
               Row(
                 children: [
                   Expanded(
@@ -274,24 +203,6 @@ class _ClientCard extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            if (client.isDeleted)
-                              Container(
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                                decoration: BoxDecoration(
-                                  color: Colors.red.withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                child: const Text(
-                                  'Inativo',
-                                  style: TextStyle(
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ),
                           ],
                         ),
                         if (doc != null && doc.isNotEmpty) ...[
@@ -343,22 +254,6 @@ class _ClientCard extends StatelessWidget {
                 _InfoRow(icon: Icons.phone, value: primaryPhone),
               if (primaryEmail.isNotEmpty)
                 _InfoRow(icon: Icons.email_outlined, value: primaryEmail),
-              if (client.tags.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children:
-                      client.tags
-                          .map(
-                            (tag) => Chip(
-                              label: Text(tag),
-                              visualDensity: VisualDensity.compact,
-                            ),
-                          )
-                          .toList(),
-                ),
-              ],
               if (client.notes != null && client.notes!.trim().isNotEmpty) ...[
                 const SizedBox(height: 12),
                 Text(client.notes!, style: theme.textTheme.bodyMedium),
@@ -479,7 +374,8 @@ class _ClientForm extends StatelessWidget {
               const SizedBox(height: 16),
               TextFormField(
                 controller: controller.nameController,
-                textCapitalization: TextCapitalization.words,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: const [UpperCaseTextFormatter()],
                 decoration: const InputDecoration(labelText: 'Nome*'),
                 style: const TextStyle(color: Colors.white),
                 validator: (value) {
@@ -531,6 +427,8 @@ class _ClientForm extends StatelessWidget {
                 label: 'Etiquetas',
                 controller: controller.tagInputController,
                 items: controller.tags,
+                textCapitalization: TextCapitalization.characters,
+                formatter: const UpperCaseTextFormatter(),
                 onAdd: controller.addTag,
                 onRemove: controller.removeTag,
                 hint: 'vip, manutenção, etc.',
@@ -564,6 +462,7 @@ class _ClientForm extends StatelessWidget {
                           ? null
                           : () async {
                             final success = await controller.saveClient();
+                            if (!sheetContext.mounted) return;
                             if (success) {
                               if (Get.isBottomSheetOpen ?? false) {
                                 Get.back();
@@ -607,6 +506,7 @@ class _ListInputSection extends StatelessWidget {
     this.formatter,
     this.validator,
     this.allowDuplicates = true,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   final String label;
@@ -619,6 +519,7 @@ class _ListInputSection extends StatelessWidget {
   final TextInputFormatter? formatter;
   final String? Function(String?)? validator;
   final bool allowDuplicates;
+  final TextCapitalization textCapitalization;
 
   @override
   Widget build(BuildContext context) {
@@ -633,6 +534,7 @@ class _ListInputSection extends StatelessWidget {
               child: TextFormField(
                 controller: controller,
                 keyboardType: keyboardType,
+                textCapitalization: textCapitalization,
                 inputFormatters:
                     formatter != null ? <TextInputFormatter>[formatter!] : null,
                 decoration: InputDecoration(hintText: hint),
@@ -744,5 +646,456 @@ Future<void> _confirmDeletion(
 
   if (confirm == true) {
     await controller.deleteClient(client);
+  }
+}
+class _ClientFilterPanel extends StatelessWidget {
+  const _ClientFilterPanel({required this.controller});
+
+  final ClientController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final includeDeleted = controller.includeDeleted.value;
+      final tone = includeDeleted ? Colors.white : Colors.white70;
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.02),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+        ),
+        child: Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Visão da lista',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  includeDeleted
+                      ? 'Incluindo clientes inativos'
+                      : 'Somente clientes ativos',
+                  style: TextStyle(color: tone),
+                ),
+              ],
+            ),
+            const Spacer(),
+            Switch.adaptive(
+              value: includeDeleted,
+              activeColor: context.themeGreen,
+              onChanged: (_) => controller.toggleIncludeDeleted(),
+            ),
+          ],
+        ),
+      );
+    });
+  }
+}
+
+class _ClientBadge extends StatelessWidget {
+  const _ClientBadge({
+    required this.label,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final Color color;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClientSummaryRow extends StatelessWidget {
+  const _ClientSummaryRow({
+    required this.entries,
+    required this.selectedKey,
+    required this.onSelect,
+  });
+
+  final List<_ClientSummaryInfo> entries;
+  final String selectedKey;
+  final void Function(String key) onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 124,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: entries.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, index) {
+          final entry = entries[index];
+          final isSelected = selectedKey == entry.key;
+          final baseColor = entry.color;
+          final background = isSelected
+              ? Color.lerp(baseColor, Colors.black, 0.5)!
+              : Colors.white.withValues(alpha: 0.04);
+          final borderColor = isSelected
+              ? baseColor.withValues(alpha: 0.7)
+              : Colors.white.withValues(alpha: 0.05);
+          return SizedBox(
+            width: 150,
+            child: GestureDetector(
+              onTap: () => onSelect(entry.key),
+              child: AnimatedContainer(
+                duration: const Duration(milliseconds: 220),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                decoration: BoxDecoration(
+                  color: background,
+                  borderRadius: BorderRadius.circular(18),
+                  border: Border.all(color: borderColor),
+                  boxShadow: [
+                    BoxShadow(
+                      color: baseColor.withValues(alpha: 0.08),
+                      blurRadius: 16,
+                      offset: const Offset(0, 8),
+                    ),
+                  ],
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      width: 34,
+                      height: 34,
+                      decoration: BoxDecoration(
+                        color: baseColor.withValues(alpha: 0.15),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Icon(
+                        entry.icon,
+                        color: Color.lerp(baseColor, Colors.white, 0.3),
+                        size: 18,
+                      ),
+                    ),
+                    const Spacer(),
+                    Text(
+                      entry.label,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.72),
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      entry.value,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 20,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _ClientSummaryInfo {
+  const _ClientSummaryInfo({
+    required this.key,
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
+
+  final String key;
+  final String label;
+  final String value;
+  final Color color;
+  final IconData icon;
+}
+
+class _ClientSection extends StatelessWidget {
+  const _ClientSection({
+    required this.title,
+    required this.accent,
+    required this.clients,
+    required this.controller,
+  });
+
+  final String title;
+  final Color accent;
+  final List<ClientModel> clients;
+  final ClientController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    if (clients.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white70,
+              fontWeight: FontWeight.w600,
+              fontSize: 16,
+            ),
+          ),
+          const SizedBox(height: 12),
+          ...clients.map(
+            (client) => Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: Obx(() {
+                final isDeleting = controller.deletingIds.contains(client.id);
+                return _ClientCard(
+                  client: client,
+                  isDeleting: isDeleting,
+                  onTap:
+                      () => Get.toNamed('/client/details', arguments: client),
+                  onEdit: () => showClientFormSheet(
+                    context,
+                    controller,
+                    client: client,
+                  ),
+                  onDelete: () => _confirmDeletion(context, controller, client),
+                );
+              }),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ClientSearchField extends StatelessWidget {
+  const _ClientSearchField({required this.controller});
+
+  final ClientController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final hasText = controller.searchTerm.value.isNotEmpty;
+      return TextField(
+        controller: controller.searchController,
+        onChanged: controller.onSearchChanged,
+        style: const TextStyle(color: Colors.white),
+        decoration: InputDecoration(
+          labelText: 'Buscar clientes',
+          labelStyle: const TextStyle(color: Colors.white70),
+          prefixIcon: const Icon(Icons.search),
+          suffixIcon: hasText
+              ? IconButton(
+                tooltip: 'Limpar busca',
+                icon: const Icon(Icons.clear),
+                onPressed: controller.clearSearch,
+              )
+              : null,
+        ),
+      );
+    });
+  }
+}
+
+class _EmptyClients extends StatelessWidget {
+  const _EmptyClients({
+    required this.includeDeleted,
+    required this.hasAnyClients,
+    required this.activeFilter,
+    required this.hasSearch,
+    required this.onResetFilters,
+    required this.onCreate,
+  });
+
+  final bool includeDeleted;
+  final bool hasAnyClients;
+  final String activeFilter;
+  final bool hasSearch;
+  final VoidCallback onResetFilters;
+  final VoidCallback onCreate;
+
+  @override
+  Widget build(BuildContext context) {
+    late final String title;
+    late final String subtitle;
+    bool showCreateButton = true;
+    bool showResetButton = false;
+
+    if (!hasAnyClients) {
+      title = 'Você ainda não tem clientes cadastrados';
+      subtitle = 'Cadastre o primeiro cliente tocando no botão abaixo.';
+    } else if (hasSearch) {
+      title = 'Nenhum cliente encontrado para a busca atual';
+      subtitle = 'Tente outro termo ou limpe a busca para ver todos.';
+      showResetButton = true;
+      showCreateButton = false;
+    } else if (activeFilter != 'all') {
+      final label = _statusFilterLabel(activeFilter);
+      title = 'Nenhum cliente $label no momento';
+      subtitle = 'Ajuste o filtro de "$label" ou volte a exibir todos.';
+      showResetButton = true;
+      showCreateButton = false;
+    } else {
+      title =
+          includeDeleted
+              ? 'Nenhum cliente corresponde aos filtros'
+              : 'Você ainda não tem clientes cadastrados';
+      subtitle =
+          includeDeleted
+              ? 'Ajuste os filtros ou tente uma nova busca.'
+              : 'Cadastre o primeiro cliente tocando no botão abaixo.';
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 32),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.people_outline, size: 72, color: Colors.white54),
+          const SizedBox(height: 16),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(
+            subtitle,
+            textAlign: TextAlign.center,
+            style: const TextStyle(color: Colors.white70),
+          ),
+          const SizedBox(height: 24),
+          if (showResetButton)
+            OutlinedButton.icon(
+              onPressed: onResetFilters,
+              icon: const Icon(Icons.filter_alt_off_outlined),
+              label: const Text('Limpar filtros'),
+            ),
+          if (showResetButton && showCreateButton) const SizedBox(height: 12),
+          if (showCreateButton)
+            OutlinedButton.icon(
+              onPressed: onCreate,
+              icon: const Icon(Icons.add),
+              label: const Text('Cadastrar cliente'),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+List<_ClientSummaryInfo> _buildClientSummaryEntries(
+  ClientController controller,
+) {
+  final total = controller.clients.length;
+  final active = controller.clients.where((c) => !c.isDeleted).length;
+  final inactive = controller.clients.where((c) => c.isDeleted).length;
+  return [
+    _ClientSummaryInfo(
+      key: 'all',
+      label: 'Todos',
+      value: total.toString(),
+      color: Colors.blueAccent,
+      icon: Icons.people_outline,
+    ),
+    _ClientSummaryInfo(
+      key: 'active',
+      label: 'Ativos',
+      value: active.toString(),
+      color: Colors.tealAccent,
+      icon: Icons.verified_outlined,
+    ),
+    _ClientSummaryInfo(
+      key: 'inactive',
+      label: 'Inativos',
+      value: inactive.toString(),
+      color: Colors.deepOrangeAccent,
+      icon: Icons.block_outlined,
+    ),
+  ];
+}
+
+List<Widget> _buildClientSections(ClientController controller) {
+  final clients = controller.clients.toList();
+  final active = clients.where((c) => !c.isDeleted).toList();
+  final inactive = clients.where((c) => c.isDeleted).toList();
+  final filter = controller.statusFilter.value;
+  final sections = <Widget>[];
+
+  if ((filter == 'all' || filter == 'active') && active.isNotEmpty) {
+    sections.add(
+      _ClientSection(
+        title: 'Clientes ativos',
+        accent: Colors.tealAccent,
+        clients: active,
+        controller: controller,
+      ),
+    );
+  }
+  if ((filter == 'all' || filter == 'inactive') && inactive.isNotEmpty) {
+    sections.add(
+      _ClientSection(
+        title: 'Clientes inativos',
+        accent: Colors.deepOrangeAccent,
+        clients: inactive,
+        controller: controller,
+      ),
+    );
+  }
+  return sections;
+}
+
+String _statusFilterLabel(String key) {
+  switch (key) {
+    case 'active':
+      return 'ativos';
+    case 'inactive':
+      return 'inativos';
+    default:
+      return 'todos';
   }
 }

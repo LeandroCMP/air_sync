@@ -38,19 +38,23 @@ class QueueService extends GetxService {
     List<OrderMaterialInput> materials = const [],
     required List<OrderBillingItemInput> billingItems,
     num discount = 0,
-    required String signatureBase64,
+    String? signatureBase64,
     String? notes,
+    List<OrderPaymentInput> payments = const [],
   }) async {
     pending.add(
       QueueAction(
         type: 'order.finish',
         data: {
           'orderId': orderId,
-          if (materials.isNotEmpty) 'materials': materials.toJsonList(),
+          if (materials.isNotEmpty)
+            'materials': materials.toJsonList(includeMetadata: true),
           'billingItems': billingItems.toJsonList(),
           'discount': discount,
-          'signatureBase64': signatureBase64,
+          if (signatureBase64 != null && signatureBase64.isNotEmpty)
+            'signatureBase64': signatureBase64,
           if (notes != null) 'notes': notes,
+          if (payments.isNotEmpty) 'payments': payments.toJsonList(),
         },
       ),
     );
@@ -80,11 +84,23 @@ class QueueService extends GetxService {
                 final normalizedName = normalize(e['itemName'] ?? e['name']);
                 final normalizedDescription =
                     normalize(e['description']) ?? normalizedName;
+                final rawPrice = e['unitPrice'];
+                final parsedPrice =
+                    rawPrice is num
+                        ? rawPrice.toDouble()
+                        : double.tryParse('$rawPrice');
+                final rawCost = e['unitCost'];
+                final parsedCost =
+                    rawCost is num
+                        ? rawCost.toDouble()
+                        : double.tryParse('$rawCost');
                 return OrderMaterialInput(
                   itemId: (e['itemId'] ?? '').toString(),
                   qty: (e['qty'] ?? 0) as num,
                   itemName: normalizedName,
                   description: normalizedDescription,
+                  unitPrice: parsedPrice,
+                  unitCost: parsedCost,
                 );
               }).toList();
           final billingRaw = (action.data['billingItems'] as List?) ?? [];
@@ -101,21 +117,48 @@ class QueueService extends GetxService {
                   )
                   .toList();
           final discount = (action.data['discount'] ?? 0) as num;
-          final signature = (action.data['signatureBase64'] ?? '') as String;
-          if (signature.isEmpty) {
-            continue;
-          }
+          final signatureValue = action.data['signatureBase64'] as String?;
           final notes = action.data['notes'] as String?;
-          if (materials.isNotEmpty) {
-            await orders.deductMaterials(id, materials);
+          final paymentsRaw = (action.data['payments'] as List?) ?? [];
+          var payments =
+              paymentsRaw
+                  .whereType<Map>()
+                  .map(
+                    (e) => OrderPaymentInput(
+                      method: (e['method'] ?? 'PIX').toString(),
+                      amount: ((e['amount'] ?? 0) as num).toDouble(),
+                      installments:
+                          e['installments'] is num
+                              ? (e['installments'] as num).toInt()
+                              : null,
+                    ),
+                  )
+                  .toList();
+          final billingTotal =
+              billingItems.fold<double>(
+                0,
+                (sum, item) =>
+                    sum + (item.qty.toDouble() * item.unitPrice.toDouble()),
+              ) -
+              discount.toDouble();
+          final double totalDue = billingTotal < 0 ? 0.0 : billingTotal;
+          if (payments.isEmpty) {
+            payments = [OrderPaymentInput(method: 'PIX', amount: totalDue)];
           }
           await orders.finish(
             orderId: id,
             billingItems: billingItems,
             discount: discount,
-            signatureBase64: signature,
+            signatureBase64:
+                (signatureValue == null || signatureValue.isEmpty)
+                    ? null
+                    : signatureValue,
             notes: notes,
+            payments: payments,
           );
+          if (materials.isNotEmpty) {
+            await orders.deductMaterials(id, materials);
+          }
           toRemove.add(action);
         }
       } catch (_) {

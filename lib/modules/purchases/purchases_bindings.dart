@@ -12,7 +12,6 @@ import 'package:air_sync/repositories/inventory/inventory_repository_impl.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:air_sync/services/inventory/inventory_service_impl.dart';
 import 'package:air_sync/modules/inventory/inventory_controller.dart';
-import 'package:air_sync/application/auth/auth_service_application.dart';
 
 import 'purchases_controller.dart';
 
@@ -38,7 +37,7 @@ class PurchasesBindings implements Bindings {
     // InventoryController para permitir cadastro direto de produto dentro da compra
     if (!Get.isRegistered<InventoryController>()) {
       Get.lazyPut<InventoryController>(
-        () => InventoryController(authServiceApplication: Get.find<AuthServiceApplication>(), inventoryService: Get.find<InventoryService>()),
+        () => InventoryController(inventoryService: Get.find<InventoryService>()),
         fenix: true,
       );
     }

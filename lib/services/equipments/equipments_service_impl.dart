@@ -1,5 +1,4 @@
 import 'package:air_sync/models/equipment_model.dart';
-import 'package:air_sync/models/maintenance_model.dart';
 import 'package:air_sync/repositories/equipments/equipments_repository.dart';
 import 'package:air_sync/services/equipments/equipments_service.dart';
 

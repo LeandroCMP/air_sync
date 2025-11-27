@@ -333,6 +333,8 @@ Future<Uint8List> buildOrderReportPdf({
           final tech = technicians[index];
           final roleLabel = () {
             switch (tech.role) {
+              case CollaboratorRole.owner:
+                return 'Administrador Global (owner)';
               case CollaboratorRole.admin:
                 return 'Administrador';
               case CollaboratorRole.manager:

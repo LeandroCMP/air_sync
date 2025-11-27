@@ -1,0 +1,38 @@
+import 'package:air_sync/application/core/network/api_client.dart';
+import 'package:air_sync/repositories/signups/signups_repository.dart';
+import 'package:get/get.dart';
+
+class SignupsRepositoryImpl implements SignupsRepository {
+  SignupsRepositoryImpl() : _api = Get.find<ApiClient>();
+
+  final ApiClient _api;
+
+  @override
+  Future<String> registerTenant({
+    required String companyName,
+    required String ownerName,
+    required String ownerEmail,
+    required String ownerPhone,
+    required String document,
+    int? billingDay,
+    String? notes,
+  }) async {
+    final res = await _api.dio.post(
+      '/v1/signups',
+      data: {
+        'companyName': companyName,
+        'ownerName': ownerName,
+        'ownerEmail': ownerEmail,
+        'ownerPhone': ownerPhone,
+        'document': document,
+        if (billingDay != null) 'billingDay': billingDay,
+        if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
+      },
+    );
+    final data = res.data;
+    if (data is Map && data['temporaryPassword'] != null) {
+      return data['temporaryPassword'].toString();
+    }
+    return '';
+  }
+}

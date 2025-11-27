@@ -3,11 +3,11 @@ import 'package:air_sync/application/utils/formatters/cep_input_formatter.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/models/location_model.dart';
 import 'package:air_sync/models/equipment_model.dart';
-import 'package:air_sync/models/maintenance_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
+import 'package:air_sync/modules/equipments/widgets/maintenance_history_card.dart';
 
 import 'package:air_sync/application/utils/formatters/btus_input_formatter.dart';
 
@@ -59,44 +59,103 @@ class ClientDetailsPage extends GetView<ClientDetailsController> {
           onPressed: () => controller.openDialer(client.primaryPhone),
         );
       }),
-      body: Obx(() {
-        final client = controller.client.value;
-        if (client == null) {
-          if (controller.isRefreshing.value) {
-            return const Center(child: CircularProgressIndicator());
-          }
-          return const Center(
-            child: Text(
-              'Cliente não encontrado.',
-              style: TextStyle(color: Colors.white70),
-            ),
-          );
-        }
+      body: SafeArea(
 
-        return RefreshIndicator(
-          onRefresh: controller.refreshClient,
-          child: ListView(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 140),
-            children: [
-              _HeaderCard(client: client),
-              const SizedBox(height: 20),
-              _ContactsSection(client: client),
-              const SizedBox(height: 20),
-              _LocationsSection(controller: controller),
-              if (client.tags.isNotEmpty) ...[
-                const SizedBox(height: 20),
-                _TagsSection(tags: client.tags),
+        child: Obx(() {
+
+          final client = controller.client.value;
+
+          final isRefreshing = controller.isRefreshing.value;
+
+
+
+          if (client == null) {
+
+            if (isRefreshing) {
+
+              return const Center(child: CircularProgressIndicator());
+
+            }
+
+            return const Center(
+
+              child: Text(
+
+                'Cliente não encontrado.',
+
+                style: TextStyle(color: Colors.white70),
+
+              ),
+
+            );
+
+          }
+
+
+
+          final summaryEntries = _buildDetailSummaryEntries(
+
+            client,
+
+            controller,
+
+          );
+
+
+
+          return RefreshIndicator(
+
+            onRefresh: controller.refreshClient,
+
+            child: CustomScrollView(
+
+              physics: const BouncingScrollPhysics(
+
+                parent: AlwaysScrollableScrollPhysics(),
+
+              ),
+
+              slivers: [
+
+                SliverToBoxAdapter(
+
+                  child: Padding(
+
+                    padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+
+                    child: _HeaderCard(client: client),
+
+                  ),
+
+                ),
+
+                if (summaryEntries.isNotEmpty)
+
+                  SliverToBoxAdapter(
+
+                    child: Padding(
+
+                      padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+
+                      child: _DetailSummaryRow(entries: summaryEntries),
+
+                    ),
+
+                  ),
+
+                ..._buildDetailSections(client, controller),
+
+                const SliverPadding(padding: EdgeInsets.only(bottom: 120)),
+
               ],
-              if ((client.notes ?? '').isNotEmpty) ...[
-                const SizedBox(height: 20),
-                _NotesSection(notes: client.notes!),
-              ],
-              const SizedBox(height: 20),
-              _MetaSection(client: client),
-            ],
-          ),
-        );
-      }),
+
+            ),
+
+          );
+
+        }),
+
+      ),
     );
   }
 
@@ -116,6 +175,194 @@ class ClientDetailsPage extends GetView<ClientDetailsController> {
   }
 }
 
+List<_DetailSummaryInfo> _buildDetailSummaryEntries(
+  ClientModel client,
+  ClientDetailsController controller,
+) {
+  final contacts = client.phones.length + client.emails.length;
+  final locations = controller.locations.length;
+  final equipments = controller.locationEquipments.values.fold<int>(
+    0,
+    (sum, list) => sum + list.length,
+  );
+  final tags = client.tags.length;
+
+  return [
+    _DetailSummaryInfo(
+      label: 'Contatos',
+      value: contacts.toString(),
+      color: Colors.lightBlueAccent,
+      icon: Icons.chat_bubble_outline,
+    ),
+    _DetailSummaryInfo(
+      label: 'Endereços',
+      value: locations.toString(),
+      color: Colors.tealAccent,
+      icon: Icons.location_on_outlined,
+    ),
+    _DetailSummaryInfo(
+      label: 'Equipamentos',
+      value: equipments.toString(),
+      color: Colors.orangeAccent,
+      icon: Icons.build_outlined,
+    ),
+    _DetailSummaryInfo(
+      label: 'Etiquetas',
+      value: tags.toString(),
+      color: Colors.purpleAccent,
+      icon: Icons.sell_outlined,
+    ),
+  ];
+}
+
+List<Widget> _buildDetailSections(
+  ClientModel client,
+  ClientDetailsController controller,
+) {
+  final sections = <Widget>[
+    SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: _ContactsSection(client: client),
+      ),
+    ),
+    SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: _LocationsSection(controller: controller),
+      ),
+    ),
+  ];
+
+  if (client.tags.isNotEmpty) {
+    sections.add(
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: _TagsSection(tags: client.tags),
+        ),
+      ),
+    );
+  }
+
+  final notes = (client.notes ?? '').trim();
+  if (notes.isNotEmpty) {
+    sections.add(
+      SliverToBoxAdapter(
+        child: Padding(
+          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+          child: _NotesSection(notes: notes),
+        ),
+      ),
+    );
+  }
+
+  sections.add(
+    SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
+        child: _MetaSection(client: client),
+      ),
+    ),
+  );
+
+  return sections;
+}
+
+class _DetailSummaryRow extends StatelessWidget {
+  const _DetailSummaryRow({required this.entries});
+
+  final List<_DetailSummaryInfo> entries;
+
+  @override
+  Widget build(BuildContext context) {
+    if (entries.isEmpty) return const SizedBox.shrink();
+    return SizedBox(
+      height: 120,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: entries.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (_, index) {
+          final entry = entries[index];
+          final background = Colors.white.withValues(alpha: 0.04);
+          final borderColor = Colors.white.withValues(alpha: 0.06);
+          return SizedBox(
+            width: 150,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+              decoration: BoxDecoration(
+                color: background,
+                borderRadius: BorderRadius.circular(18),
+                border: Border.all(color: borderColor),
+                boxShadow: [
+                  BoxShadow(
+                    color: entry.color.withValues(alpha: 0.08),
+                    blurRadius: 18,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Container(
+                    width: 34,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: entry.color.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: Icon(
+                      entry.icon,
+                      color: Color.lerp(entry.color, Colors.white, 0.4),
+                      size: 18,
+                    ),
+                  ),
+                  const Spacer(),
+                  Text(
+                    entry.label,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.72),
+                      fontSize: 12,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    entry.value,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
+                      fontSize: 22,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _DetailSummaryInfo {
+  const _DetailSummaryInfo({
+    required this.label,
+    required this.value,
+    required this.color,
+    required this.icon,
+  });
+
+  final String label;
+  final String value;
+  final Color color;
+  final IconData icon;
+}
+
 class _HeaderCard extends StatelessWidget {
   const _HeaderCard({required this.client});
 
@@ -125,6 +372,7 @@ class _HeaderCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final statusColor =
         client.isDeleted ? Colors.redAccent : Colors.greenAccent;
+    final docNumber = client.docNumber;
     return Container(
       decoration: BoxDecoration(
         color: context.themeGray,
@@ -173,8 +421,8 @@ class _HeaderCard extends StatelessWidget {
             ],
           ),
           const SizedBox(height: 16),
-          if (client.docNumber != null && client.docNumber!.isNotEmpty)
-            _InfoRow(title: 'Documento', value: client.docNumber!),
+          if (docNumber != null && docNumber.isNotEmpty)
+            _InfoRow(title: 'Documento', value: docNumber),
         ],
       ),
     );
@@ -414,7 +662,7 @@ Future<void> _openLocationFormSheet(
                   TextFormField(
                     controller: notesController,
                     decoration: const InputDecoration(
-                      labelText: 'Observacoes (opcional)',
+                      labelText: 'Observações (opcional)',
                     ),
                     style: const TextStyle(color: Colors.white),
                     maxLines: 3,
@@ -427,11 +675,11 @@ Future<void> _openLocationFormSheet(
                           isSaving
                               ? null
                               : () async {
-                                if (!formKey.currentState!.validate()) return;
+                                if (!(formKey.currentState?.validate() ?? false)) return;
                                 final success =
                                     isEditing
                                         ? await controller.updateLocation(
-                                          location: location!,
+                                          location: location,
                                           reference: referenceController.text,
                                           street: streetController.text,
                                           number: numberController.text,
@@ -637,7 +885,7 @@ class _LocationTile extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: context.themeDark.withOpacity(0.6),
+        color: context.themeDark.withValues(alpha: 0.6),
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(16),
@@ -847,7 +1095,7 @@ class _EquipmentCard extends StatelessWidget {
 
     return Container(
       decoration: BoxDecoration(
-        color: context.themeGray.withOpacity(0.8),
+        color: context.themeGray.withValues(alpha: 0.8),
         borderRadius: BorderRadius.circular(12),
       ),
       padding: const EdgeInsets.all(16),
@@ -993,10 +1241,11 @@ Future<void> _openEquipmentFormSheet(
   final brandController = TextEditingController(text: equipment?.brand ?? '');
   final modelController = TextEditingController(text: equipment?.model ?? '');
   final typeController = TextEditingController(text: equipment?.type ?? '');
+  final btusValue = equipment?.btus;
   final btusController = TextEditingController(
     text:
-        equipment?.btus != null
-            ? NumberFormat.decimalPattern('pt_BR').format(equipment!.btus)
+        btusValue != null
+            ? NumberFormat.decimalPattern('pt_BR').format(btusValue)
             : '',
   );
   final serialController = TextEditingController(text: equipment?.serial ?? '');
@@ -1172,7 +1421,7 @@ Future<void> _openEquipmentFormSheet(
                   TextFormField(
                     controller: notesController,
                     decoration: const InputDecoration(
-                      labelText: 'Observacoes (opcional)',
+                      labelText: 'Observações (opcional)',
                     ),
                     style: const TextStyle(color: Colors.white),
                     maxLines: 3,
@@ -1185,7 +1434,7 @@ Future<void> _openEquipmentFormSheet(
                           isSaving
                               ? null
                               : () async {
-                                if (!formKey.currentState!.validate()) return;
+                                if (!(formKey.currentState?.validate() ?? false)) return;
                                 final btusText = btusController.text.trim();
                                 final cleanedBtus = btusText
                                     .replaceAll('.', '')
@@ -1198,7 +1447,7 @@ Future<void> _openEquipmentFormSheet(
                                     isEditing
                                         ? await controller.updateEquipment(
                                           location: location,
-                                          equipment: equipment!,
+                                          equipment: equipment,
                                           room: roomController.text,
                                           brand: brandController.text,
                                           model: modelController.text,
@@ -1289,7 +1538,6 @@ Future<void> _showEquipmentHistorySheet(
       borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
     ),
     builder: (_) {
-      final format = DateFormat('dd/MM/yyyy HH:mm');
       return Padding(
         padding: const EdgeInsets.fromLTRB(20, 24, 20, 24),
         child: Obx(() {
@@ -1312,33 +1560,11 @@ Future<void> _showEquipmentHistorySheet(
           return ListView.separated(
             itemCount: history.length,
             separatorBuilder: (_, __) => const SizedBox(height: 12),
-            itemBuilder: (_, index) {
-              final entry = history[index];
-              return Container(
-                decoration: BoxDecoration(
-                  color: context.themeGray,
-                  borderRadius: BorderRadius.circular(12),
+            itemBuilder:
+                (_, index) => MaintenanceHistoryCard(
+                  entry: history[index],
+                  compact: true,
                 ),
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      format.format(entry.date.toLocal()),
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Text(
-                      entry.description,
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                  ],
-                ),
-              );
-            },
           );
         }),
       );
@@ -1381,7 +1607,7 @@ class _NotesSection extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const Text(
-            'Observacoes',
+            'Observações',
             style: TextStyle(
               color: Colors.white,
               fontSize: 18,
@@ -1404,6 +1630,9 @@ class _MetaSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final format = DateFormat('dd/MM/yyyy HH:mm');
+    final createdAt = client.createdAt;
+    final updatedAt = client.updatedAt;
+    final npsValue = client.nps;
     return Container(
       decoration: BoxDecoration(
         color: context.themeGray,
@@ -1425,20 +1654,20 @@ class _MetaSection extends StatelessWidget {
           _InfoRow(
             title: 'Criado em',
             value:
-                client.createdAt != null
-                    ? format.format(client.createdAt!.toLocal())
+                createdAt != null
+                    ? format.format(createdAt.toLocal())
                     : '-',
           ),
           _InfoRow(
             title: 'Atualizado em',
             value:
-                client.updatedAt != null
-                    ? format.format(client.updatedAt!.toLocal())
+                updatedAt != null
+                    ? format.format(updatedAt.toLocal())
                     : '-',
           ),
           _InfoRow(
             title: 'NPS',
-            value: client.nps != null ? client.nps!.toStringAsFixed(1) : '-',
+            value: npsValue != null ? npsValue.toStringAsFixed(1) : '-',
           ),
         ],
       ),
@@ -1506,7 +1735,7 @@ class _ChipGroup extends StatelessWidget {
                   .map(
                     (value) => Chip(
                       label: Text(value),
-                      backgroundColor: Colors.white.withOpacity(0.12),
+                      backgroundColor: Colors.white.withValues(alpha: 0.12),
                     ),
                   )
                   .toList(),

@@ -1,4 +1,9 @@
+import 'package:air_sync/models/finance_anomaly_model.dart';
+import 'package:air_sync/models/finance_audit_model.dart';
+import 'package:air_sync/models/finance_dashboard_model.dart';
+import 'package:air_sync/models/finance_forecast_model.dart';
 import 'package:air_sync/models/finance_transaction.dart';
+import 'package:air_sync/models/finance_reconciliation_model.dart';
 
 abstract class FinanceRepository {
   Future<List<FinanceTransactionModel>> list({
@@ -8,6 +13,40 @@ abstract class FinanceRepository {
     DateTime? to,
   });
 
-  Future<void> pay({required String id, required String method, required double amount});
-}
+  Future<FinanceDashboardModel> dashboard({
+    String? month,
+    String? costCenterId,
+  });
 
+  Future<FinanceAuditModel> audit({String? costCenterId});
+
+  Future<FinanceForecastModel> forecast({
+    int days = 30,
+    String? costCenterId,
+  });
+
+  Future<void> pay({
+    required String id,
+    required String method,
+    required double amount,
+  });
+
+  Future<void> allocateIndirectCosts({
+    required DateTime from,
+    required DateTime to,
+    List<String> categories,
+  });
+
+  Future<List<FinanceReconciliationPayment>> reconciliationPayments({
+    String scope = 'all',
+  });
+
+  Future<List<FinanceReconciliationIssue>> reconciliationReport({
+    String scope = 'all',
+  });
+
+  Future<FinanceAnomalyReport> anomalies({
+    required String month,
+    String? costCenterId,
+  });
+}

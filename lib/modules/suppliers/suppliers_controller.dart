@@ -1,10 +1,12 @@
+import 'dart:async';
+
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/supplier_model.dart';
 import 'package:air_sync/services/suppliers/suppliers_service.dart';
-import 'package:get/get.dart';
 import 'package:dio/dio.dart' as dio;
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 
 class SuppliersController extends GetxController
     with LoaderMixin, MessagesMixin {
@@ -16,6 +18,9 @@ class SuppliersController extends GetxController
   final items = <SupplierModel>[].obs;
   final searchCtrl = TextEditingController();
   final deletingIds = <String>{}.obs;
+  final RxString searchTerm = ''.obs;
+  final RxString statusFilter = 'all'.obs;
+  Timer? _searchDebounce;
 
   @override
   Future<void> onInit() async {
@@ -26,10 +31,11 @@ class SuppliersController extends GetxController
   }
 
   Future<void> load({String? text}) async {
+    final filter = (text ?? searchTerm.value).trim();
     isLoading(true);
     try {
-      final list = await _service.list(text: text);
-      items.assignAll(list);
+      final list = await _service.list(text: filter.isEmpty ? null : filter);
+      items.assignAll(list.map(_normalizeSupplier));
     } finally {
       isLoading(false);
     }
@@ -44,14 +50,15 @@ class SuppliersController extends GetxController
   }) async {
     isLoading(true);
     try {
+      final normalizedName = _upperRequired(name);
       final s = await _service.create(
-        name: name,
+        name: normalizedName,
         docNumber: docNumber,
         phone: phone,
         email: email,
         notes: notes,
       );
-      items.insert(0, s);
+      items.insert(0, _normalizeSupplier(s));
       message(
         MessageModel.success(
           title: 'Sucesso',
@@ -72,19 +79,23 @@ class SuppliersController extends GetxController
   Future<bool> updateSupplier(String id, Map<String, dynamic> fields) async {
     isLoading(true);
     try {
-      await _service.update(id, fields);
+      final payload = Map<String, dynamic>.from(fields);
+      if (payload['name'] is String) {
+        payload['name'] = _upperRequired(payload['name'] as String);
+      }
+      await _service.update(id, payload);
       final idx = items.indexWhere((e) => e.id == id);
       if (idx != -1) {
         final old = items[idx];
         final updated = SupplierModel(
           id: old.id,
-          name: (fields['name'] ?? old.name) as String,
-          docNumber: (fields['docNumber'] ?? old.docNumber) as String?,
-          phone: (fields['phone'] ?? old.phone) as String?,
-          email: (fields['email'] ?? old.email) as String?,
-          notes: (fields['notes'] ?? old.notes) as String?,
+          name: (payload['name'] ?? old.name) as String,
+          docNumber: (payload['docNumber'] ?? old.docNumber) as String?,
+          phone: (payload['phone'] ?? old.phone) as String?,
+          email: (payload['email'] ?? old.email) as String?,
+          notes: (payload['notes'] ?? old.notes) as String?,
         );
-        items[idx] = updated;
+        items[idx] = _normalizeSupplier(updated);
       }
       message(
         MessageModel.success(
@@ -147,4 +158,44 @@ class SuppliersController extends GetxController
       deletingIds.refresh();
     }
   }
+
+  void onSearchChanged(String value) {
+    final normalized = value.trim();
+    searchTerm.value = normalized;
+    _searchDebounce?.cancel();
+    _searchDebounce = Timer(const Duration(milliseconds: 350), () {
+      load(text: normalized);
+    });
+  }
+
+  void clearSearch() {
+    searchCtrl.clear();
+    onSearchChanged('');
+  }
+
+  void setStatusFilter(String value) {
+    if (statusFilter.value == value) {
+      statusFilter.value = 'all';
+    } else {
+      statusFilter.value = value;
+    }
+  }
+
+  @override
+  void onClose() {
+    searchCtrl.dispose();
+    _searchDebounce?.cancel();
+    super.onClose();
+  }
+
+  String _upperRequired(String value) => value.trim().toUpperCase();
+
+  SupplierModel _normalizeSupplier(SupplierModel supplier) => SupplierModel(
+        id: supplier.id,
+        name: supplier.name.trim().toUpperCase(),
+        docNumber: supplier.docNumber,
+        phone: supplier.phone,
+        email: supplier.email,
+        notes: supplier.notes,
+      );
 }

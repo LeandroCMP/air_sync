@@ -21,7 +21,7 @@ class FleetRepositoryImpl implements FleetRepository {
           .timeout(const Duration(seconds: 12));
       final data = res.data;
 
-      List<dynamic>? _extractList(dynamic d) {
+      List<dynamic>? extractList(dynamic d) {
         if (d is List) return d;
         if (d is Map) {
           dynamic inner = d['data'] ?? d['items'] ?? d['results'] ?? d['vehicles'] ?? d['rows'] ?? d['content'];
@@ -32,11 +32,11 @@ class FleetRepositoryImpl implements FleetRepository {
           }
           for (final entry in d.values) {
             if (entry is List && entry.isNotEmpty && entry.first is Map) {
-              return entry as List;
+              return entry;
             }
             if (entry is Map) {
               for (final v in entry.values) {
-                if (v is List && v.isNotEmpty && v.first is Map) return v as List;
+                if (v is List && v.isNotEmpty && v.first is Map) return v;
               }
             }
           }
@@ -44,7 +44,7 @@ class FleetRepositoryImpl implements FleetRepository {
         return null;
       }
 
-      final list = _extractList(data) ?? [];
+      final list = extractList(data) ?? [];
       return list
           .whereType<Map>()
           .map((e) => FleetVehicleModel.fromMap(Map<String, dynamic>.from(e)))
@@ -152,7 +152,7 @@ class FleetRepositoryImpl implements FleetRepository {
       final res = await _api.dio.get('/v1/fleet/vehicles/$id/events', queryParameters: qp);
       final data = res.data;
 
-      List<dynamic>? _extractList(dynamic d) {
+      List<dynamic>? extractList(dynamic d) {
         if (d is List) return d;
         if (d is Map) {
           dynamic inner = d['events'] ?? d['items'] ?? d['data'] ?? d['results'] ?? d['rows'] ?? d['content'];
@@ -162,10 +162,10 @@ class FleetRepositoryImpl implements FleetRepository {
             if (nested is List) return nested;
           }
           for (final entry in d.values) {
-            if (entry is List && entry.isNotEmpty && entry.first is Map) return entry as List;
+            if (entry is List && entry.isNotEmpty && entry.first is Map) return entry;
             if (entry is Map) {
               for (final v in entry.values) {
-                if (v is List && v.isNotEmpty && v.first is Map) return v as List;
+                if (v is List && v.isNotEmpty && v.first is Map) return v;
               }
             }
           }
@@ -173,12 +173,57 @@ class FleetRepositoryImpl implements FleetRepository {
         return null;
       }
 
-      final list = _extractList(data) ?? const [];
+      final list = extractList(data) ?? const [];
       return list.whereType<Map>().map((e) => Map<String, dynamic>.from(e)).toList();
     } catch (_) {
       return [];
     }
   }
+
+  @override
+  Future<List<FleetInsightRecommendation>> getRecommendations() async {
+    try {
+      final res = await _api.dio
+          .post('/v1/fleet/insights/recommendations')
+          .timeout(const Duration(seconds: 15));
+      final data = res.data;
+      List<Map<String, dynamic>> extract(dynamic payload) {
+        if (payload is List) {
+          return payload
+              .whereType<Map>()
+              .map((e) => Map<String, dynamic>.from(e))
+              .toList();
+        }
+        if (payload is Map) {
+          final inner = payload['recommendations'] ?? payload['items'] ?? payload['data'];
+          if (inner is List) {
+            return inner
+                .whereType<Map>()
+                .map((e) => Map<String, dynamic>.from(e))
+                .toList();
+          }
+        }
+        return const [];
+      }
+
+      return extract(data).map(FleetInsightRecommendation.fromMap).toList();
+    } catch (_) {
+      return [];
+    }
+  }
+
+  @override
+  Future<FleetInsightChatResponse> askAi(String question) async {
+    final payload = {'question': question};
+    final res = await _api.dio
+        .post('/v1/fleet/insights/chat', data: payload)
+        .timeout(const Duration(seconds: 15));
+    final data = res.data;
+    if (data is Map) {
+      return FleetInsightChatResponse.fromMap(
+        Map<String, dynamic>.from(data),
+      );
+    }
+    return FleetInsightChatResponse(answer: data?.toString() ?? '');
+  }
 }
-
-

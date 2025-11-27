@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:air_sync/application/auth/auth_service_application.dart';
 import 'package:air_sync/application/core/errors/inventory_failure.dart';
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
@@ -11,14 +10,11 @@ import 'package:get/get.dart';
 
 class InventoryController extends GetxController
     with LoaderMixin, MessagesMixin {
-  final AuthServiceApplication _authServiceApplication;
   final InventoryService _itemService;
 
   InventoryController({
-    required AuthServiceApplication authServiceApplication,
     required InventoryService inventoryService,
-  }) : _authServiceApplication = authServiceApplication,
-       _itemService = inventoryService;
+  }) : _itemService = inventoryService;
 
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
@@ -186,7 +182,7 @@ class InventoryController extends GetxController
         ),
       );
       if (belowMinimumAlert != null) {
-        message(belowMinimumAlert!);
+        message(belowMinimumAlert);
       }
     } catch (e) {
       isLoading.value = false;
@@ -315,7 +311,7 @@ class InventoryController extends GetxController
         reason: 'Zerar estoque para exclusão',
       );
 
-      InventoryItemModel? refreshed;
+      InventoryItemModel refreshed;
       try {
         refreshed = await _itemService.getItem(item.id);
       } catch (_) {
@@ -323,7 +319,7 @@ class InventoryController extends GetxController
       }
 
       final index = items.indexWhere((e) => e.id == item.id);
-      if (index != -1 && refreshed != null) {
+      if (index != -1) {
         items[index] = refreshed;
       }
 

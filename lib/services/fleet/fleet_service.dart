@@ -18,4 +18,6 @@ abstract class FleetService {
     String? sort,
     String? order,
   });
+  Future<List<FleetInsightRecommendation>> getRecommendations();
+  Future<FleetInsightChatResponse> askAi(String question);
 }

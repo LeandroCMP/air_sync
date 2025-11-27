@@ -2,11 +2,11 @@ import 'package:air_sync/application/ui/input_formatters.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/models/collaborator_models.dart';
+import 'package:air_sync/models/cost_center_model.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
@@ -44,6 +44,8 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                     children: [
                       _SectionCard(
                         title: 'Dados principais',
+                        subtitle: 'Cliente, local, agendamento e equipe',
+                        icon: Icons.assignment_outlined,
                         child: Column(
                           children: [
                             _ClientSelector(controller: controller),
@@ -58,6 +60,8 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                             ),
                             const SizedBox(height: 12),
                             _TechnicianSelector(controller: controller),
+                            const SizedBox(height: 12),
+                            _CostCenterSelector(controller: controller),
                             const SizedBox(height: 12),
                             TextFormField(
                               controller: controller.notesCtrl,
@@ -76,6 +80,8 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                       const SizedBox(height: 20),
                       _SectionCard(
                         title: 'Checklist inicial',
+                        subtitle: 'Monte o passo a passo que o técnico verá',
+                        icon: Icons.fact_check_outlined,
                         action: TextButton.icon(
                           onPressed: controller.addChecklistItem,
                           icon: const Icon(Icons.add),
@@ -119,6 +125,8 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                       const SizedBox(height: 20),
                       _SectionCard(
                         title: 'Materiais a reservar',
+                        subtitle: 'Selecione itens do estoque e defina a saída prevista',
+                        icon: Icons.inventory_2_outlined,
                         action: OutlinedButton.icon(
                           onPressed: controller.addMaterialRow,
                           icon: const Icon(Icons.add),
@@ -186,6 +194,8 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                       const SizedBox(height: 20),
                       _SectionCard(
                         title: 'Cobranca (opcional)',
+                        subtitle: 'Antecipe itens faturados e descontos da OS',
+                        icon: Icons.payments_outlined,
                         action: OutlinedButton.icon(
                           onPressed: controller.addBillingRow,
                           icon: const Icon(Icons.add),
@@ -305,39 +315,83 @@ class OrderCreatePage extends GetView<OrderCreateController> {
 }
 
 class _SectionCard extends StatelessWidget {
-  const _SectionCard({required this.title, required this.child, this.action});
+  const _SectionCard({
+    required this.title,
+    required this.child,
+    this.subtitle,
+    this.icon,
+    this.action,
+  });
 
   final String title;
+  final String? subtitle;
+  final IconData? icon;
   final Widget child;
   final Widget? action;
 
   @override
   Widget build(BuildContext context) {
+    final baseColor = context.themeSurface;
     return Container(
       decoration: BoxDecoration(
-        color: context.themeSurface,
-        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          colors: [
+            baseColor.withValues(alpha: 0.95),
+            baseColor.withValues(alpha: 0.8),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.06)),
         boxShadow: context.shadowCard,
       ),
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(18),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    color: context.themeTextMain,
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
+              if (icon != null)
+                Padding(
+                  padding: const EdgeInsets.only(right: 12),
+                  child: CircleAvatar(
+                    radius: 18,
+                    backgroundColor: Colors.white.withValues(alpha: 0.08),
+                    child: Icon(icon, color: Colors.white70, size: 18),
                   ),
+                ),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: TextStyle(
+                        color: context.themeTextMain,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (subtitle != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        subtitle!,
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
               if (action != null) action!,
             ],
           ),
+          const SizedBox(height: 14),
+          const Divider(height: 20, color: Colors.white12),
           const SizedBox(height: 12),
           child,
         ],
@@ -601,6 +655,78 @@ class _TechnicianSelector extends StatelessWidget {
   }
 }
 
+class _CostCenterSelector extends StatelessWidget {
+  const _CostCenterSelector({required this.controller});
+
+  final OrderCreateController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final loading = controller.costCentersLoading.value;
+      final options = controller.costCenters.toList(growable: false);
+      final selectedId = controller.selectedCostCenterId.value;
+      CostCenterModel? selected;
+      for (final center in options) {
+        if (center.id == selectedId) {
+          selected = center;
+          break;
+        }
+      }
+
+      final helper =
+          loading
+              ? 'Carregando centros de custo...'
+              : options.isEmpty
+              ? 'Nenhum centro de custo ativo encontrado.'
+              : 'Opcional. Use para classificar o custo desta OS.';
+      final enabled = !loading && options.isNotEmpty;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _SelectorTile(
+            label: 'Centro de custo',
+            value: selected?.name,
+            placeholder:
+                loading ? 'Carregando...' : 'Selecionar centro de custo',
+            helperText: helper,
+            enabled: enabled,
+            onTap:
+                !enabled
+                    ? null
+                    : () async {
+                      final picked =
+                          await _SinglePickerModal.show<CostCenterModel>(
+                            context: context,
+                            title: 'Selecionar centro de custo',
+                            items: options,
+                            initialId: selectedId,
+                            id: (center) => center.id,
+                            titleBuilder: (center) => center.name,
+                            subtitleBuilder:
+                                (center) => (center.code ?? '').trim().isEmpty
+                                    ? center.id
+                                    : center.code!,
+                          );
+                      if (picked != null) {
+                        controller.setCostCenter(picked.id);
+                      }
+                    },
+            onClear:
+                selectedId == null ? null : () => controller.setCostCenter(null),
+          ),
+          if (loading)
+            const Padding(
+              padding: EdgeInsets.only(top: 8),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
+        ],
+      );
+    });
+  }
+}
+
 class _ScheduledField extends StatelessWidget {
   const _ScheduledField({required this.controller, required this.scheduledAt});
 
@@ -762,6 +888,7 @@ class _MaterialRow extends StatelessWidget {
                   enabled: hasItems,
                   onTap: () async {
                     if (!await controller.ensureInventoryLoaded()) {
+                      if (!context.mounted) return;
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
                           content: Text(
@@ -771,6 +898,7 @@ class _MaterialRow extends StatelessWidget {
                       );
                       return;
                     }
+                    if (!context.mounted) return;
                     final list = controller.inventoryItems.toList();
                     if (list.isEmpty) return;
                     final picked =
@@ -783,9 +911,9 @@ class _MaterialRow extends StatelessWidget {
                           titleBuilder: (item) => item.name,
                           subtitleBuilder: _inventorySummary,
                         );
+                    if (!context.mounted) return;
                     if (picked != null) {
-                      entry.itemId.value = picked.id;
-                      entry.itemName.value = picked.description;
+                      controller.setMaterialItem(index, picked);
                       state.didChange(picked.id);
                     }
                   },
@@ -793,7 +921,7 @@ class _MaterialRow extends StatelessWidget {
                       selectedId == null
                           ? null
                           : () {
-                            entry.clearSelection();
+                            controller.setMaterialItem(index, null);
                             state.didChange(null);
                           },
                 );
@@ -801,11 +929,32 @@ class _MaterialRow extends StatelessWidget {
             },
           ),
           const SizedBox(height: 12),
-          TextField(
-            controller: entry.qtyCtrl,
-            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-            decoration: const InputDecoration(labelText: 'Quantidade'),
-            style: const TextStyle(color: Colors.white),
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: entry.qtyCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  decoration: const InputDecoration(labelText: 'Quantidade'),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: TextField(
+                  controller: entry.unitPriceCtrl,
+                  keyboardType:
+                      const TextInputType.numberWithOptions(decimal: true),
+                  inputFormatters: [MoneyInputFormatter()],
+                  decoration: const InputDecoration(
+                    labelText: 'Valor de venda',
+                    helperText: 'Usado para precificar materiais',
+                  ),
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
           ),
         ],
       ),

@@ -1,5 +1,4 @@
 import 'package:air_sync/models/equipment_model.dart';
-import 'package:air_sync/models/maintenance_model.dart';
 
 abstract class EquipmentsService {
   Future<List<EquipmentModel>> listByClient(String clientId);

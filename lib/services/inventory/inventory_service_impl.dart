@@ -1,4 +1,6 @@
+import 'package:air_sync/models/inventory_category_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
+import 'package:air_sync/models/inventory_rebalance_model.dart';
 import 'package:air_sync/repositories/inventory/inventory_repository.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 
@@ -19,6 +21,9 @@ class InventoryServiceImpl implements InventoryService {
     String? supplierId,
     double? avgCost,
     double? sellPrice,
+    String? categoryId,
+    double? markupPercent,
+    String? pricingMode,
   }) => _inventoryRepository.registerItem(
     name: name,
     sku: sku,
@@ -29,6 +34,9 @@ class InventoryServiceImpl implements InventoryService {
     supplierId: supplierId,
     avgCost: avgCost,
     sellPrice: sellPrice,
+    categoryId: categoryId,
+    markupPercent: markupPercent,
+    pricingMode: pricingMode,
   );
 
   @override
@@ -92,6 +100,10 @@ class InventoryServiceImpl implements InventoryService {
       _inventoryRepository.patchItem(id, changes);
 
   @override
+  Future<List<InventoryCostHistoryEntry>> getCostHistory(String id) =>
+      _inventoryRepository.getCostHistory(id);
+
+  @override
   Future<List<StockLevelModel>> getStockLevels({
     String? itemId,
     String? locationId,
@@ -150,4 +162,44 @@ class InventoryServiceImpl implements InventoryService {
     startDate: startDate,
     endDate: endDate,
   );
+
+  @override
+  Future<List<InventoryCategoryModel>> listCategories({String? search}) =>
+      _inventoryRepository.listCategories(search: search);
+
+  @override
+  Future<InventoryCategoryModel> createCategory({
+    required String name,
+    required double markupPercent,
+    String? description,
+  }) => _inventoryRepository.createCategory(
+    name: name,
+    markupPercent: markupPercent,
+    description: description,
+  );
+
+  @override
+  Future<InventoryCategoryModel> updateCategory({
+    required String id,
+    String? name,
+    double? markupPercent,
+    String? description,
+  }) => _inventoryRepository.updateCategory(
+    id: id,
+    name: name,
+    markupPercent: markupPercent,
+    description: description,
+  );
+
+  @override
+  Future<void> deleteCategory(String id) =>
+      _inventoryRepository.deleteCategory(id);
+
+  @override
+  Future<List<InventoryRebalanceSuggestion>> rebalance({int days = 30}) =>
+      _inventoryRepository.rebalance(days: days);
+
+  @override
+  Future<List<InventoryRebalanceSuggestion>> purchaseForecast({int days = 30}) =>
+      _inventoryRepository.purchaseForecast(days: days);
 }

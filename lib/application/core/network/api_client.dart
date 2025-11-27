@@ -1,4 +1,5 @@
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 
 import 'app_config.dart';
 import 'token_storage.dart';
@@ -7,6 +8,8 @@ class ApiClient {
   final AppConfig _config;
   final TokenStorage _tokens;
   final Dio _dio;
+
+  final _logoutCallbacks = <VoidCallback>{};
 
   Dio get dio => _dio;
 
@@ -44,17 +47,25 @@ class ApiClient {
         onError: (e, handler) async {
           // Attempt naive refresh on 401 once
           if (e.response?.statusCode == 401) {
-            final retried = e.requestOptions.extra['__ret'] == true;
-            final refreshed = await _tryRefreshToken();
-            if (!retried && refreshed) {
-              final req = e.requestOptions;
-              req.headers['Authorization'] = 'Bearer ${_tokens.accessToken}';
-              req.extra['__ret'] = true;
-              try {
-                final response = await _dio.fetch(req);
-                return handler.resolve(response);
-              } catch (err) {
-                // fallthrough
+            final path = e.requestOptions.path;
+            final isRefresh = path.contains('/auth/refresh');
+            if (isRefresh) {
+              await _handleRefreshFailure();
+            } else {
+              final retried = e.requestOptions.extra['__ret'] == true;
+              final refreshed = await _tryRefreshToken();
+              if (!retried && refreshed) {
+                final req = e.requestOptions;
+                req.headers['Authorization'] = 'Bearer ${_tokens.accessToken}';
+                req.extra['__ret'] = true;
+                try {
+                  final response = await _dio.fetch(req);
+                  return handler.resolve(response);
+                } catch (err) {
+                  // fallthrough
+                }
+              } else if (!refreshed) {
+                await _handleRefreshFailure();
               }
             }
           }
@@ -62,6 +73,14 @@ class ApiClient {
         },
       ),
     );
+  }
+
+  void addLogoutCallback(VoidCallback callback) {
+    _logoutCallbacks.add(callback);
+  }
+
+  void removeLogoutCallback(VoidCallback callback) {
+    _logoutCallbacks.remove(callback);
   }
 
   Future<bool> _tryRefreshToken() async {
@@ -90,6 +109,15 @@ class ApiClient {
       return false;
     }
   }
+
+  Future<void> _handleRefreshFailure() async {
+    await _tokens.clear();
+    for (final callback in _logoutCallbacks) {
+      try {
+        callback();
+      } catch (_) {
+        // ignore
+      }
+    }
+  }
 }
-
-

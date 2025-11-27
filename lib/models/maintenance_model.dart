@@ -18,7 +18,7 @@ class MaintenanceModel {
   }
 
   factory MaintenanceModel.fromMap(Map<String, dynamic> map) {
-    DateTime? _parseDate(dynamic value) {
+    DateTime? parseDate(dynamic value) {
       if (value == null) return null;
       if (value is DateTime) return value;
       if (value is int) {
@@ -46,7 +46,7 @@ class MaintenanceModel {
         map['performedAt'] ??
         map['updatedAt'];
     DateTime? parsedDate;
-    parsedDate = _parseDate(rawDate);
+    parsedDate = parseDate(rawDate);
     parsedDate ??= DateTime.now();
 
     final idRaw =

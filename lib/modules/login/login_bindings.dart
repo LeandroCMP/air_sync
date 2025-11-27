@@ -8,6 +8,7 @@ class LoginBindings implements Bindings {
       () => LoginController(
         authService: Get.find(),
         authServiceApplication: Get.find(),
+        signupsService: Get.find(),
       ),
     );
   }

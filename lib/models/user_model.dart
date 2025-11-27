@@ -12,6 +12,7 @@ class UserModel {
     required this.cpfOrCnpj,
     this.role = '',
     List<String> permissions = const [],
+    this.mustChangePassword = false,
   }) : permissions =
            permissions.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
 
@@ -25,8 +26,12 @@ class UserModel {
   final String cpfOrCnpj;
   final String role;
   final List<String> permissions;
+  final bool mustChangePassword;
+
+  bool get isOwner => role.toLowerCase() == 'owner';
 
   bool hasPermission(String code) {
+    if (isOwner) return true;
     final normalized = code.toLowerCase();
     for (final permission in permissions) {
       if (permission.toLowerCase() == normalized) {
@@ -37,6 +42,7 @@ class UserModel {
   }
 
   bool hasAnyPermission(Iterable<String> codes) {
+    if (isOwner) return true;
     for (final code in codes) {
       if (hasPermission(code)) {
         return true;
@@ -56,6 +62,7 @@ class UserModel {
       'cpfOrCnpj': cpfOrCnpj,
       'role': role,
       'permissions': permissions,
+      'mustChangePassword': mustChangePassword,
     };
   }
 
@@ -80,17 +87,45 @@ class UserModel {
               : null,
       cpfOrCnpj: map['cpfOrCnpj'] ?? '',
       role: (map['role'] ?? '').toString(),
-      permissions:
-          ((map['permissions'] as List?) ?? const [])
-              .map((e) => e.toString())
-              .toList(),
+      permissions: ((map['permissions'] as List?) ?? const [])
+          .map((e) => e.toString())
+          .toList(),
+      mustChangePassword:
+          map['mustChangePassword'] == true || map['must_change_password'] == true,
     );
   }
 
   String toJson() => json.encode({...toMap(), 'id': id});
 
+  UserModel copyWith({
+    String? name,
+    String? email,
+    String? phone,
+    DateTime? dateBorn,
+    int? userLevel,
+    DateTime? planExpiration,
+    String? cpfOrCnpj,
+    String? role,
+    List<String>? permissions,
+    bool? mustChangePassword,
+  }) {
+    return UserModel(
+      id: id,
+      name: name ?? this.name,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      dateBorn: dateBorn ?? this.dateBorn,
+      userLevel: userLevel ?? this.userLevel,
+      planExpiration: planExpiration ?? this.planExpiration,
+      cpfOrCnpj: cpfOrCnpj ?? this.cpfOrCnpj,
+      role: role ?? this.role,
+      permissions: permissions ?? this.permissions,
+      mustChangePassword: mustChangePassword ?? this.mustChangePassword,
+    );
+  }
+
   @override
   String toString() {
-    return 'UserModel(id: $id, name: $name, email: $email, dateBorn: $dateBorn, phone: $phone, userLevel: $userLevel, planExpiration: $planExpiration, cpfOrCnpj: $cpfOrCnpj, role: $role, permissions: $permissions)';
+    return 'UserModel(id: $id, name: $name, email: $email, dateBorn: $dateBorn, phone: $phone, userLevel: $userLevel, planExpiration: $planExpiration, cpfOrCnpj: $cpfOrCnpj, role: $role, permissions: $permissions, mustChangePassword: $mustChangePassword)';
   }
 }

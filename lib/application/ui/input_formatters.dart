@@ -25,7 +25,7 @@ class PhoneInputFormatter extends TextInputFormatter {
     if (digits.length > 11) digits = digits.substring(0, 11);
     String out;
     if (digits.length <= 2) {
-      out = '(${digits}';
+      out = '($digits';
     } else if (digits.length <= 6) {
       out = '(${digits.substring(0, 2)}) ${digits.substring(2)}';
     } else if (digits.length <= 10) {
@@ -53,33 +53,35 @@ class CnpjCpfInputFormatter extends TextInputFormatter {
     String out;
     if (digits.length <= 11) {
       // CPF: 000.000.000-00
-      if (digits.length <= 3)
+      if (digits.length <= 3) {
         out = digits;
-      else if (digits.length <= 6)
+      } else if (digits.length <= 6) {
         out = '${digits.substring(0, 3)}.${digits.substring(3)}';
-      else if (digits.length <= 9)
+      } else if (digits.length <= 9) {
         out =
             '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6)}';
-      else if (digits.length <= 11)
+      } else if (digits.length <= 11) {
         out =
             '${digits.substring(0, 3)}.${digits.substring(3, 6)}.${digits.substring(6, 9)}-${digits.substring(9)}';
-      else
+      } else {
         out = digits;
+      }
     } else {
       // CNPJ: 00.000.000/0000-00
-      if (digits.length <= 2)
+      if (digits.length <= 2) {
         out = digits;
-      else if (digits.length <= 5)
+      } else if (digits.length <= 5) {
         out = '${digits.substring(0, 2)}.${digits.substring(2)}';
-      else if (digits.length <= 8)
+      } else if (digits.length <= 8) {
         out =
             '${digits.substring(0, 2)}.${digits.substring(2, 5)}.${digits.substring(5)}';
-      else if (digits.length <= 12)
+      } else if (digits.length <= 12) {
         out =
             '${digits.substring(0, 2)}.${digits.substring(2, 5)}.${digits.substring(5, 8)}/${digits.substring(8)}';
-      else
+      } else {
         out =
             '${digits.substring(0, 2)}.${digits.substring(2, 5)}.${digits.substring(5, 8)}/${digits.substring(8, 12)}-${digits.substring(12)}';
+      }
     }
     return TextEditingValue(
       text: out,

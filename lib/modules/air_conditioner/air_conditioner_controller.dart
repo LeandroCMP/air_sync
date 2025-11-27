@@ -1,18 +1,14 @@
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
-import 'package:air_sync/services/client/client_service.dart';
 import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:air_sync/models/air_conditioner_model.dart';
 import 'package:air_sync/models/residence_model.dart';
 
 class AirConditionerController extends GetxController with MessagesMixin, LoaderMixin {
-  final ClientService _clientService;
   final Rx<ResidenceModel?> residence = Rx<ResidenceModel?>(null);
 
-  AirConditionerController({
-    required ClientService clientService,
-  }) : _clientService = clientService;
+  AirConditionerController();
 
   final formKey = GlobalKey<FormState>();
 

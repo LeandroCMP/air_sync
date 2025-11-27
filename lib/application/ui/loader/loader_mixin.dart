@@ -81,6 +81,10 @@ mixin LoaderMixin on GetxController {
           'OrderDetailPage',
           'OrderCreatePage',
           'OrdersPage',
+          '/profile',
+          'ProfilePage',
+          '/subscriptions',
+          'SubscriptionsPage',
         };
         final currentRoute = Get.currentRoute;
         if (currentRoute.isEmpty || inlineRoutes.contains(currentRoute)) {

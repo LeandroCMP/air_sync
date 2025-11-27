@@ -1,5 +1,6 @@
+// ignore_for_file: file_names
+
 import 'package:flutter/material.dart';
-import 'theme_extensions.dart';
 
 class AirSyncAppUiConfig {
   AirSyncAppUiConfig._();
@@ -17,13 +18,11 @@ class AirSyncAppUiConfig {
     final scheme = ColorScheme.fromSeed(
       seedColor: primary,
       brightness: Brightness.dark,
-      background: bg,
       surface: surface,
       primary: primary,
       secondary: secondary,
       onPrimary: Colors.white,
       onSecondary: Colors.black,
-      onBackground: textMain,
       onSurface: textMain,
       error: const Color(0xFFE74C3C),
       onError: Colors.white,

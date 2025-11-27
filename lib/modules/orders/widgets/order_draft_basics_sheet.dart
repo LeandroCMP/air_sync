@@ -27,7 +27,9 @@ Future<DraftBasicsResult?> showDraftBasicsSheet({
   return showModalBottomSheet<DraftBasicsResult>(
     context: context,
     isScrollControlled: true,
-    backgroundColor: Theme.of(context).dialogBackgroundColor,
+    backgroundColor:
+        Theme.of(context).dialogTheme.backgroundColor ??
+        Theme.of(context).colorScheme.surface,
     shape: const RoundedRectangleBorder(
       borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
     ),
@@ -215,7 +217,7 @@ class _DropdownSection<T> extends StatelessWidget {
               ),
             )
             : DropdownButtonFormField<T>(
-              value: allowEmpty ? value : (value == null ? null : value),
+              value: allowEmpty ? value : value,
               items: items,
               onChanged: onChanged,
               decoration: const InputDecoration(

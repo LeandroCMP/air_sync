@@ -1,4 +1,3 @@
-// lib/application/core/errors/auth_failure.dart
 import 'dart:async';
 import 'dart:io';
 
@@ -37,14 +36,12 @@ class AuthFailure implements Exception {
       case AuthFailureType.timeout:
         return 'Tempo de resposta excedido. Tente novamente.';
       case AuthFailureType.unknown:
-      default:
         return 'Erro desconhecido.';
     }
   }
 
   /// Constrói um [AuthFailure] a partir de qualquer [Exception] comum no login.
   factory AuthFailure.fromException(Exception e) {
-    // Timeout
     if (e is TimeoutException) {
       return AuthFailure(
         AuthFailureType.timeout,
@@ -52,7 +49,6 @@ class AuthFailure implements Exception {
       );
     }
 
-    // Rede (sem internet / DNS)
     if (e is SocketException || e is HandshakeException) {
       return AuthFailure(
         AuthFailureType.networkError,
@@ -60,7 +56,6 @@ class AuthFailure implements Exception {
       );
     }
 
-    // Dados mal formatados
     if (e is FormatException) {
       return const AuthFailure(
         AuthFailureType.unknown,
@@ -68,10 +63,8 @@ class AuthFailure implements Exception {
       );
     }
 
-    // FirebaseAuthException (sem import explícito)
-    // Usa dynamic para acessar .code e .message quando existir.
-    final rt = e.runtimeType.toString();
-    if (rt == 'FirebaseAuthException') {
+    final runtime = e.runtimeType.toString();
+    if (runtime == 'FirebaseAuthException') {
       try {
         final code = (e as dynamic).code as String?;
         final msg = (e as dynamic).message as String?;
@@ -114,7 +107,6 @@ class AuthFailure implements Exception {
             );
         }
       } catch (_) {
-        // Se falhar leitura dinâmica, caímos no unknown.
         return AuthFailure(
           AuthFailureType.unknown,
           messageForType(AuthFailureType.unknown),
@@ -122,10 +114,10 @@ class AuthFailure implements Exception {
       }
     }
 
-    // Fallback
     return AuthFailure(
       AuthFailureType.unknown,
       messageForType(AuthFailureType.unknown),
     );
   }
 }
+

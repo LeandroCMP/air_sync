@@ -1,22 +1,26 @@
 import 'dart:async';
 
+import 'package:air_sync/application/auth/auth_service_application.dart';
+import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/application/core/network/token_storage.dart';
 import 'package:air_sync/models/user_model.dart';
-import 'package:air_sync/services/auth/auth_service.dart';
 import 'package:get/get.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 
 class SessionService extends GetxService {
   final TokenStorage _tokens;
-  final AuthService _authService;
+  final ApiClient _apiClient;
 
   Timer? _refreshTimer;
+  bool _handlingForcedLogout = false;
 
   SessionService({
     required TokenStorage tokens,
-    required AuthService authService,
-  }) : _tokens = tokens,
-       _authService = authService;
+    required ApiClient apiClient,
+  })  : _tokens = tokens,
+        _apiClient = apiClient {
+    _apiClient.addLogoutCallback(_handleForcedLogout);
+  }
 
   void onLogin(UserModel user) {
     _scheduleSilentRefresh();
@@ -59,5 +63,16 @@ class SessionService extends GetxService {
     } finally {
       _scheduleSilentRefresh();
     }
+  }
+
+  void _handleForcedLogout() {
+    if (_handlingForcedLogout) return;
+    _handlingForcedLogout = true;
+    cancel();
+    unawaited(_tokens.clear());
+    if (Get.isRegistered<AuthServiceApplication>()) {
+      Get.find<AuthServiceApplication>().user.value = null;
+    }
+    Get.offAllNamed('/login');
   }
 }

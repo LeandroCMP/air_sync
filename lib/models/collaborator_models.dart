@@ -1,10 +1,12 @@
-enum CollaboratorRole { admin, manager, tech, viewer }
+enum CollaboratorRole { owner, admin, manager, tech, viewer }
 
-CollaboratorRole collaboratorRoleFromString(String value) =>
-    CollaboratorRole.values.firstWhere(
-      (role) => role.name == value,
-      orElse: () => CollaboratorRole.viewer,
-    );
+CollaboratorRole collaboratorRoleFromString(String value) {
+  final normalized = value.toLowerCase();
+  for (final role in CollaboratorRole.values) {
+    if (role.name == normalized) return role;
+  }
+  return CollaboratorRole.viewer;
+}
 
 enum PaymentFrequency { monthly, biweekly, weekly }
 

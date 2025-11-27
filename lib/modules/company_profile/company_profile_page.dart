@@ -1,4 +1,3 @@
-import 'package:air_sync/models/company_profile_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:air_sync/application/ui/input_formatters.dart';

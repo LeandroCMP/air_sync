@@ -111,6 +111,9 @@ class UsersController extends GetxController with LoaderMixin, MessagesMixin {
     return const [];
   }
 
+  bool _isProtectedRole(CollaboratorRole? role) =>
+      role == CollaboratorRole.admin || role == CollaboratorRole.owner;
+
   Future<bool> createCollaborator(CollaboratorCreateInput input) async {
     if (!canManageCollaborators) {
       message(
@@ -121,7 +124,7 @@ class UsersController extends GetxController with LoaderMixin, MessagesMixin {
       );
       return false;
     }
-    if (input.role == CollaboratorRole.admin && input.active == false) {
+    if (_isProtectedRole(input.role) && input.active == false) {
       message(
         MessageModel.error(
           title: 'Operação inválida',
@@ -170,8 +173,7 @@ class UsersController extends GetxController with LoaderMixin, MessagesMixin {
     } else if (existing != null) {
       newRole = existing.role;
     }
-    if ((existing?.role == CollaboratorRole.admin ||
-            newRole == CollaboratorRole.admin) &&
+    if ((_isProtectedRole(existing?.role) || _isProtectedRole(newRole)) &&
         input.active == false) {
       message(
         MessageModel.error(

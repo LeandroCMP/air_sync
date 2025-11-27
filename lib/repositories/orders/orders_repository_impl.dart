@@ -1,5 +1,8 @@
 import 'package:air_sync/application/core/network/api_client.dart';
+import 'package:air_sync/models/create_order_purchase_dto.dart';
+import 'package:air_sync/models/order_costs_model.dart';
 import 'package:air_sync/models/order_model.dart';
+import 'package:air_sync/models/purchase_model.dart';
 import 'package:dio/dio.dart' as dio;
 import 'package:get/get.dart';
 
@@ -64,41 +67,28 @@ class OrdersRepositoryImpl implements OrdersRepository {
     List<OrderMaterialInput> materials = const [],
     List<OrderBillingItemInput> billingItems = const [],
     num billingDiscount = 0,
+    String? costCenterId,
   }) async {
-    Future<OrderModel> send(bool includeMetadata) async {
-      final payload = <String, dynamic>{
-        'clientId': clientId,
-        'locationId': locationId,
-        if (status != null && status.isNotEmpty) 'status': status,
-        if (equipmentId != null && equipmentId.isNotEmpty)
-          'equipmentId': equipmentId,
-        if (scheduledAt != null)
-          'scheduledAt': scheduledAt.toUtc().toIso8601String(),
-        if (notes != null && notes.isNotEmpty) 'notes': notes,
-        if (technicianIds.isNotEmpty) 'technicianIds': technicianIds,
-        if (checklist.isNotEmpty) 'checklist': checklist.toJsonList(),
-        if (materials.isNotEmpty)
-          'materials': materials.toJsonList(
-            includeMetadata: includeMetadata,
-          ),
-        if (billingItems.isNotEmpty)
-          'billingItems': billingItems.toJsonList(),
-        if (billingDiscount != 0) 'billingDiscount': billingDiscount,
-      };
-      final res = await _dio.post('/v1/orders', data: payload);
-      return OrderModel.fromMap(_asMap(res.data));
-    }
-
-    try {
-      return await send(true);
-    } on dio.DioException catch (error) {
-      final shouldRetry =
-          materials.isNotEmpty && _isMaterialNameValidationError(error);
-      if (shouldRetry) {
-        return await send(false);
-      }
-      rethrow;
-    }
+    final payload = <String, dynamic>{
+      'clientId': clientId,
+      'locationId': locationId,
+      if (status != null && status.isNotEmpty) 'status': status,
+      if (equipmentId != null && equipmentId.isNotEmpty)
+        'equipmentId': equipmentId,
+      if (scheduledAt != null)
+        'scheduledAt': scheduledAt.toUtc().toIso8601String(),
+      if (notes != null && notes.isNotEmpty) 'notes': notes,
+      if (technicianIds.isNotEmpty) 'technicianIds': technicianIds,
+      if (checklist.isNotEmpty) 'checklist': checklist.toJsonList(),
+      if (materials.isNotEmpty)
+        'materials': materials.toJsonList(includeMetadata: true),
+      if (billingItems.isNotEmpty) 'billingItems': billingItems.toJsonList(),
+      if (billingDiscount != 0) 'billingDiscount': billingDiscount,
+      if (costCenterId != null && costCenterId.isNotEmpty)
+        'costCenterId': costCenterId,
+    };
+    final res = await _dio.post('/v1/orders', data: payload);
+    return OrderModel.fromMap(_asMap(res.data));
   }
 
   @override
@@ -114,6 +104,7 @@ class OrdersRepositoryImpl implements OrdersRepository {
     String? clientId,
     String? locationId,
     String? equipmentId,
+    String? costCenterId,
   }) async {
     final payload = <String, dynamic>{};
     if (status != null) payload['status'] = status;
@@ -130,6 +121,7 @@ class OrdersRepositoryImpl implements OrdersRepository {
     if (clientId != null) payload['clientId'] = clientId;
     if (locationId != null) payload['locationId'] = locationId;
     if (equipmentId != null) payload['equipmentId'] = equipmentId;
+    if (costCenterId != null) payload['costCenterId'] = costCenterId;
 
     final res = await _dio.patch('/v1/orders/$orderId', data: payload);
     return OrderModel.fromMap(_asMap(res.data));
@@ -146,19 +138,18 @@ class OrdersRepositoryImpl implements OrdersRepository {
     required String orderId,
     required List<OrderBillingItemInput> billingItems,
     num discount = 0,
-    required String signatureBase64,
+    String? signatureBase64,
     String? notes,
     List<OrderPaymentInput> payments = const [],
   }) async {
-    if (signatureBase64.isEmpty) {
-      throw ArgumentError('signatureBase64 is required to finalizar a ordem.');
-    }
     final payload = <String, dynamic>{
       'billingItems': billingItems.toJsonList(),
       'discount': discount,
-      'signatureBase64': signatureBase64,
       'payments': payments.toJsonList(),
     };
+    if (signatureBase64 != null && signatureBase64.isNotEmpty) {
+      payload['signatureBase64'] = signatureBase64;
+    }
     if (notes != null && notes.isNotEmpty) payload['notes'] = notes;
 
     final res = await _dio.post('/v1/orders/$orderId/finish', data: payload);
@@ -189,25 +180,12 @@ class OrdersRepositoryImpl implements OrdersRepository {
     List<OrderMaterialInput> materials,
   ) async {
     if (materials.isEmpty) return;
-    Future<void> send(bool includeMetadata) async {
-      await _dio.post(
-        '/v1/orders/$orderId/materials/reserve',
-        data: {
-          'materials': materials.toJsonList(includeMetadata: includeMetadata),
-        },
-      );
-    }
-
-    try {
-      await send(true);
-    } on dio.DioException catch (error) {
-      final shouldRetry = _isMaterialNameValidationError(error);
-      if (shouldRetry) {
-        await send(false);
-        return;
-      }
-      rethrow;
-    }
+    await _dio.post(
+      '/v1/orders/$orderId/materials/reserve',
+      data: {
+        'materials': materials.toJsonList(includeMetadata: true),
+      },
+    );
   }
 
   @override
@@ -216,25 +194,12 @@ class OrdersRepositoryImpl implements OrdersRepository {
     List<OrderMaterialInput> materials,
   ) async {
     if (materials.isEmpty) return;
-    Future<void> send(bool includeMetadata) async {
-      await _dio.post(
-        '/v1/orders/$orderId/materials/deduct',
-        data: {
-          'materials': materials.toJsonList(includeMetadata: includeMetadata),
-        },
-      );
-    }
-
-    try {
-      await send(true);
-    } on dio.DioException catch (error) {
-      final shouldRetry = _isMaterialNameValidationError(error);
-      if (shouldRetry) {
-        await send(false);
-        return;
-      }
-      rethrow;
-    }
+    await _dio.post(
+      '/v1/orders/$orderId/materials/deduct',
+      data: {
+        'materials': materials.toJsonList(includeMetadata: true),
+      },
+    );
   }
 
   @override
@@ -289,33 +254,104 @@ class OrdersRepositoryImpl implements OrdersRepository {
   @override
   Future<void> delete(String orderId) => _dio.delete('/v1/orders/$orderId');
 
-  bool _isMaterialNameValidationError(dio.DioException error) {
-    final status = error.response?.statusCode ?? 0;
-    if (status != 400 && status != 422) return false;
-    return _containsMaterialNameFlag(error.response?.data);
+  @override
+  Future<OrderCostsModel?> getCosts(String orderId) async {
+    try {
+      final res = await _dio
+          .get('/v1/orders/$orderId/costs')
+          .timeout(const Duration(seconds: 12));
+      final data = res.data;
+      if (data == null) return null;
+      if (data is List && data.isNotEmpty) {
+        final first = data.first;
+        if (first is Map<String, dynamic>) {
+          return OrderCostsModel.fromMap(first);
+        }
+        if (first is Map) {
+          return OrderCostsModel.fromMap(Map<String, dynamic>.from(first));
+        }
+      }
+      if (data is Map<String, dynamic>) {
+        return OrderCostsModel.fromMap(data);
+      }
+      if (data is Map) {
+        return OrderCostsModel.fromMap(Map<String, dynamic>.from(data));
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
-  bool _containsMaterialNameFlag(dynamic source) {
-    if (source == null) return false;
-    if (source is String) {
-      final normalized = source.toLowerCase();
-      return normalized.contains('itemname') ||
-          normalized.contains('material item name') ||
-          normalized.contains('property name should not exist');
-    }
-    if (source is Map) {
-      for (final value in source.values) {
-        if (_containsMaterialNameFlag(value)) return true;
+  @override
+  Future<PurchaseModel> createPurchaseFromOrder({
+    required String orderId,
+    required CreateOrderPurchaseDto dto,
+  }) async {
+    final res = await _dio
+        .post('/v1/orders/$orderId/purchases', data: dto.toMap())
+        .timeout(const Duration(seconds: 15));
+    return PurchaseModel.fromMap(_asMap(res.data));
+  }
+
+  @override
+  Future<String> askTechnicalAssistant({
+    required String orderId,
+    required String question,
+  }) async {
+    final res = await _dio
+        .post(
+          '/v1/orders/$orderId/insights/assistant',
+          data: {'question': question},
+        )
+        .timeout(const Duration(seconds: 20));
+    return _extractInsightText(res.data);
+  }
+
+  @override
+  Future<String> generateCustomerSummary(String orderId) async {
+    final res = await _dio
+        .post(
+          '/v1/orders/$orderId/insights/summary',
+        )
+        .timeout(const Duration(seconds: 20));
+    return _extractInsightText(res.data);
+  }
+
+  String _extractInsightText(dynamic data) {
+    if (data == null) return '';
+    if (data is String) return data.trim();
+    if (data is Map) {
+      final map = Map<String, dynamic>.from(data);
+      for (final key in [
+        'text',
+        'message',
+        'answer',
+        'summary',
+        'content',
+        'proposal',
+      ]) {
+        final value = map[key];
+        if (value == null) continue;
+        if (value is String && value.trim().isNotEmpty) {
+          return value.trim();
+        }
       }
-      return false;
-    }
-    if (source is Iterable) {
-      for (final value in source) {
-        if (_containsMaterialNameFlag(value)) return true;
+      if (map.isNotEmpty) {
+        return map.values
+            .whereType<String>()
+            .firstWhere(
+              (value) => value.trim().isNotEmpty,
+              orElse: () => '',
+            )
+            .trim();
       }
-      return false;
     }
-    return _containsMaterialNameFlag(source.toString());
+    if (data is List) {
+      final joined = data.whereType<String>().join('\n').trim();
+      if (joined.isNotEmpty) return joined;
+    }
+    return data.toString();
   }
 
   Map<String, dynamic> _asMap(dynamic data) {

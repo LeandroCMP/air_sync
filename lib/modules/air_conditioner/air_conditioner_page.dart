@@ -92,7 +92,7 @@ class AirConditionerPage extends GetView<AirConditionerController> {
                     //controller: controller.birthDateController,
                     readOnly: true,
                     onTap: () async {
-                      final pickedDate = await showDatePicker(
+                      await showDatePicker(
                         context: context,
                         initialDate: DateTime.now(),
                         firstDate: DateTime(1900),

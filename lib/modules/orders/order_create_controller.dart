@@ -5,6 +5,7 @@ import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/models/collaborator_models.dart';
+import 'package:air_sync/models/cost_center_model.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
@@ -19,6 +20,7 @@ import 'package:air_sync/services/orders/order_label_service.dart';
 import 'package:air_sync/services/orders/order_draft_storage.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:air_sync/services/users/users_service.dart';
+import 'package:air_sync/services/cost_centers/cost_centers_service.dart';
 import 'package:intl/intl.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -37,6 +39,7 @@ class OrderCreateController extends GetxController
     required InventoryService inventoryService,
     required OrderLabelService labelService,
     required UsersService usersService,
+    required CostCentersService costCentersService,
     required OrderDraftStorage draftStorage,
     OrderDraftModel? initialDraft,
   }) : _ordersService = ordersService,
@@ -46,6 +49,7 @@ class OrderCreateController extends GetxController
        _inventoryService = inventoryService,
        _labelService = labelService,
        _usersService = usersService,
+       _costCentersService = costCentersService,
        _draftStorage = draftStorage,
        _initialDraft = initialDraft {
     _setEditingDraft(initialDraft);
@@ -58,6 +62,7 @@ class OrderCreateController extends GetxController
   final InventoryService _inventoryService;
   final OrderLabelService _labelService;
   final UsersService _usersService;
+  final CostCentersService _costCentersService;
   final OrderDraftStorage _draftStorage;
   final OrderDraftModel? _initialDraft;
   OrderDraftModel? _editingDraft;
@@ -110,6 +115,9 @@ class OrderCreateController extends GetxController
   final RxList<OrderBillingDraft> billingItems = <OrderBillingDraft>[].obs;
   final RxList<CollaboratorModel> technicians = <CollaboratorModel>[].obs;
   final RxList<String> selectedTechnicianIds = <String>[].obs;
+  final RxList<CostCenterModel> costCenters = <CostCenterModel>[].obs;
+  final RxBool costCentersLoading = false.obs;
+  final RxnString selectedCostCenterId = RxnString();
 
   @override
   void onInit() {
@@ -122,6 +130,7 @@ class OrderCreateController extends GetxController
     await _loadClients();
     await _loadInventoryItems();
     await _loadTechnicians();
+    await _loadCostCenters();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 150), () {
         _maybeApplyInitialDraft();
@@ -203,10 +212,39 @@ class OrderCreateController extends GetxController
     }
   }
 
+  Future<void> _loadCostCenters() async {
+    costCentersLoading(true);
+    try {
+      final result = await _costCentersService.list(includeInactive: false);
+      final active = result.where((center) => center.active).toList()
+        ..sort(
+          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
+        );
+      costCenters.assignAll(active);
+      final selected = selectedCostCenterId.value;
+      if (selected != null && selected.isNotEmpty) {
+        final exists = active.any((center) => center.id == selected);
+        if (!exists) {
+          selectedCostCenterId.value = null;
+        }
+      }
+    } catch (_) {
+      message(
+        MessageModel.error(
+          title: 'Centros de custo',
+          message: 'Falha ao carregar centros de custo.',
+        ),
+      );
+    } finally {
+      costCentersLoading(false);
+    }
+  }
+
   Future<void> _maybeApplyInitialDraft() async {
-    if (_initialDraft == null || _draftApplied) return;
+    final draft = _initialDraft;
+    if (draft == null || _draftApplied) return;
     _draftApplied = true;
-    await _applyDraft(_initialDraft!);
+    await _applyDraft(draft);
   }
 
   Future<void> _applyDraft(OrderDraftModel draft) async {
@@ -228,6 +266,9 @@ class OrderCreateController extends GetxController
     }
     if ((draft.equipmentId ?? '').isNotEmpty) {
       selectedEquipmentId.value = draft.equipmentId;
+    }
+    if ((draft.costCenterId ?? '').isNotEmpty) {
+      setCostCenter(draft.costCenterId);
     }
     scheduledAt.value = draft.scheduledAt;
     _setControllerText(notesCtrl, draft.notes ?? '');
@@ -330,6 +371,15 @@ class OrderCreateController extends GetxController
 
   void setEquipment(String? id) => selectedEquipmentId.value = id;
 
+  void setCostCenter(String? id) {
+    final normalized = id?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      selectedCostCenterId.value = null;
+    } else {
+      selectedCostCenterId.value = normalized;
+    }
+  }
+
   void setScheduledAt(DateTime? dateTime) => scheduledAt.value = dateTime;
 
   void clearScheduledAt() => scheduledAt.value = null;
@@ -366,6 +416,19 @@ class OrderCreateController extends GetxController
     final preferredName =
         description.isNotEmpty ? description : (sku.isNotEmpty ? sku : item.id);
     materials[index].itemName.value = preferredName;
+    materials[index].unitCost = item.avgCost;
+    final currentDigits = materials[index].unitPriceCtrl.text.replaceAll(
+      RegExp(r'[^0-9]'),
+      '',
+    );
+    final hasCustomPrice =
+        currentDigits.isNotEmpty && double.tryParse(currentDigits) != null;
+    if (!hasCustomPrice && item.sellPrice != null) {
+      _setControllerText(
+        materials[index].unitPriceCtrl,
+        _draftCurrencyFormatter.format(item.sellPrice),
+      );
+    }
   }
 
   void addBillingRow() => billingItems.add(OrderBillingDraft());
@@ -439,6 +502,7 @@ class OrderCreateController extends GetxController
         materials: materialInputs,
         billingItems: billingInputs,
         billingDiscount: discount,
+        costCenterId: selectedCostCenterId.value,
       );
       final orderWithMaterials = _decorateMaterials(order);
 
@@ -579,6 +643,7 @@ class OrderCreateController extends GetxController
       clientName: labels.clientName,
       locationLabel: labels.locationLabel,
       equipmentLabel: labels.equipmentLabel,
+      costCenterId: selectedCostCenterId.value,
       scheduledAt: scheduledAt.value,
       technicianIds: selectedTechnicianIds.toList(growable: false),
       checklist: checklist.toList(growable: false),
@@ -777,11 +842,14 @@ class OrderMaterialDraft {
   OrderMaterialDraft()
     : itemId = RxnString(),
       itemName = RxnString(),
-      qtyCtrl = TextEditingController();
+      qtyCtrl = TextEditingController(),
+      unitPriceCtrl = TextEditingController();
 
   final RxnString itemId;
   final RxnString itemName;
   final TextEditingController qtyCtrl;
+  final TextEditingController unitPriceCtrl;
+  double? unitCost;
 
   OrderMaterialInput? toMaterial({String? descriptionOverride}) {
     final id = itemId.value;
@@ -789,6 +857,8 @@ class OrderMaterialDraft {
     final qtyRaw = qtyCtrl.text.replaceAll(',', '.').trim();
     final qty = double.tryParse(qtyRaw);
     if (qty == null || qty <= 0) return null;
+    final digits = unitPriceCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final price = digits.isEmpty ? null : double.parse(digits) / 100;
     final name = itemName.value?.trim();
     final descriptionSource = descriptionOverride?.trim();
     final resolvedDescription =
@@ -800,37 +870,50 @@ class OrderMaterialDraft {
       qty: qty,
       itemName: name?.isEmpty == true ? null : name,
       description: resolvedDescription,
+      unitPrice: price,
+      unitCost: unitCost,
     );
   }
 
   void clearSelection() {
     itemId.value = null;
     itemName.value = null;
+    unitCost = null;
+    _setControllerText(unitPriceCtrl, '');
   }
 
-  void dispose() => qtyCtrl.dispose();
+  void dispose() {
+    qtyCtrl.dispose();
+    unitPriceCtrl.dispose();
+  }
 
   OrderDraftMaterial? toDraftMaterial() {
     final id = itemId.value;
     final name = itemName.value;
     final qtyRaw = qtyCtrl.text.replaceAll(',', '.').trim();
     final qty = qtyRaw.isEmpty ? null : double.tryParse(qtyRaw);
+    final digits = unitPriceCtrl.text.replaceAll(RegExp(r'[^0-9]'), '');
+    final unitPrice = digits.isEmpty ? null : double.parse(digits) / 100;
     final hasContent =
         (id != null && id.isNotEmpty) ||
         (name != null && name.trim().isNotEmpty) ||
-        (qty != null && qty > 0);
+        (qty != null && qty > 0) ||
+        (unitPrice != null && unitPrice > 0);
     if (!hasContent) return null;
     return OrderDraftMaterial(
       itemId: id,
       itemName: name,
       description: name,
       qty: qty ?? 0,
+      unitPrice: unitPrice,
+      unitCost: unitCost,
     );
   }
 
   void loadFromDraft(OrderDraftMaterial data) {
     itemId.value = data.itemId;
     itemName.value = data.itemName;
+    unitCost = data.unitCost;
     if (data.qty != null) {
       final qtyValue = data.qty!;
       final text =
@@ -838,6 +921,14 @@ class OrderMaterialDraft {
       _setControllerText(qtyCtrl, text);
     } else {
       _setControllerText(qtyCtrl, '');
+    }
+    if (data.unitPrice != null) {
+      _setControllerText(
+        unitPriceCtrl,
+        _draftCurrencyFormatter.format(data.unitPrice),
+      );
+    } else {
+      _setControllerText(unitPriceCtrl, '');
     }
   }
 }

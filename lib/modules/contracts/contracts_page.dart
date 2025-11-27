@@ -241,7 +241,13 @@ class ContractsPage extends GetView<ContractsController> {
             controller: searchCtrl,
             onChanged: (v) {
               final q = v.trim().toUpperCase();
-              filtered.assignAll(clients.where((c) => c.name.toUpperCase().contains(q) || (c.primaryPhone ?? '').toUpperCase().contains(q)));
+              filtered.assignAll(
+                clients.where(
+                  (c) =>
+                      c.name.toUpperCase().contains(q) ||
+                      c.primaryPhone.toUpperCase().contains(q),
+                ),
+              );
             },
             style: const TextStyle(color: Colors.white),
             decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Buscar por nome/telefone'),
@@ -255,7 +261,7 @@ class ContractsPage extends GetView<ContractsController> {
                     final c = filtered[i];
                     return ListTile(
                       title: Text(c.name, style: const TextStyle(color: Colors.white)),
-                      subtitle: Text(c.primaryPhone ?? '-', style: const TextStyle(color: Colors.white70)),
+                      subtitle: Text(c.primaryPhone, style: const TextStyle(color: Colors.white70)),
                       onTap: () { Get.back(); onPick(c); },
                     );
                   },

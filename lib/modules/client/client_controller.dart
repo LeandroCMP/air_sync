@@ -20,6 +20,7 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   final isFetching = false.obs;
   final isLoadingMore = false.obs;
   final includeDeleted = false.obs;
+  final RxString statusFilter = 'all'.obs;
 
   final clients = <ClientModel>[].obs;
 
@@ -170,6 +171,14 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
 
   void toggleIncludeDeleted() => includeDeleted.toggle();
 
+  void setStatusFilter(String value) {
+    if (statusFilter.value == value) {
+      statusFilter.value = 'all';
+    } else {
+      statusFilter.value = value;
+    }
+  }
+
   void startCreate() {
     editingClient.value = null;
     _resetForm();
@@ -178,13 +187,15 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   void startEdit(ClientModel client) {
     editingClient.value = client;
     _resetForm();
-    nameController.text = client.name;
+    nameController.text = client.name.toUpperCase();
     docController.text = client.docNumber ?? '';
     notesController.text = client.notes ?? '';
     npsController.text = client.nps?.toString() ?? '';
     phones.assignAll(client.phones);
     emails.assignAll(client.emails);
-    tags.assignAll(client.tags);
+    tags.assignAll(
+      client.tags.map((tag) => tag.toUpperCase()).toList(growable: false),
+    );
   }
 
   void cancelForm() {
@@ -225,8 +236,9 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   void addTag([String? value]) {
     final input = (value ?? tagInputController.text).trim();
     if (input.isEmpty) return;
-    if (!tags.contains(input)) {
-      tags.add(input);
+    final normalized = input.toUpperCase();
+    if (!tags.contains(normalized)) {
+      tags.add(normalized);
     }
     tagInputController.clear();
   }
@@ -356,13 +368,15 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   ClientModel _buildClientFromForm() {
     final notes = notesController.text.trim();
     final doc = docController.text.trim();
+    final name = _upperRequired(nameController.text);
+    final tagList = _upperList(tags);
     return ClientModel(
       id: editingClient.value?.id ?? '',
-      name: nameController.text.trim(),
+      name: name,
       docNumber: doc.isEmpty ? null : doc,
       phones: phones.toList(growable: false),
       emails: emails.toList(growable: false),
-      tags: tags.toList(growable: false),
+      tags: tagList,
       notes: notes.isEmpty ? null : notes,
       nps: npsValue.value,
     );
@@ -392,4 +406,12 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     tags.clear();
     npsValue.value = null;
   }
+
+  String _upperRequired(String value) => value.trim().toUpperCase();
+
+  List<String> _upperList(Iterable<String> values) =>
+      values
+          .map((value) => value.trim().toUpperCase())
+          .where((value) => value.isNotEmpty)
+          .toList(growable: false);
 }

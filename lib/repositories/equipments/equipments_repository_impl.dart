@@ -1,6 +1,5 @@
 import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/models/equipment_model.dart';
-import 'package:air_sync/models/maintenance_model.dart';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 

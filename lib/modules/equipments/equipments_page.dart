@@ -1,6 +1,7 @@
 import 'package:air_sync/application/auth/auth_service_application.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/application/utils/formatters/btus_input_formatter.dart';
+import 'package:air_sync/application/utils/formatters/upper_case_input_formatter.dart';
 import 'package:air_sync/application/utils/pdf/equipment_report_pdf.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/location_model.dart';
@@ -167,14 +168,24 @@ class EquipmentsPage extends GetView<EquipmentsController> {
     BuildContext context,
     EquipmentModel equipment,
   ) async {
-    final brandCtrl = TextEditingController(text: equipment.brand ?? '');
-    final modelCtrl = TextEditingController(text: equipment.model ?? '');
-    final typeCtrl = TextEditingController(text: equipment.type ?? '');
+    final brandCtrl = TextEditingController(
+      text: (equipment.brand ?? '').toUpperCase(),
+    );
+    final modelCtrl = TextEditingController(
+      text: (equipment.model ?? '').toUpperCase(),
+    );
+    final typeCtrl = TextEditingController(
+      text: (equipment.type ?? '').toUpperCase(),
+    );
     final btusCtrl = TextEditingController(
       text: equipment.btus?.toString() ?? '',
     );
-    final roomCtrl = TextEditingController(text: equipment.room ?? '');
-    final serialCtrl = TextEditingController(text: equipment.serial ?? '');
+    final roomCtrl = TextEditingController(
+      text: (equipment.room ?? '').toUpperCase(),
+    );
+    final serialCtrl = TextEditingController(
+      text: (equipment.serial ?? '').toUpperCase(),
+    );
     final notesCtrl = TextEditingController(text: equipment.notes ?? '');
     final formKey = GlobalKey<FormState>();
 
@@ -217,6 +228,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: brandCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(labelText: 'Marca *'),
                     validator:
@@ -228,6 +241,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: modelCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(labelText: 'Modelo *'),
                     validator:
@@ -239,6 +254,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: typeCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Tipo (opcional)',
@@ -260,6 +277,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: roomCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Cômodo/ambiente *',
@@ -273,6 +292,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: serialCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Serial (opcional)',
@@ -302,25 +323,25 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                       onPressed: () async {
                         if (!formKey.currentState!.validate()) return;
                         final btus = _parseBtus(btusCtrl.text);
+                        final brand = _upperRequired(brandCtrl.text);
+                        final model = _upperRequired(modelCtrl.text);
+                        final type = _upperOptional(typeCtrl.text);
+                        final room = _upperRequired(roomCtrl.text);
+                        final serial = _upperOptional(serialCtrl.text);
                         await controller.updateEquipment(
                           id: equipment.id,
-                          brand: brandCtrl.text.trim(),
-                          model: modelCtrl.text.trim(),
-                          type:
-                              typeCtrl.text.trim().isEmpty
-                                  ? null
-                                  : typeCtrl.text.trim(),
+                          brand: brand,
+                          model: model,
+                          type: type,
                           btus: btus,
-                          room: roomCtrl.text.trim(),
-                          serial:
-                              serialCtrl.text.trim().isEmpty
-                                  ? null
-                                  : serialCtrl.text.trim(),
+                          room: room,
+                          serial: serial,
                           notes:
                               notesCtrl.text.trim().isEmpty
                                   ? null
                                   : notesCtrl.text.trim(),
                         );
+                        if (!sheetCtx.mounted) return;
                         Navigator.of(sheetCtx).pop();
                       },
                       child: Text(
@@ -349,6 +370,14 @@ class EquipmentsPage extends GetView<EquipmentsController> {
     notesCtrl.dispose();
   }
 
+  String _upperRequired(String value) => value.trim().toUpperCase();
+
+  String? _upperOptional(String value) {
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed.toUpperCase();
+  }
+
   void _openHistory(EquipmentModel equipment) {
     Get.to(
       () => const EquipmentHistoryPage(),
@@ -365,11 +394,13 @@ class EquipmentsPage extends GetView<EquipmentsController> {
     final initialLocations = await locService.listByClient(
       controller.client.id,
     );
+    if (!context.mounted) return;
+    if (!context.mounted) return;
 
     final locations = initialLocations.obs;
     final selectedLocationId = RxnString(equipment.locationId);
     final formKey = GlobalKey<FormState>();
-    final roomCtrl = TextEditingController(text: equipment.room ?? '');
+    final roomCtrl = TextEditingController(text: (equipment.room ?? '').toUpperCase());
     final notesCtrl = TextEditingController();
 
     await showModalBottomSheet<void>(
@@ -474,6 +505,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: roomCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: const [UpperCaseTextFormatter()],
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         labelText: 'Novo cômodo *',
@@ -512,16 +545,18 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                                   if (!formKey.currentState!.validate()) {
                                     return;
                                   }
+                                  final room = _upperRequired(roomCtrl.text);
                                   await controller.move(
                                     id: equipment.id,
                                     toLocationId: selectedLocationId.value!,
-                                    toRoom: roomCtrl.text.trim(),
+                                    toRoom: room,
                                     toClientId: controller.client.id,
                                     notes:
-                                        notesCtrl.text.trim().isEmpty
-                                            ? null
-                                            : notesCtrl.text.trim(),
-                                  );
+                                  notesCtrl.text.trim().isEmpty
+                                          ? null
+                                          : notesCtrl.text.trim(),
+                                );
+                                  if (!sheetCtx.mounted) return;
                                   Navigator.of(sheetCtx).pop();
                                 },
                         child: Text(
@@ -551,6 +586,7 @@ class EquipmentsPage extends GetView<EquipmentsController> {
     final initialLocations = await locService.listByClient(
       controller.client.id,
     );
+    if (!context.mounted) return;
 
     final locations = initialLocations.obs;
     final selectedLocationId = RxnString(
@@ -665,6 +701,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: brandCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: const [UpperCaseTextFormatter()],
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(labelText: 'Marca *'),
                       validator:
@@ -676,6 +714,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                     const SizedBox(height: 10),
                     TextFormField(
                       controller: modelCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: const [UpperCaseTextFormatter()],
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(labelText: 'Modelo *'),
                       validator:
@@ -687,6 +727,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                     const SizedBox(height: 10),
                     TextFormField(
                       controller: typeCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: const [UpperCaseTextFormatter()],
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         labelText: 'Tipo (opcional)',
@@ -708,6 +750,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                     const SizedBox(height: 10),
                     TextFormField(
                       controller: roomCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: const [UpperCaseTextFormatter()],
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         labelText: 'Cômodo/ambiente *',
@@ -721,6 +765,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                     const SizedBox(height: 10),
                     TextFormField(
                       controller: serialCtrl,
+                      textCapitalization: TextCapitalization.characters,
+                      inputFormatters: const [UpperCaseTextFormatter()],
                       style: const TextStyle(color: Colors.white),
                       decoration: const InputDecoration(
                         labelText: 'Serial (opcional)',
@@ -752,30 +798,30 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                               onPressed:
                                   selectedLocationId.value == null
                                       ? null
-                                      : () async {
-                                        if (!formKey.currentState!.validate()) {
-                                          return;
-                                        }
-                                        final btus = _parseBtus(btusCtrl.text);
-                                        await controller.create(
-                                          locationId: selectedLocationId.value!,
-                                          brand: brandCtrl.text.trim(),
-                                          model: modelCtrl.text.trim(),
-                                          type:
-                                              typeCtrl.text.trim().isEmpty
-                                                  ? null
-                                                  : typeCtrl.text.trim(),
-                                          btus: btus,
-                                          room: roomCtrl.text.trim(),
-                                          serial:
-                                              serialCtrl.text.trim().isEmpty
-                                                  ? null
-                                                  : serialCtrl.text.trim(),
-                                          notes:
-                                              notesCtrl.text.trim().isEmpty
-                                                  ? null
-                                                  : notesCtrl.text.trim(),
-                                        );
+                                : () async {
+                                  if (!formKey.currentState!.validate()) {
+                                    return;
+                                  }
+                                  final btus = _parseBtus(btusCtrl.text);
+                                  final brand = _upperRequired(brandCtrl.text);
+                                  final model = _upperRequired(modelCtrl.text);
+                                  final type = _upperOptional(typeCtrl.text);
+                                  final room = _upperRequired(roomCtrl.text);
+                                  final serial = _upperOptional(serialCtrl.text);
+                                  await controller.create(
+                                    locationId: selectedLocationId.value!,
+                                    brand: brand,
+                                    model: model,
+                                    type: type,
+                                    btus: btus,
+                                    room: room,
+                                    serial: serial,
+                                    notes:
+                                        notesCtrl.text.trim().isEmpty
+                                            ? null
+                                                : notesCtrl.text.trim(),
+                                      );
+                                        if (!sheetCtx.mounted) return;
                                         Navigator.of(sheetCtx).pop();
                                       },
                               child: Text(
@@ -829,13 +875,21 @@ class EquipmentsPage extends GetView<EquipmentsController> {
     BuildContext context,
     EquipmentModel equipment,
   ) async {
-    final brandCtrl = TextEditingController(text: equipment.brand ?? '');
-    final modelCtrl = TextEditingController(text: equipment.model ?? '');
-    final typeCtrl = TextEditingController(text: equipment.type ?? '');
+    final brandCtrl = TextEditingController(
+      text: (equipment.brand ?? '').toUpperCase(),
+    );
+    final modelCtrl = TextEditingController(
+      text: (equipment.model ?? '').toUpperCase(),
+    );
+    final typeCtrl = TextEditingController(
+      text: (equipment.type ?? '').toUpperCase(),
+    );
     final btusCtrl = TextEditingController(
       text: equipment.btus?.toString() ?? '',
     );
-    final roomCtrl = TextEditingController(text: equipment.room ?? '');
+    final roomCtrl = TextEditingController(
+      text: (equipment.room ?? '').toUpperCase(),
+    );
     final serialCtrl = TextEditingController();
     final notesCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
@@ -879,6 +933,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 12),
                   TextFormField(
                     controller: brandCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(labelText: 'Marca *'),
                     validator:
@@ -890,6 +946,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: modelCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(labelText: 'Modelo *'),
                     validator:
@@ -901,6 +959,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: typeCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Tipo (opcional)',
@@ -922,6 +982,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: roomCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Cômodo/ambiente *',
@@ -935,6 +997,8 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                   const SizedBox(height: 10),
                   TextFormField(
                     controller: serialCtrl,
+                    textCapitalization: TextCapitalization.characters,
+                    inputFormatters: const [UpperCaseTextFormatter()],
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
                       labelText: 'Serial (opcional)',
@@ -964,27 +1028,27 @@ class EquipmentsPage extends GetView<EquipmentsController> {
                       onPressed: () async {
                         if (!formKey.currentState!.validate()) return;
                         final btus = _parseBtus(btusCtrl.text);
+                        final brand = _upperRequired(brandCtrl.text);
+                        final model = _upperRequired(modelCtrl.text);
+                        final type = _upperOptional(typeCtrl.text);
+                        final room = _upperRequired(roomCtrl.text);
+                        final serial = _upperOptional(serialCtrl.text);
                         await controller.replace(
                           id: equipment.id,
                           newEquipment: {
-                            'brand': brandCtrl.text.trim(),
-                            'model': modelCtrl.text.trim(),
-                            'type':
-                                typeCtrl.text.trim().isEmpty
-                                    ? null
-                                    : typeCtrl.text.trim(),
+                            'brand': brand,
+                            'model': model,
+                            'type': type,
                             'btus': btus,
-                            'room': roomCtrl.text.trim(),
-                            'serial':
-                                serialCtrl.text.trim().isEmpty
-                                    ? null
-                                    : serialCtrl.text.trim(),
+                            'room': room,
+                            'serial': serial,
                           },
                           notes:
                               notesCtrl.text.trim().isEmpty
                                   ? null
                                   : notesCtrl.text.trim(),
                         );
+                        if (!sheetCtx.mounted) return;
                         Navigator.of(sheetCtx).pop();
                       },
                       child: Text(

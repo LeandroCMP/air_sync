@@ -10,6 +10,42 @@ class AuthRepositoryImpl implements AuthRepository {
   final ApiClient _api = Get.find<ApiClient>();
   final TokenStorage _tokens = Get.find<TokenStorage>();
 
+  UserModel _mapUser(
+    Map<String, dynamic> userData, {
+    String? fallbackEmail,
+  }) {
+    final id = (userData['id'] ?? userData['_id'] ?? '').toString();
+    if (id.isEmpty) {
+      throw const AuthFailure(
+        AuthFailureType.userNotFound,
+        'Usuário inválido retornado pela API.',
+      );
+    }
+    final email = (userData['email'] ?? fallbackEmail ?? '').toString();
+    final role = (userData['role'] ?? '').toString();
+    final permissions =
+        ((userData['permissions'] as List?) ?? const [])
+            .map((e) => e.toString())
+            .toList();
+    final mustChangePassword =
+        userData['mustChangePassword'] == true ||
+        userData['must_change_password'] == true;
+
+    return UserModel(
+      id: id,
+      name: (userData['name'] ?? userData['fullName'] ?? '').toString(),
+      email: email,
+      phone: userData['phone']?.toString() ?? '',
+      dateBorn: null,
+      userLevel: 0,
+      planExpiration: null,
+      cpfOrCnpj: userData['document']?.toString() ?? '',
+      role: role,
+      permissions: permissions,
+      mustChangePassword: mustChangePassword,
+    );
+  }
+
   @override
   Future<UserModel> auth(String email, String password) async {
     try {
@@ -17,42 +53,19 @@ class AuthRepositoryImpl implements AuthRepository {
         '/v1/auth/login',
         data: {'email': email, 'password': password},
       );
-      final data = res.data as Map<String, dynamic>;
+      final data = Map<String, dynamic>.from(res.data as Map);
       final access = (data['accessToken'] ?? '') as String;
       final refresh = (data['refreshToken'] ?? '') as String;
       final jti = data['jti'] as String?;
       await _tokens.save(access: access, refresh: refresh, jti: jti);
 
       final userData =
-          (data['user'] ?? data['account'] ?? {}) as Map<String, dynamic>;
-      final id = (userData['id'] ?? userData['_id'] ?? '').toString();
-      final name = (userData['name'] ?? userData['fullName'] ?? '').toString();
-      final emailResp = (userData['email'] ?? email).toString();
-      final role = (userData['role'] ?? '').toString();
-      final permissions =
-          ((userData['permissions'] as List?) ?? const [])
-              .map((e) => e.toString())
-              .toList();
-
-      if (id.isEmpty) {
-        throw const AuthFailure(
-          AuthFailureType.userNotFound,
-          'Usuário inválido retornado pela API.',
-        );
-      }
-
-      return UserModel(
-        id: id,
-        name: name,
-        email: emailResp,
-        phone: userData['phone']?.toString() ?? '',
-        dateBorn: null,
-        userLevel: 0,
-        planExpiration: null,
-        cpfOrCnpj: userData['document']?.toString() ?? '',
-        role: role,
-        permissions: permissions,
-      );
+          Map<String, dynamic>.from(
+            (data['user'] ?? data['account'] ?? <String, dynamic>{})
+                as Map,
+          );
+      userData['email'] ??= email;
+      return _mapUser(userData, fallbackEmail: email);
     } on AuthFailure {
       rethrow;
     } on DioException catch (e) {
@@ -73,13 +86,78 @@ class AuthRepositoryImpl implements AuthRepository {
   }
 
   @override
-  Future<void> resetPassword(String email) async {
-    // Opcional: implementar quando a API disponibilizar a rota específica
+  Future<UserModel> me() async {
+    final res = await _api.dio.get('/v1/auth/me');
+    final data = Map<String, dynamic>.from((res.data ?? {}) as Map);
+    return _mapUser(data);
+  }
+
+  @override
+  Future<UserModel> updateProfile({
+    String? name,
+    String? email,
+    String? phone,
+    String? document,
+  }) async {
+    final payload = <String, dynamic>{};
+    String? sanitizeDigits(String? value) {
+      if (value == null) return null;
+      final digits = value.replaceAll(RegExp(r'\\D'), '');
+      return digits.isEmpty ? null : digits;
+    }
+
+    if (name != null && name.trim().isNotEmpty) payload['name'] = name.trim();
+    if (email != null && email.trim().isNotEmpty) {
+      payload['email'] = email.trim();
+    }
+    final sanitizedPhone = sanitizeDigits(phone);
+    if (sanitizedPhone != null) payload['phone'] = sanitizedPhone;
+    final sanitizedDocument = sanitizeDigits(document);
+    if (sanitizedDocument != null) payload['document'] = sanitizedDocument;
+    final res = await _api.dio.patch('/v1/auth/me', data: payload);
+    final data = res.data;
+    if (data is Map) {
+      return _mapUser(Map<String, dynamic>.from(data));
+    }
+    // fallback: reconsultar
+    return me();
+  }
+
+  @override
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _api.dio.post(
+      '/v1/auth/change-password',
+      data: {
+        'currentPassword': currentPassword,
+        'newPassword': newPassword,
+      },
+    );
+  }
+
+  @override
+  Future<void> requestPasswordReset(String email) async {
     try {
       await _api.dio.post('/v1/auth/forgot-password', data: {'email': email});
     } catch (_) {
-      // Ignora falhas, mantém UX consistente
+      // evita revelar se o e-mail existe ou não
     }
+  }
+
+  @override
+  Future<void> resetPasswordWithToken({
+    required String token,
+    required String newPassword,
+  }) async {
+    await _api.dio.post(
+      '/v1/auth/reset-password',
+      data: {
+        'token': token,
+        'newPassword': newPassword,
+      },
+    );
   }
 
   @override

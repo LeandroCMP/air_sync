@@ -1,26 +1,39 @@
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
+import 'package:air_sync/models/collaborator_models.dart';
 import 'package:air_sync/models/maintenance_model.dart';
 import 'package:get/get.dart';
 import 'package:printing/printing.dart';
 
 import 'package:air_sync/models/equipment_model.dart';
+import 'package:air_sync/models/order_model.dart';
 import 'package:air_sync/services/equipments/equipments_service.dart';
 import 'package:air_sync/application/utils/pdf/equipment_report_pdf.dart';
 import 'package:air_sync/application/auth/auth_service_application.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
+import 'package:air_sync/services/orders/orders_service.dart';
+import 'package:air_sync/services/users/users_service.dart';
 
 class EquipmentHistoryController extends GetxController
     with LoaderMixin, MessagesMixin {
   final EquipmentsService _service;
-  EquipmentHistoryController({required EquipmentsService service})
-    : _service = service;
+  final OrdersService? _ordersService;
+  final UsersService? _usersService;
+  EquipmentHistoryController({
+    required EquipmentsService service,
+    OrdersService? ordersService,
+    UsersService? usersService,
+  }) : _service = service,
+       _ordersService = ordersService,
+       _usersService = usersService;
 
   late final String equipmentId;
   EquipmentModel? equipment;
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
   final items = <Map<String, dynamic>>[].obs;
+  List<CollaboratorModel>? _technicianCatalog;
+  final Map<String, String> _technicianNameIndex = {};
 
   @override
   Future<void> onInit() async {
@@ -49,7 +62,9 @@ class EquipmentHistoryController extends GetxController
     isLoading(true);
     try {
       final list = await _service.listHistory(equipmentId);
-      items.assignAll(_orderHistory(list));
+      final ordered = _orderHistory(list);
+      final enriched = await _enrichWithOrderDetails(ordered);
+      items.assignAll(enriched);
     } catch (_) {
       message(
         MessageModel.error(
@@ -160,5 +175,127 @@ class EquipmentHistoryController extends GetxController
       return db.compareTo(da);
     });
     return list;
+  }
+
+  Future<List<Map<String, dynamic>>> _enrichWithOrderDetails(
+    List<Map<String, dynamic>> source,
+  ) async {
+    if (_ordersService == null) return source;
+    final result = <Map<String, dynamic>>[];
+    for (final entry in source) {
+      final orderId = (entry['orderId'] ?? entry['order'] ?? '').toString();
+      if (orderId.isEmpty) {
+        result.add(entry);
+        continue;
+      }
+      try {
+        final OrderModel order = await _ordersService.getById(orderId);
+        final performedBy = await _resolveTechnicianNames(order.technicianIds);
+        final services = _extractServices(order);
+        final materials =
+            order.materials
+                .map(
+                  (m) => {
+                    'name':
+                        (m.itemName ?? m.description ?? 'Item ${m.itemId}')
+                            .trim(),
+                    'qty': m.qty.toDouble(),
+                    'unitPrice': (m.unitPrice ?? 0).toDouble(),
+                  },
+                )
+                .toList();
+        result.add({
+          ...entry,
+          'orderId': orderId,
+          'orderStatus': order.status,
+          'locationLabel': order.locationLabel ?? '',
+          'performedBy': performedBy,
+          'duration':
+              order.timesheet.totalMinutes == null
+                  ? ''
+                  : '${order.timesheet.totalMinutes} min',
+          'materials': materials,
+          'billingTotal': (order.billing.total as num?)?.toDouble() ?? 0,
+          'notes': entry['notes'] ?? order.notes ?? '',
+          'services': services,
+          'serviceSummary': services.isEmpty ? '' : services.join(', '),
+        });
+      } catch (_) {
+        result.add(entry);
+      }
+    }
+    return result;
+  }
+
+  Future<void> _warmTechnicianCatalog({CollaboratorRole? role}) async {
+    final svc =
+        _usersService ??
+        (Get.isRegistered<UsersService>() ? Get.find<UsersService>() : null);
+    if (svc == null) return;
+    try {
+      final fetched = await svc.list(role: role);
+      if (fetched.isEmpty) return;
+      final merged = <String, CollaboratorModel>{};
+      if (_technicianCatalog != null) {
+        for (final tech in _technicianCatalog!) {
+          merged[tech.id] = tech;
+        }
+      }
+      for (final tech in fetched) {
+        merged[tech.id] = tech;
+        _technicianNameIndex[tech.id.trim()] = tech.name;
+      }
+      _technicianCatalog = merged.values.toList();
+    } catch (_) {
+      // ignore failures
+    }
+  }
+
+  Future<String> _resolveTechnicianNames(List<String> ids) async {
+    if (ids.isEmpty) return '';
+    final normalizedIds =
+        ids.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
+    if (normalizedIds.isEmpty) return '';
+
+    await _warmTechnicianCatalog(role: CollaboratorRole.tech);
+
+    final missing =
+        normalizedIds
+            .where((id) => !_technicianNameIndex.containsKey(id))
+            .toList();
+    if (missing.isNotEmpty) {
+      await _warmTechnicianCatalog();
+    }
+
+    final names =
+        normalizedIds
+            .map(
+              (id) =>
+                  _technicianNameIndex[id]?.trim().isNotEmpty == true
+                      ? _technicianNameIndex[id]!.trim()
+                      : id,
+            )
+            .where((value) => value.isNotEmpty)
+            .toList();
+    return names.join(', ');
+  }
+
+  List<String> _extractServices(OrderModel order) {
+    final services = <String>[];
+    for (final item in order.billing.items) {
+      final label = item.name.trim();
+      if (label.isEmpty) continue;
+      if (item.type.toLowerCase() != 'service') continue;
+      final qty = item.qty;
+      if (qty == 0 || qty == 1) {
+        services.add(label);
+      } else {
+        services.add('$label (${qty}x)');
+      }
+    }
+    if (services.isNotEmpty) return services;
+    final note = (order.notes ?? '').trim();
+    if (note.isNotEmpty) return [note];
+    return const [];
   }
 }

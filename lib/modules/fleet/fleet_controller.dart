@@ -1,8 +1,9 @@
-import 'package:air_sync/application/ui/loader/loader_mixin.dart';
+﻿import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/fleet_vehicle_model.dart';
 import 'package:air_sync/services/fleet/fleet_service.dart';
 import 'package:dio/dio.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 class FleetController extends GetxController with LoaderMixin, MessagesMixin {
@@ -13,8 +14,11 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
   final message = Rxn<MessageModel>();
   final items = <FleetVehicleModel>[].obs;
   final search = ''.obs;
+  final searchController = TextEditingController();
   final sort = 'createdAt'.obs; // createdAt | odometer | plate
   final order = 'desc'.obs; // asc | desc
+  final statusFilter = 'all'.obs; // all | recent | legacy | usage | model
+  final insightsLoading = false.obs;
 
   @override
   Future<void> onInit() async {
@@ -35,8 +39,15 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
   }
 
   Future<void> setSearch(String v) async {
-    search.value = v;
+    final normalized = v.trim().toUpperCase();
+    if (search.value == normalized) return;
+    search.value = normalized;
     await load();
+  }
+
+  void clearSearch() {
+    searchController.clear();
+    setSearch('');
   }
 
   Future<void> setSort(String v) async {
@@ -47,6 +58,30 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
   Future<void> toggleOrder() async {
     order.value = order.value == 'asc' ? 'desc' : 'asc';
     await load();
+  }
+
+  void setStatusFilter(String value) {
+    if (statusFilter.value == value) {
+      statusFilter.value = 'all';
+    } else {
+      statusFilter.value = value;
+    }
+  }
+
+  List<FleetVehicleModel> get filteredItems {
+    final filter = statusFilter.value;
+    switch (filter) {
+      case 'recent':
+        return items.where(_isRecent).toList();
+      case 'legacy':
+        return items.where(_isLegacy).toList();
+      case 'usage':
+        return items.where(_isHighUsage).toList();
+      case 'model':
+        return items.where(_hasModel).toList();
+      default:
+        return items;
+    }
   }
 
   Future<void> doCheck(FleetVehicleModel v, {int? odometer, int? fuelLevel, String? notes}) async {
@@ -82,7 +117,14 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
   Future<void> createVehicle({required String plate, String? model, int? year, required int odometer}) async {
     isLoading(true);
     try {
-      await _service.create(plate: plate, model: model, year: year, odometer: odometer);
+      final normalizedPlate = _normalizePlate(plate);
+      final normalizedModel = _normalizeModel(model);
+      await _service.create(
+        plate: normalizedPlate,
+        model: normalizedModel,
+        year: year,
+        odometer: odometer,
+      );
       await load();
       message(MessageModel.success(title: 'Frota', message: 'Veículo cadastrado'));
     } catch (e) {
@@ -95,7 +137,15 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
   Future<void> updateVehicle(String id, {String? plate, String? model, int? year, int? odometer}) async {
     isLoading(true);
     try {
-      await _service.update(id, plate: plate, model: model, year: year, odometer: odometer);
+      final normalizedPlate = plate == null ? null : _normalizePlate(plate);
+      final normalizedModel = _normalizeModel(model);
+      await _service.update(
+        id,
+        plate: normalizedPlate,
+        model: normalizedModel,
+        year: year,
+        odometer: odometer,
+      );
       await load();
       message(MessageModel.success(title: 'Frota', message: 'Veículo atualizado'));
     } catch (e) {
@@ -118,6 +168,41 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
     }
   }
 
+  Future<List<FleetInsightRecommendation>> fetchRecommendations() async {
+    insightsLoading(true);
+    try {
+      final recs = await _service.getRecommendations();
+      if (recs.isEmpty) {
+        message(
+          MessageModel.info(
+            title: 'Frota',
+            message: 'Nenhuma recomendação retornada',
+          ),
+        );
+      }
+      return recs;
+    } catch (e) {
+      message(MessageModel.error(title: 'Erro', message: _mapError(e)));
+      return [];
+    } finally {
+      insightsLoading(false);
+    }
+  }
+
+  Future<FleetInsightChatResponse?> askAssistant(String question) async {
+    if (question.trim().isEmpty) return null;
+    insightsLoading(true);
+    try {
+      final response = await _service.askAi(question);
+      return response;
+    } catch (e) {
+      message(MessageModel.error(title: 'Erro', message: _mapError(e)));
+      return null;
+    } finally {
+      insightsLoading(false);
+    }
+  }
+
   String _mapError(Object e) {
     if (e is DioException) {
       try {
@@ -133,5 +218,39 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
       } catch (_) {}
     }
     return e.toString();
+  }
+
+  bool _hasModel(FleetVehicleModel vehicle) =>
+      (vehicle.model ?? '').trim().isNotEmpty;
+
+  bool _isRecent(FleetVehicleModel vehicle) {
+    final year = vehicle.year;
+    if (year == null) return false;
+    final threshold = DateTime.now().year - 5;
+    return year >= threshold;
+  }
+
+  bool _isLegacy(FleetVehicleModel vehicle) {
+    final year = vehicle.year;
+    if (year == null) return false;
+    final threshold = DateTime.now().year - 8;
+    return year < threshold;
+  }
+
+  bool _isHighUsage(FleetVehicleModel vehicle) => vehicle.odometer >= 100000;
+
+  String _normalizePlate(String value) => value.trim().toUpperCase();
+
+  String? _normalizeModel(String? value) {
+    if (value == null) return null;
+    final trimmed = value.trim();
+    if (trimmed.isEmpty) return null;
+    return trimmed.toUpperCase();
+  }
+
+  @override
+  void onClose() {
+    searchController.dispose();
+    super.onClose();
   }
 }

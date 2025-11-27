@@ -31,7 +31,7 @@ class PhoneInputFormatter extends TextInputFormatter {
 
     // Número principal
     if (len - index >= 5) {
-      buffer.write('${digitsOnly.substring(index, index + 5)}');
+      buffer.write(digitsOnly.substring(index, index + 5));
       index += 5;
 
       if (len - index > 0) {

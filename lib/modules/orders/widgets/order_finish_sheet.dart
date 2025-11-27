@@ -6,7 +6,8 @@ import 'package:air_sync/models/order_model.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
+import 'package:air_sync/application/utils/formatters/money_formatter.dart';
+import 'package:qr_flutter/qr_flutter.dart';
 import 'package:signature/signature.dart';
 
 import '../../../application/ui/theme_extensions.dart';
@@ -27,20 +28,177 @@ class _PaymentMethodOption {
 
 class OrderFinishResult {
   OrderFinishResult({
-    required this.signatureBase64,
     required this.billingItems,
     required this.materialInputs,
     required this.payments,
+    required this.totalDue,
+    this.signatureBase64,
     this.notes,
     this.discount,
   });
 
-  final String signatureBase64;
   final List<OrderBillingItemInput> billingItems;
   final List<OrderMaterialInput> materialInputs;
   final List<OrderPaymentInput> payments;
+  final double totalDue;
+  final String? signatureBase64;
   final String? notes;
   final num? discount;
+}
+
+class _MarginSummaryBanner extends StatelessWidget {
+  const _MarginSummaryBanner({
+    required this.revenue,
+    required this.cost,
+    required this.margin,
+    this.marginPercent,
+    this.title = 'Margem estimada da OS',
+    this.showHelperText = true,
+  });
+
+  final double revenue;
+  final double cost;
+  final double margin;
+  final double? marginPercent;
+  final String title;
+  final bool showHelperText;
+
+  @override
+  Widget build(BuildContext context) {
+    final marginColor =
+        margin >= 0 ? Colors.greenAccent : Colors.redAccent;
+    final helper =
+        marginPercent != null ? '${marginPercent!.toStringAsFixed(1)}%' : null;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: context.themeDark,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: context.themeBorder),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            title,
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(height: 4),
+          if (showHelperText)
+            const Text(
+              'Baseado nos valores atuais retornados pela API.',
+              style: TextStyle(color: Colors.white54, fontSize: 12),
+            ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: _MarginMetric(
+                  label: 'Receita prevista',
+                  value: formatCurrencyPtBr(revenue),
+                  icon: Icons.trending_up_outlined,
+                  background:
+                      Colors.white.withValues(alpha: 0.05),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MarginMetric(
+                  label: 'Custo de materiais',
+                  value: formatCurrencyPtBr(cost),
+                  icon: Icons.inventory_2_outlined,
+                  background: Colors.white10,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _MarginMetric(
+                  label: 'Margem estimada',
+                  value: formatCurrencyPtBr(margin),
+                  icon: Icons.calculate_outlined,
+                  background: marginColor.withValues(alpha: 0.18),
+                  helper: helper,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _MarginMetric extends StatelessWidget {
+  const _MarginMetric({
+    required this.label,
+    required this.value,
+    required this.icon,
+    required this.background,
+    this.helper,
+  });
+
+  final String label;
+  final String value;
+  final IconData icon;
+  final Color background;
+  final String? helper;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.05)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(icon, color: Colors.white70, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    color: Colors.white70,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Text(
+            value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          if (helper != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                helper!,
+                style: const TextStyle(
+                  color: Colors.white54,
+                  fontSize: 12,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
 }
 
 Future<OrderFinishResult?> showOrderFinishSheet({
@@ -87,7 +245,7 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
   late final TextEditingController _discountCtrl = TextEditingController(
     text:
         widget.order.billing.discount > 0
-            ? _formatCurrency(widget.order.billing.discount)
+            ? formatCurrencyPtBr(widget.order.billing.discount)
             : '',
   );
   late final RxList<_FinishMaterialDraft> _materials =
@@ -99,6 +257,9 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
   final RxnString _error = RxnString();
   final RxBool _submitting = false.obs;
   final RxInt _rebuildTick = 0.obs;
+  bool _paymentsDirty = false;
+  bool _suppressPaymentListeners = false;
+  double? _lastAutoBalancedTotal;
 
   @override
   void initState() {
@@ -145,23 +306,82 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
         0,
         (sum, draft) => sum + draft.lineTotal,
       );
+      final materialCostSubtotal = _materials.fold<double>(
+        0,
+        (sum, draft) => sum + draft.lineCost,
+      );
       final serviceSubtotal = _services.fold<double>(
         0,
         (sum, draft) => sum + draft.lineTotal,
       );
-      final discountValue = _parseCurrency(_discountCtrl.text) ?? 0;
+      final discountValue = parseCurrencyPtBr(_discountCtrl.text) ?? 0;
       var total = materialSubtotal + serviceSubtotal - discountValue;
       if (total < 0) total = 0;
+      final marginValue = total - materialCostSubtotal;
       final paymentTotal = _payments.fold<double>(
         0,
         (sum, draft) => sum + (draft.amount ?? 0),
       );
       final paymentDifference = total - paymentTotal;
       final paymentBalanced = paymentDifference.abs() < 0.01;
-      final pixKey = widget.companyProfile?.pixKey.trim();
-      final hasPixKey = pixKey != null && pixKey.isNotEmpty;
+      final paymentMessageColor =
+          paymentBalanced
+              ? Colors.white.withValues(alpha: 0.08)
+              : (
+                  paymentDifference > 0
+                      ? Colors.orangeAccent.withValues(alpha: 0.18)
+                      : Colors.greenAccent.withValues(alpha: 0.18)
+                );
+      final rawPixKey = widget.companyProfile?.pixKey;
+      final pixKey = rawPixKey?.trim();
+      final hasPixKey = pixKey?.isNotEmpty == true;
+      final pixKeyLabel = pixKey ?? '';
       final currentError = _error.value;
       final isSubmitting = _submitting.value;
+      final baselineRevenue = widget.order.billing.total.toDouble();
+      final baselineCost = widget.order.materialsCostTotal;
+      final baselineMargin = baselineRevenue - baselineCost;
+      final baselineMarginPercent =
+          baselineRevenue > 0 ? (baselineMargin / baselineRevenue) * 100 : null;
+      final hasBaselineSummary =
+          baselineRevenue > 0 || baselineCost > 0 || baselineMargin != 0;
+      double baselineMaterialRevenue = 0;
+      double baselineServiceRevenue = 0;
+      if (hasBaselineSummary && widget.order.billing.items.isNotEmpty) {
+        for (final item in widget.order.billing.items) {
+          final line = item.lineTotal.toDouble();
+          final type = item.type.toLowerCase();
+          if (type == 'part') {
+            baselineMaterialRevenue += line;
+          } else if (type == 'service') {
+            baselineServiceRevenue += line;
+          }
+        }
+      }
+      final materialsHelper =
+          hasBaselineSummary
+              ? _deltaHelper(baselineMaterialRevenue, materialSubtotal)
+              : null;
+      final servicesHelper =
+          hasBaselineSummary
+              ? _deltaHelper(baselineServiceRevenue, serviceSubtotal)
+              : null;
+      final costHelper =
+          hasBaselineSummary
+              ? _deltaHelper(baselineCost, materialCostSubtotal)
+              : null;
+      final totalHelper =
+          hasBaselineSummary ? _deltaHelper(baselineRevenue, total) : null;
+
+      final shouldAutoBalance =
+          !_paymentsDirty &&
+          (_lastAutoBalancedTotal == null ||
+              (total - _lastAutoBalancedTotal!).abs() > 0.01);
+      if (shouldAutoBalance) {
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => _autoBalancePayments(total),
+        );
+      }
 
       return Padding(
         padding: EdgeInsets.only(bottom: bottomInset),
@@ -199,6 +419,16 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                     ),
                   ),
                   const SizedBox(height: 12),
+                  if (hasBaselineSummary) ...[
+                    _MarginSummaryBanner(
+                      title: 'Margem original',
+                      revenue: baselineRevenue,
+                      cost: baselineCost,
+                      margin: baselineMargin,
+                      marginPercent: baselineMarginPercent,
+                    ),
+                    const SizedBox(height: 12),
+                  ],
                   Expanded(
                     child: SingleChildScrollView(
                       controller: scrollController,
@@ -217,16 +447,7 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                                       onPick:
                                           () => _pickInventoryItem(entry.value),
                                       onRemove:
-                                          _materials.length == 1
-                                              ? null
-                                              : () =>
-                                                  _removeMaterial(entry.key),
-                                      onClearSelection:
-                                          entry.value.itemId == null
-                                              ? null
-                                              : () => _clearMaterialSelection(
-                                                entry.value,
-                                              ),
+                                          () => _removeMaterial(entry.key),
                                     );
                                   }).toList(),
                             ),
@@ -258,10 +479,18 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                                 _SummaryRow(
                                   label: 'Materiais',
                                   value: materialSubtotal,
+                                  helper: materialsHelper,
                                 ),
+                                if (materialCostSubtotal > 0)
+                                  _SummaryRow(
+                                    label: 'Custo estimado (materiais)',
+                                    value: materialCostSubtotal,
+                                    helper: costHelper,
+                                  ),
                                 _SummaryRow(
                                   label: 'Serviços',
                                   value: serviceSubtotal,
+                                  helper: servicesHelper,
                                 ),
                                 const SizedBox(height: 12),
                                 TextField(
@@ -270,7 +499,7 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                                       const TextInputType.numberWithOptions(
                                         decimal: true,
                                       ),
-                                  inputFormatters: [_CurrencyInputFormatter()],
+                                  inputFormatters: [MoneyInputFormatter()],
                                   decoration: const InputDecoration(
                                     labelText: 'Desconto',
                                   ),
@@ -280,7 +509,33 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                                   label: 'Total',
                                   value: total,
                                   emphasize: true,
+                                  helper: totalHelper,
                                 ),
+                                if (materialCostSubtotal > 0) ...[
+                                  const SizedBox(height: 12),
+                                  _MarginSummaryBanner(
+                                    title: 'Margem desta finalização',
+                                    revenue: total,
+                                    cost: materialCostSubtotal,
+                                    margin: marginValue,
+                                    marginPercent:
+                                        total > 0
+                                            ? (marginValue / total) * 100
+                                            : null,
+                                    showHelperText: false,
+                                  ),
+                                  if (marginValue < 0)
+                                    Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Text(
+                                        'Atenção: margem negativa. Revise preços ou descontos antes de concluir.',
+                                        style: const TextStyle(
+                                          color: Colors.redAccent,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                ],
                               ],
                             ),
                           ),
@@ -296,7 +551,7 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                                   Padding(
                                     padding: const EdgeInsets.only(bottom: 8),
                                     child: Text(
-                                      'PIX cadastrado: ${pixKey!}',
+                                      'PIX cadastrado: $pixKeyLabel',
                                       style: const TextStyle(
                                         color: Colors.white70,
                                         fontStyle: FontStyle.italic,
@@ -307,6 +562,7 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                                   return _FinishPaymentCard(
                                     draft: entry.value,
                                     profile: widget.companyProfile,
+                                    pixKey: pixKey,
                                     onRemove:
                                         _payments.length == 1
                                             ? null
@@ -317,22 +573,29 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                                           total,
                                         ),
                                   );
-                                }).toList(),
-                                Align(
-                                  alignment: Alignment.centerLeft,
+                                }),
+                                const SizedBox(height: 12),
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 12,
+                                    vertical: 10,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: paymentMessageColor,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: Colors.white.withValues(alpha: 0.05),
+                                    ),
+                                  ),
                                   child: Text(
                                     paymentBalanced
-                                        ? 'Pagamentos somam ${_formatCurrency(paymentTotal)}.'
+                                        ? 'Pagamentos somam ${formatCurrencyPtBr(paymentTotal)}.'
                                         : paymentDifference > 0
-                                        ? 'Faltam ${_formatCurrency(paymentDifference)}.'
-                                        : 'Sobram ${_formatCurrency(paymentDifference.abs())}.',
+                                        ? 'Faltam ${formatCurrencyPtBr(paymentDifference)}.'
+                                        : 'Sobram ${formatCurrencyPtBr(paymentDifference.abs())}.',
                                     style: TextStyle(
-                                      color:
-                                          paymentBalanced
-                                              ? Colors.white70
-                                              : (paymentDifference > 0
-                                                  ? Colors.orangeAccent
-                                                  : Colors.lightGreenAccent),
+                                      color: Colors.white.withValues(alpha: 0.9),
                                       fontWeight: FontWeight.w600,
                                     ),
                                   ),
@@ -436,29 +699,76 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
 
   List<_FinishMaterialDraft> _buildInitialMaterials(OrderModel order) {
     final drafts = <_FinishMaterialDraft>[];
-    for (final material in order.materials) {
-      drafts.add(
-        _FinishMaterialDraft(
+    final billingItems = order.billing.items;
+    final materialKeys = <String>{};
+
+    String keyForMaterial({String? name, String? itemId}) {
+      final normalizedName = (name ?? '').trim().toLowerCase();
+      if (normalizedName.isNotEmpty) return 'name:$normalizedName';
+      final normalizedId = (itemId ?? '').trim().toLowerCase();
+      if (normalizedId.isNotEmpty) return 'id:$normalizedId';
+      return '';
+    }
+
+    if (order.materials.isNotEmpty) {
+      for (final material in order.materials) {
+        final draft = _FinishMaterialDraft(
           itemId: material.itemId,
           itemName: material.itemName ?? material.itemId,
+          description: material.description,
           quantity: material.qty.toDouble(),
-          unitPrice: material.unitPrice,
+          unitPrice: _materialUnitPrice(material, billingItems),
+          unitCost: material.unitCost,
+        );
+        drafts.add(draft);
+        final key = keyForMaterial(name: draft.itemName, itemId: draft.itemId);
+        if (key.isNotEmpty) {
+          materialKeys.add(key);
+        }
+      }
+    }
+
+    for (final item in billingItems) {
+      if (item.type != 'part') continue;
+      final key = keyForMaterial(name: item.name);
+      if (key.isNotEmpty && materialKeys.contains(key)) continue;
+      drafts.add(
+        _FinishMaterialDraft(
+          itemName: item.name,
+          description: item.name,
+          quantity: item.qty.toDouble(),
+          unitPrice: item.unitPrice.toDouble(),
+          unitCost: null,
         ),
       );
     }
-    for (final item in order.billing.items) {
-      if (item.type == 'part') {
-        drafts.add(
-          _FinishMaterialDraft(
-            itemName: item.name,
-            quantity: item.qty.toDouble(),
-            unitPrice: item.unitPrice.toDouble(),
-          ),
-        );
-      }
-    }
+
     if (drafts.isEmpty) drafts.add(_FinishMaterialDraft());
     return drafts;
+  }
+
+  double? _materialUnitPrice(
+    OrderMaterialItem material,
+    List<OrderBillingItem> billingItems,
+  ) {
+    if (material.unitPrice != null) return material.unitPrice;
+    final materialName = material.itemName?.trim().toLowerCase();
+    if (materialName == null || materialName.isEmpty) return null;
+    for (final item in billingItems) {
+      if (item.type != 'part') continue;
+      if (item.name.trim().toLowerCase() == materialName) {
+        return item.unitPrice.toDouble();
+      }
+    }
+    return null;
+  }
+
+  String? _deltaHelper(double baseline, double current) {
+    const tolerance = 0.01;
+    final diff = current - baseline;
+    if (diff.abs() < tolerance) return null;
+    final prefix = diff > 0 ? '+ ' : '- ';
+    return 'Variação vs. original: $prefix${formatCurrencyPtBr(diff.abs())}';
   }
 
   List<_FinishServiceDraft> _buildInitialServices(OrderModel order) {
@@ -508,6 +818,12 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
     final draft = _materials.removeAt(index);
     _detachMaterialDraft(draft);
     draft.dispose();
+    if (_materials.isEmpty) {
+      final replacement = _FinishMaterialDraft();
+      _materials.add(replacement);
+      _attachMaterialDraft(replacement);
+    }
+    _handleDraftChanged();
   }
 
   void _addServiceDraft() {
@@ -546,6 +862,8 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
     final draft = _FinishPaymentDraft();
     _payments.add(draft);
     _attachPaymentDraft(draft);
+    _paymentsDirty = true;
+    _handleDraftChanged();
   }
 
   void _removePayment(int index) {
@@ -553,6 +871,8 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
     final draft = _payments.removeAt(index);
     _detachPaymentDraft(draft);
     draft.dispose();
+    _paymentsDirty = true;
+    _handleDraftChanged();
   }
 
   void _fillPaymentWithRemaining(int index, double total) {
@@ -564,26 +884,75 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
     final remainder = total - others;
     if (remainder <= 0) return;
     final target = _payments[index];
-    target.amountCtrl.text = _formatCurrency(remainder);
+    target.amountCtrl.text = formatCurrencyPtBr(remainder);
     _handleDraftChanged();
   }
 
   void _attachPaymentDraft(_FinishPaymentDraft draft) {
-    draft.amountCtrl.addListener(_handleDraftChanged);
-    draft.installmentsCtrl.addListener(_handleDraftChanged);
-    draft.methodNotifier.addListener(_handleDraftChanged);
+    draft.amountListener = () => _onPaymentDraftEdited();
+    draft.installmentsListener = () => _onPaymentDraftEdited();
+    draft.methodListener = () => _onPaymentDraftEdited();
+    draft.amountCtrl.addListener(draft.amountListener!);
+    draft.installmentsCtrl.addListener(draft.installmentsListener!);
+    draft.methodNotifier.addListener(draft.methodListener!);
   }
 
   void _detachPaymentDraft(_FinishPaymentDraft draft) {
-    draft.amountCtrl.removeListener(_handleDraftChanged);
-    draft.installmentsCtrl.removeListener(_handleDraftChanged);
-    draft.methodNotifier.removeListener(_handleDraftChanged);
+    if (draft.amountListener != null) {
+      draft.amountCtrl.removeListener(draft.amountListener!);
+      draft.amountListener = null;
+    }
+    if (draft.installmentsListener != null) {
+      draft.installmentsCtrl.removeListener(draft.installmentsListener!);
+      draft.installmentsListener = null;
+    }
+    if (draft.methodListener != null) {
+      draft.methodNotifier.removeListener(draft.methodListener!);
+      draft.methodListener = null;
+    }
   }
 
   void _handleDraftChanged() {
     if (mounted) {
       _rebuildTick.value++;
     }
+  }
+
+  void _onPaymentDraftEdited() {
+    if (_suppressPaymentListeners) {
+      return;
+    }
+    _paymentsDirty = true;
+    _handleDraftChanged();
+  }
+
+  double _currentPaymentTotal() =>
+      _payments.fold<double>(0, (sum, draft) => sum + (draft.amount ?? 0));
+
+  void _autoBalancePayments(double total) {
+    if (!mounted) return;
+    const tolerance = 0.01;
+    _suppressPaymentListeners = true;
+    if (_payments.isEmpty) {
+      final draft = _FinishPaymentDraft(
+        method: 'PIX',
+        amount: total > 0 ? total : 0,
+      );
+      _payments.add(draft);
+      _attachPaymentDraft(draft);
+    } else {
+      final current = _currentPaymentTotal();
+      final difference = total - current;
+      if (difference.abs() > tolerance) {
+        final target = _payments.last;
+        var adjusted = (target.amount ?? 0) + difference;
+        if (adjusted < 0) adjusted = 0;
+        target.amountCtrl.text = formatCurrencyPtBr(adjusted);
+      }
+    }
+    _suppressPaymentListeners = false;
+    _lastAutoBalancedTotal = total;
+    _handleDraftChanged();
   }
 
   Future<void> _pickInventoryItem(_FinishMaterialDraft draft) async {
@@ -598,18 +967,8 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
     _handleDraftChanged();
   }
 
-  void _clearMaterialSelection(_FinishMaterialDraft draft) {
-    draft.clearInventorySelection();
-    _materials.refresh();
-    _handleDraftChanged();
-  }
-
   Future<void> _submit() async {
-    if (_signatureController.isEmpty) {
-      _error.value = 'Coleta de assinatura obrigatória.';
-      return;
-    }
-
+    final requiresSignature = widget.order.customerSignatureUrl == null;
     final materialInputs = <OrderMaterialInput>[];
     final billingItems = <OrderBillingItemInput>[];
 
@@ -632,12 +991,18 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
       );
       if (draft.itemId != null) {
         final draftName = (draft.itemName ?? '').trim();
+        final draftDescription = (draft.description ?? '').trim();
         materialInputs.add(
           OrderMaterialInput(
             itemId: draft.itemId!,
             qty: qty,
             itemName: draftName.isEmpty ? null : draftName,
-            description: draftName.isEmpty ? null : draftName,
+            description:
+                draftDescription.isEmpty
+                    ? (draftName.isEmpty ? null : draftName)
+                    : draftDescription,
+            unitPrice: price,
+            unitCost: draft.unitCost,
           ),
         );
       }
@@ -666,7 +1031,7 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
       );
     }
 
-    final discount = _parseCurrency(_discountCtrl.text) ?? 0;
+    final discount = parseCurrencyPtBr(_discountCtrl.text) ?? 0;
     final materialSubtotal = _materials.fold<double>(
       0,
       (sum, draft) => sum + draft.lineTotal,
@@ -705,26 +1070,40 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
 
     const tolerance = 0.01;
     if (payments.isEmpty) {
-      _error.value = 'Adicione ao menos um pagamento.';
-      return;
+      if (totalDue.abs() <= tolerance) {
+        payments.add(OrderPaymentInput(method: 'PIX', amount: 0));
+      } else {
+        _error.value = 'Adicione ao menos um pagamento.';
+        return;
+      }
     }
     if ((paymentSum - totalDue).abs() > tolerance) {
       final difference = totalDue - paymentSum;
       final prefix = difference > 0 ? 'Faltam' : 'Sobram';
-      final differenceLabel = _formatCurrency(difference.abs());
+      final differenceLabel = formatCurrencyPtBr(difference.abs());
       _error.value = '$prefix $differenceLabel para fechar os pagamentos.';
       return;
     }
 
-    _submitting.value = true;
-    try {
-      final data = await _signatureController.toPngBytes();
+    Uint8List? data;
+    if (_signatureController.isEmpty) {
+      if (requiresSignature) {
+        _error.value = 'Coleta de assinatura obrigatória.';
+        return;
+      }
+    } else {
+      data = await _signatureController.toPngBytes();
       if (data == null || data.isEmpty) {
         _error.value = 'Não foi possível capturar a assinatura.';
         return;
       }
-      final base64Signature = base64Encode(data);
+    }
+
+    _submitting.value = true;
+    try {
+      final base64Signature = data != null ? base64Encode(data) : null;
       _error.value = null;
+      if (!mounted) return;
       Navigator.of(context).pop(
         OrderFinishResult(
           signatureBase64: base64Signature,
@@ -733,6 +1112,7 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
           notes: _notesCtrl.text.trim().isEmpty ? null : _notesCtrl.text.trim(),
           discount: discount,
           payments: payments,
+          totalDue: totalDue,
         ),
       );
     } finally {
@@ -745,28 +1125,28 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
 
 class _FinishMaterialDraft {
   _FinishMaterialDraft({
-    String? itemId,
-    String? itemName,
+    this.itemId,
+    this.itemName,
+    this.description,
     double? quantity,
     double? unitPrice,
-    this.stockQuantity,
-    this.stockUnit,
-  }) : itemId = itemId,
-       itemName = itemName,
-       qtyCtrl = TextEditingController(
+    this.unitCost,
+  }) : qtyCtrl = TextEditingController(
          text:
              quantity != null
                  ? quantity.toStringAsFixed(quantity % 1 == 0 ? 0 : 2)
                  : '',
        ),
        unitPriceCtrl = TextEditingController(
-         text: unitPrice != null ? _formatCurrency(unitPrice) : '',
+         text: unitPrice != null ? formatCurrencyPtBr(unitPrice) : '',
        );
 
   String? itemId;
   String? itemName;
+  String? description;
   final TextEditingController qtyCtrl;
   final TextEditingController unitPriceCtrl;
+  double? unitCost;
   double? stockQuantity;
   String? stockUnit;
 
@@ -779,9 +1159,10 @@ class _FinishMaterialDraft {
     return double.tryParse(value);
   }
 
-  double? get unitPrice => _parseCurrency(unitPriceCtrl.text);
+  double? get unitPrice => parseCurrencyPtBr(unitPriceCtrl.text);
 
   double get lineTotal => (quantity ?? 0) * (unitPrice ?? 0);
+  double get lineCost => (quantity ?? 0) * (unitCost ?? 0);
 
   String get displayName =>
       (itemName ?? '').trim().isNotEmpty
@@ -790,14 +1171,21 @@ class _FinishMaterialDraft {
 
   void setInventoryItem(InventoryItemModel item) {
     itemId = item.id;
-    final description = item.description.trim();
+    final itemDescription = item.description.trim();
     final sku = item.sku.trim();
     itemName =
-        description.isNotEmpty ? description : (sku.isNotEmpty ? sku : item.id);
+        itemDescription.isNotEmpty
+            ? itemDescription
+            : (sku.isNotEmpty ? sku : item.id);
     stockQuantity = item.quantity;
     stockUnit = item.unit;
+    unitCost = item.avgCost;
+    final rawDescription = item.description.trim();
+    if (rawDescription.isNotEmpty) {
+      description = rawDescription;
+    }
     if (item.sellPrice != null) {
-      unitPriceCtrl.text = _formatCurrency(item.sellPrice!);
+      unitPriceCtrl.text = formatCurrencyPtBr(item.sellPrice!);
     }
     if ((quantity ?? 0) == 0) {
       qtyCtrl.text = '1';
@@ -809,6 +1197,9 @@ class _FinishMaterialDraft {
     stockQuantity = null;
     stockUnit = null;
     itemName = null;
+    description = null;
+    unitCost = null;
+    unitPriceCtrl.text = '';
   }
 
   void dispose() {
@@ -827,7 +1218,7 @@ class _FinishServiceDraft {
                 : '1',
       ),
       unitPriceCtrl = TextEditingController(
-        text: unitPrice != null ? _formatCurrency(unitPrice) : '',
+        text: unitPrice != null ? formatCurrencyPtBr(unitPrice) : '',
       );
 
   final TextEditingController nameCtrl;
@@ -841,7 +1232,7 @@ class _FinishServiceDraft {
     return double.tryParse(value);
   }
 
-  double? get unitPrice => _parseCurrency(unitPriceCtrl.text);
+  double? get unitPrice => parseCurrencyPtBr(unitPriceCtrl.text);
 
   double get lineTotal => (quantity ?? 0) * (unitPrice ?? 0);
 
@@ -857,13 +1248,11 @@ class _FinishMaterialCard extends StatelessWidget {
     required this.draft,
     required this.onPick,
     this.onRemove,
-    this.onClearSelection,
   });
 
   final _FinishMaterialDraft draft;
   final VoidCallback onPick;
   final VoidCallback? onRemove;
-  final VoidCallback? onClearSelection;
 
   @override
   Widget build(BuildContext context) {
@@ -888,13 +1277,6 @@ class _FinishMaterialCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (onClearSelection != null && draft.itemId != null)
-                IconButton(
-                  tooltip: 'Remover item selecionado',
-                  icon: const Icon(Icons.delete_outline),
-                  color: Colors.white70,
-                  onPressed: onClearSelection,
-                ),
               if (onRemove != null)
                 IconButton(
                   icon: const Icon(Icons.remove_circle_outline),
@@ -910,7 +1292,7 @@ class _FinishMaterialCard extends StatelessWidget {
             label: Text(
               draft.itemId == null
                   ? 'Selecionar item do estoque'
-                  : 'Alterar item',
+                  : 'Trocar item',
             ),
           ),
           if (draft.stockQuantity != null || (draft.stockUnit ?? '').isNotEmpty)
@@ -942,7 +1324,7 @@ class _FinishMaterialCard extends StatelessWidget {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  inputFormatters: [_CurrencyInputFormatter()],
+                  inputFormatters: [MoneyInputFormatter()],
                   decoration: const InputDecoration(
                     labelText: 'Valor unitário',
                   ),
@@ -1014,7 +1396,7 @@ class _FinishServiceCard extends StatelessWidget {
                   keyboardType: const TextInputType.numberWithOptions(
                     decimal: true,
                   ),
-                  inputFormatters: [_CurrencyInputFormatter()],
+                  inputFormatters: [MoneyInputFormatter()],
                   decoration: const InputDecoration(
                     labelText: 'Valor unitário',
                   ),
@@ -1032,7 +1414,7 @@ class _FinishPaymentDraft {
   _FinishPaymentDraft({String? method, double? amount, int? installments})
     : methodNotifier = ValueNotifier<String>(method ?? 'PIX'),
       amountCtrl = TextEditingController(
-        text: amount != null ? _formatCurrency(amount) : '',
+        text: amount != null ? formatCurrencyPtBr(amount) : '',
       ),
       installmentsCtrl = TextEditingController(
         text: installments?.toString() ?? '',
@@ -1041,10 +1423,13 @@ class _FinishPaymentDraft {
   final ValueNotifier<String> methodNotifier;
   final TextEditingController amountCtrl;
   final TextEditingController installmentsCtrl;
+  VoidCallback? amountListener;
+  VoidCallback? installmentsListener;
+  VoidCallback? methodListener;
 
   String get method => methodNotifier.value;
 
-  double? get amount => _parseCurrency(amountCtrl.text);
+  double? get amount => parseCurrencyPtBr(amountCtrl.text);
 
   int? get installments {
     final text = installmentsCtrl.text.trim();
@@ -1100,12 +1485,14 @@ class _FinishPaymentCard extends StatelessWidget {
   const _FinishPaymentCard({
     required this.draft,
     required this.profile,
+    this.pixKey,
     this.onRemove,
     this.onFillWithRemaining,
   });
 
   final _FinishPaymentDraft draft;
   final CompanyProfileModel? profile;
+  final String? pixKey;
   final VoidCallback? onRemove;
   final VoidCallback? onFillWithRemaining;
 
@@ -1115,6 +1502,8 @@ class _FinishPaymentCard extends StatelessWidget {
       valueListenable: draft.methodNotifier,
       builder: (context, method, _) {
         final showInstallments = method == 'CARD_CREDIT';
+        final showPixQrButton =
+            method == 'PIX' && (pixKey?.trim().isNotEmpty ?? false);
         final currentAmount = draft.amount ?? 0;
         final feePercent = draft.feePercentFor(profile);
         final feeValue = draft.feeValueFor(profile);
@@ -1169,7 +1558,7 @@ class _FinishPaymentCard extends StatelessWidget {
                       keyboardType: const TextInputType.numberWithOptions(
                         decimal: true,
                       ),
-                      inputFormatters: [_CurrencyInputFormatter()],
+                      inputFormatters: [MoneyInputFormatter()],
                       decoration: const InputDecoration(labelText: 'Valor'),
                     ),
                   ),
@@ -1199,18 +1588,58 @@ class _FinishPaymentCard extends StatelessWidget {
                     label: const Text('Usar restante'),
                   ),
                 ),
+              if (showPixQrButton)
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton.icon(
+                    onPressed: () => _showPixQr(context),
+                    icon: const Icon(Icons.qr_code),
+                    label: const Text('Mostrar QR Code'),
+                  ),
+                ),
               if (currentAmount > 0)
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(
                     feePercent > 0
-                        ? 'Taxa estimada: ${feePercent.toStringAsFixed(2)}% (${_formatCurrency(feeValue)}) · Líquido ${_formatCurrency(netAmount)}'
-                        : 'Líquido ${_formatCurrency(netAmount)}',
+                        ? 'Taxa estimada: ${feePercent.toStringAsFixed(2)}% (${formatCurrencyPtBr(feeValue)}) · Líquido ${formatCurrencyPtBr(netAmount)}'
+                        : 'Líquido ${formatCurrencyPtBr(netAmount)}',
                     style: const TextStyle(color: Colors.white70),
                   ),
                 ),
             ],
           ),
+        );
+      },
+    );
+  }
+
+  void _showPixQr(BuildContext context) {
+    final key = pixKey?.trim();
+    if (key == null || key.isEmpty) return;
+    showDialog<void>(
+      context: context,
+      builder: (ctx) {
+        return AlertDialog(
+          title: const Text('PIX'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              SizedBox(
+                width: 220,
+                height: 220,
+                child: QrImageView(data: key, backgroundColor: Colors.white),
+              ),
+              const SizedBox(height: 12),
+              SelectableText(key, textAlign: TextAlign.center),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Fechar'),
+            ),
+          ],
         );
       },
     );
@@ -1232,30 +1661,42 @@ class _SheetSection extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          children: [
-            Text(
-              title,
-              style: const TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
+    final sectionColor = context.themeSurfaceAlt.withValues(alpha: 0.9);
+    return Container(
+      margin: const EdgeInsets.only(bottom: 16),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: sectionColor,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.04)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
-            ),
-            const Spacer(),
-            if (actionLabel != null && onAction != null)
-              TextButton.icon(
-                onPressed: onAction,
-                icon: const Icon(Icons.add),
-                label: Text(actionLabel!),
-              ),
-          ],
-        ),
-        const SizedBox(height: 8),
-        child,
-      ],
+              const Spacer(),
+              if (actionLabel != null && onAction != null)
+                TextButton.icon(
+                  onPressed: onAction,
+                  icon: const Icon(Icons.add),
+                  label: Text(actionLabel!),
+                ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          const Divider(height: 1, color: Colors.white12),
+          const SizedBox(height: 12),
+          child,
+        ],
+      ),
     );
   }
 }
@@ -1265,11 +1706,13 @@ class _SummaryRow extends StatelessWidget {
     required this.label,
     required this.value,
     this.emphasize = false,
+    this.helper,
   });
 
   final String label;
   final double value;
   final bool emphasize;
+  final String? helper;
 
   @override
   Widget build(BuildContext context) {
@@ -1283,7 +1726,21 @@ class _SummaryRow extends StatelessWidget {
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           Text(label, style: style),
-          Text(_formatCurrency(value), style: style),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(formatCurrencyPtBr(value), style: style),
+              if (helper != null)
+                Text(
+                  helper!,
+                  style: TextStyle(
+                    color: Colors.white54,
+                    fontSize: 10,
+                    fontWeight: emphasize ? FontWeight.bold : FontWeight.w500,
+                  ),
+                ),
+            ],
+          ),
         ],
       ),
     );
@@ -1339,33 +1796,3 @@ class _InventoryPicker extends StatelessWidget {
   }
 }
 
-class _CurrencyInputFormatter extends TextInputFormatter {
-  @override
-  TextEditingValue formatEditUpdate(
-    TextEditingValue oldValue,
-    TextEditingValue newValue,
-  ) {
-    final digitsOnly = newValue.text.replaceAll(RegExp(r'[^0-9]'), '');
-    if (digitsOnly.isEmpty) {
-      return const TextEditingValue(text: '');
-    }
-    final value = double.parse(digitsOnly) / 100;
-    final text = _formatCurrency(value);
-    return newValue.copyWith(
-      text: text,
-      selection: TextSelection.collapsed(offset: text.length),
-    );
-  }
-}
-
-double? _parseCurrency(String? value) {
-  if (value == null) return null;
-  final digits = value.replaceAll(RegExp(r'[^0-9]'), '');
-  if (digits.isEmpty) return null;
-  return double.parse(digits) / 100;
-}
-
-String _formatCurrency(num value) {
-  final format = NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
-  return format.format(value);
-}

@@ -2,7 +2,9 @@ import 'dart:convert';
 
 import 'package:air_sync/application/core/errors/inventory_failure.dart';
 import 'package:air_sync/application/core/network/api_client.dart';
+import 'package:air_sync/models/inventory_category_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
+import 'package:air_sync/models/inventory_rebalance_model.dart';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
@@ -10,11 +12,13 @@ import 'inventory_repository.dart';
 
 class InventoryRepositoryImpl implements InventoryRepository {
   final ApiClient _api = Get.find<ApiClient>();
+  String _upper(String value) => value.trim().toUpperCase();
 
-  static const _itemsEndpoint = '/v1/items';
+  static const _itemsEndpoint = '/v1/inventory/items';
   static const _legacyItemsEndpoint = '/v1/inventory/items';
   static const _inventoryMovementsEndpoint = '/v1/inventory/movements';
   static const _stockEndpoint = '/v1/stock';
+  static const _categoriesEndpoint = '/v1/inventory/categories';
 
   List<InventoryItemModel> _mapItemList(dynamic data) {
     Iterable<dynamic>? rawList;
@@ -75,10 +79,10 @@ class InventoryRepositoryImpl implements InventoryRepository {
     final data = e.response?.data;
     String? bestMessage;
 
-    String? _pickDetail(dynamic source) {
+    String? pickDetail(dynamic source) {
       if (source is List) {
         for (final entry in source) {
-          final detail = _pickDetail(entry);
+          final detail = pickDetail(entry);
           if (detail != null && detail.trim().isNotEmpty) {
             return detail;
           }
@@ -109,7 +113,7 @@ class InventoryRepositoryImpl implements InventoryRepository {
           }
         }
         final nested = source['errors'] ?? source['details'];
-        final fromNested = _pickDetail(nested);
+        final fromNested = pickDetail(nested);
         if (fromNested != null) return fromNested;
       } else if (source is String && source.trim().isNotEmpty) {
         return source;
@@ -118,18 +122,18 @@ class InventoryRepositoryImpl implements InventoryRepository {
     }
 
     if (data is Map) {
-      bestMessage = _pickDetail(data['errors']) ?? _pickDetail(data['details']);
+      bestMessage = pickDetail(data['errors']) ?? pickDetail(data['details']);
       bestMessage ??=
-          _pickDetail(data['message']) ??
-          _pickDetail(data['error']) ??
-          _pickDetail(data['detail']);
+          pickDetail(data['message']) ??
+          pickDetail(data['error']) ??
+          pickDetail(data['detail']);
       if ((bestMessage == null || bestMessage.trim().isEmpty) &&
           data['code'] != null &&
           data['message'] != null) {
         bestMessage = '${data['message']}';
       }
     } else if (data is List && data.isNotEmpty) {
-      bestMessage = _pickDetail(data);
+      bestMessage = pickDetail(data);
     } else if (data is String && data.isNotEmpty) {
       bestMessage = data;
     }
@@ -168,34 +172,24 @@ class InventoryRepositoryImpl implements InventoryRepository {
     int? limit,
     bool? belowMin,
   }) async {
-    final qp = <String, dynamic>{};
-    if (text.isNotEmpty) qp['q'] = text;
-    if (page != null) qp['page'] = page;
-    if (limit != null) qp['limit'] = limit;
-    if (belowMin == true) qp['belowMin'] = true;
+    final query = text.trim();
+    final params = query.isEmpty ? null : {'text': query};
+
     try {
       final res = await _api.dio.get(
-        _legacyItemsEndpoint,
-        queryParameters: qp.isEmpty ? null : qp,
+        _itemsEndpoint,
+        queryParameters: params,
       );
-      return _mapItemList(res.data);
-    } on DioException catch (e) {
-      final status = e.response?.statusCode ?? 0;
-      if (_shouldFallback(status)) {
-        try {
-          final fallback = await _api.dio.get(
-            _itemsEndpoint,
-            queryParameters: qp.isEmpty ? null : qp,
-          );
-          return _mapItemList(fallback.data);
-        } catch (_) {
-          return [];
-        }
-      }
-      return [];
-    } catch (e) {
-      // Evita derrubar a tela por erro de parsing: retorna lista vazia
-      return [];
+      final items = _mapItemList(res.data);
+      return _applyInventoryFilters(
+        items,
+        belowMin: belowMin,
+        page: page,
+        limit: limit,
+      );
+    } catch (_) {
+      // Evita derrubar a tela por erro de parsing/validação.
+      return const [];
     }
   }
 
@@ -210,6 +204,9 @@ class InventoryRepositoryImpl implements InventoryRepository {
     String? supplierId,
     double? avgCost,
     double? sellPrice,
+    String? categoryId,
+    double? markupPercent,
+    String? pricingMode,
   }) async {
     final trimmedName = name.trim();
     final trimmedSku = sku.trim();
@@ -220,38 +217,54 @@ class InventoryRepositoryImpl implements InventoryRepository {
       throw InventoryFailure.validation('Estoque mínimo inválido');
     }
 
-    final baseUnit =
-        (unit != null && unit.trim().isNotEmpty)
-            ? unit!.trim().toLowerCase()
-            : 'un';
+    final unitTrimmed = (unit ?? '').trim();
+    final baseUnit = unitTrimmed.isNotEmpty ? unitTrimmed : 'UN';
+    final normalizedName = _upper(trimmedName);
+    final normalizedSku = _upper(trimmedSku);
+    final normalizedUnit = _upper(baseUnit);
 
     final legacyPayload = <String, dynamic>{
-      'name': trimmedName,
-      'sku': trimmedSku,
+      'name': normalizedName,
+      'sku': normalizedSku,
       'minQty': minQty,
-      'unit': baseUnit,
+      'unit': normalizedUnit,
     };
-    if ((barcode ?? '').trim().isNotEmpty)
-      legacyPayload['barcode'] = barcode!.trim();
-    if (maxQty != null) legacyPayload['maxQty'] = maxQty;
-    if ((supplierId ?? '').trim().isNotEmpty) {
-      legacyPayload['supplierId'] = supplierId!.trim();
+    final trimmedBarcode = (barcode ?? '').trim();
+    if (trimmedBarcode.isNotEmpty) {
+      legacyPayload['barcode'] = trimmedBarcode;
     }
-    if (avgCost != null) legacyPayload['avgCost'] = avgCost;
-    if (sellPrice != null) legacyPayload['sellPrice'] = sellPrice;
+    if (maxQty != null) {
+      legacyPayload['maxQty'] = maxQty;
+    }
+    final trimmedSupplier = (supplierId ?? '').trim();
+    if (trimmedSupplier.isNotEmpty) {
+      legacyPayload['supplierId'] = trimmedSupplier;
+    }
+    if (avgCost != null) {
+      legacyPayload['avgCost'] = avgCost;
+    }
+    if (sellPrice != null) {
+      legacyPayload['sellPrice'] = sellPrice;
+    }
 
+    final pricingModeTrimmed = (pricingMode ?? '').trim();
+    final pricingModeNormalized =
+        pricingModeTrimmed.isEmpty ? null : pricingModeTrimmed;
+    final trimmedCategory = (categoryId ?? '').trim();
     final newPayload = <String, dynamic>{
-      'name': trimmedName,
-      'description': trimmedName,
-      'sku': trimmedSku,
+      'name': normalizedName,
+      'description': normalizedName,
+      'sku': normalizedSku,
       'minQuantity': minQty,
-      'unit': baseUnit.toUpperCase(),
-      if ((barcode ?? '').trim().isNotEmpty) 'barcode': barcode!.trim(),
+      'unit': normalizedUnit,
+      if (trimmedBarcode.isNotEmpty) 'barcode': trimmedBarcode,
       if (maxQty != null) 'maxQty': maxQty,
-      if ((supplierId ?? '').trim().isNotEmpty)
-        'supplierId': supplierId!.trim(),
+      if (trimmedSupplier.isNotEmpty) 'supplierId': trimmedSupplier,
       if (avgCost != null) 'avgCost': avgCost,
       if (sellPrice != null) 'sellPrice': sellPrice,
+      if (trimmedCategory.isNotEmpty) 'categoryId': trimmedCategory,
+      if (markupPercent != null) 'markupPercent': markupPercent,
+      if (pricingModeNormalized != null) 'pricingMode': pricingModeNormalized,
     };
 
     try {
@@ -299,18 +312,19 @@ class InventoryRepositoryImpl implements InventoryRepository {
       );
     }
 
+    final normalizedDescription = _upper(item.description);
     final unitNormalized =
-        (item.unit.isNotEmpty ? item.unit : 'un').trim().toLowerCase();
+        _upper(item.unit.isNotEmpty ? item.unit : 'UN');
 
     final legacyPayload = {
-      'description': item.description,
+      'description': normalizedDescription,
       'unit': unitNormalized,
       'quantity': item.quantity,
     };
 
     final newPayload = {
-      'name': item.description,
-      'unit': unitNormalized.toUpperCase(),
+      'name': normalizedDescription,
+      'unit': unitNormalized,
       'minQuantity': item.minQuantity,
       'active': item.active,
     };
@@ -419,54 +433,28 @@ class InventoryRepositoryImpl implements InventoryRepository {
     int? limit,
   }) async {
     final query = (q ?? '').trim();
-
-    final modernQuery = <String, dynamic>{};
-    if (query.isNotEmpty) modernQuery['text'] = query;
-    if (active != null) modernQuery['active'] = active;
-    if (belowMin == true) modernQuery['belowMin'] = true;
-    final modernParams = modernQuery.isEmpty ? null : modernQuery;
-
-    final legacyQuery = <String, dynamic>{};
-    if (query.isNotEmpty) legacyQuery['q'] = query;
-    if (active != null) legacyQuery['active'] = active;
-    if (belowMin == true) legacyQuery['belowMin'] = true;
-    if (page != null) legacyQuery['page'] = page;
-    if (limit != null) legacyQuery['limit'] = limit;
-    final legacyParams = legacyQuery.isEmpty ? null : legacyQuery;
+    final params = query.isEmpty ? null : {'text': query};
 
     try {
-      final modernRes = await _api.dio.get(
+      final res = await _api.dio.get(
         _itemsEndpoint,
-        queryParameters: modernParams,
+        queryParameters: params,
       );
-      final modernItems = _mapItemList(modernRes.data);
-      if (modernItems.isNotEmpty) {
-        return modernItems;
-      }
+      final items = _mapItemList(res.data);
+      return _applyInventoryFilters(
+        items,
+        active: active,
+        belowMin: belowMin,
+        page: page,
+        limit: limit,
+      );
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
-      if (!_shouldFallback(status)) {
-        throw InventoryFailure.firebase(
-          _extractErrorMessage(e, 'Erro ao carregar itens de estoque'),
-        );
+      final message = _extractErrorMessage(e, 'Erro ao carregar itens de estoque');
+      if (status == 400 || status == 404 || status == 409 || status == 422) {
+        throw InventoryFailure.validation(message);
       }
-    } catch (_) {
-      throw InventoryFailure.unknown(
-        'Erro inesperado ao carregar itens de estoque',
-      );
-    }
-
-    try {
-      final legacyRes = await _api.dio.get(
-        _legacyItemsEndpoint,
-        queryParameters: legacyParams,
-      );
-      final legacyItems = _mapItemList(legacyRes.data);
-      return legacyItems;
-    } on DioException catch (e) {
-      throw InventoryFailure.firebase(
-        _extractErrorMessage(e, 'Erro ao carregar itens de estoque'),
-      );
+      throw InventoryFailure.firebase(message);
     } catch (_) {
       throw InventoryFailure.unknown(
         'Erro inesperado ao carregar itens de estoque',
@@ -477,37 +465,54 @@ class InventoryRepositoryImpl implements InventoryRepository {
   @override
   Future<InventoryItemModel> getItem(String id) async {
     try {
-      final res = await _api.dio.get('$_legacyItemsEndpoint/$id');
-      final m = Map<String, dynamic>.from(res.data as Map);
-      final itemId = (m['id'] ?? m['_id'] ?? id).toString();
-      return InventoryItemModel.fromMap(itemId, m);
+      final res = await _api.dio.get(
+        _itemsEndpoint,
+        queryParameters: {'text': id},
+      );
+      final items = _mapItemList(res.data);
+      if (items.isEmpty) {
+        throw InventoryFailure.validation('Item n?o encontrado');
+      }
+      for (final item in items) {
+        if (item.id == id) return item;
+      }
+      return items.first;
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
-      if (_shouldFallback(status)) {
-        try {
-          final res = await _api.dio.get('$_itemsEndpoint/$id');
-          final m = Map<String, dynamic>.from(res.data as Map);
-          final itemId = (m['id'] ?? m['_id'] ?? id).toString();
-          return InventoryItemModel.fromMap(itemId, m);
-        } on DioException catch (legacyError) {
-          final message = _extractErrorMessage(
-            legacyError,
-            'Erro ao buscar item',
-          );
-          throw InventoryFailure.validation(message);
-        }
-      }
       final message = _extractErrorMessage(e, 'Erro ao buscar item');
-      if (status == 400 || status == 422) {
-        throw InventoryFailure.validation(message);
-      }
-      if (status == 409) {
+      if (status == 400 || status == 404 || status == 409 || status == 422) {
         throw InventoryFailure.validation(message);
       }
       throw InventoryFailure.firebase(message);
     } catch (_) {
       throw InventoryFailure.unknown('Erro inesperado ao buscar item');
     }
+  }
+
+  List<InventoryItemModel> _applyInventoryFilters(
+    List<InventoryItemModel> source, {
+    bool? active,
+    bool? belowMin,
+    int? page,
+    int? limit,
+  }) {
+    Iterable<InventoryItemModel> filtered = source;
+    if (active != null) {
+      filtered = filtered.where((item) => item.active == active);
+    }
+    if (belowMin == true) {
+      filtered =
+          filtered.where((item) => item.quantity <= item.minQuantity);
+    }
+    final list = filtered.toList();
+    if (limit != null && limit > 0) {
+      final currentPage = (page ?? 1).clamp(1, double.infinity).toInt();
+      final start = (currentPage - 1) * limit;
+      if (start >= list.length) return const [];
+      final end = (start + limit) > list.length ? list.length : start + limit;
+      return list.sublist(start, end);
+    }
+    return list;
   }
 
   @override
@@ -530,14 +535,29 @@ class InventoryRepositoryImpl implements InventoryRepository {
         switch (key) {
           case 'name':
             if (value != null) {
-              payload['name'] = value;
-              addLegacy('name', value);
-              addLegacy('description', value);
+              final upperValue = _upper(value.toString());
+              payload['name'] = upperValue;
+              addLegacy('name', upperValue);
+              addLegacy('description', upperValue);
+            }
+            break;
+          case 'description':
+            if (value != null) {
+              final upperValue = _upper(value.toString());
+              payload['description'] = upperValue;
+              addLegacy('description', upperValue);
+            }
+            break;
+          case 'sku':
+            if (value != null) {
+              final upperSku = _upper(value.toString());
+              payload['sku'] = upperSku;
+              addLegacy('sku', upperSku);
             }
             break;
           case 'unit':
             if (value != null) {
-              final normalized = value.toString().toLowerCase();
+              final normalized = _upper(value.toString());
               payload['unit'] = normalized;
               addLegacy('unit', normalized);
             }
@@ -680,25 +700,6 @@ class InventoryRepositoryImpl implements InventoryRepository {
     }
   }
 
-  String _movementTypeToApi(MovementType t) {
-    switch (t) {
-      case MovementType.receive:
-        return 'RECEIVE';
-      case MovementType.issue:
-        return 'ISSUE';
-      case MovementType.adjustPos:
-        return 'ADJUST_POS';
-      case MovementType.adjustNeg:
-        return 'ADJUST_NEG';
-      case MovementType.transferIn:
-        return 'TRANSFER_IN';
-      case MovementType.transferOut:
-        return 'TRANSFER_OUT';
-      case MovementType.returnIn:
-        return 'RETURN_IN';
-    }
-  }
-
   String _movementTypeToInventoryMovement(MovementType t) {
     switch (t) {
       case MovementType.receive:
@@ -710,11 +711,10 @@ class InventoryRepositoryImpl implements InventoryRepository {
       case MovementType.adjustNeg:
       case MovementType.transferOut:
         return 'out';
-      default:
-        return 'out';
     }
   }
 
+  @override
   Future<StockMovementModel> createMovement({
     required String itemId,
     String? locationId,
@@ -791,6 +791,188 @@ class InventoryRepositoryImpl implements InventoryRepository {
       );
     } catch (_) {
       throw InventoryFailure.unknown('Erro inesperado na transferência');
+    }
+  }
+
+  @override
+  Future<List<InventoryCostHistoryEntry>> getCostHistory(String id) async {
+    try {
+      final res = await _api.dio
+          .get('$_itemsEndpoint/$id/cost-history')
+          .timeout(const Duration(seconds: 12));
+      final data = res.data;
+      final list = <InventoryCostHistoryEntry>[];
+      Iterable<dynamic>? raw;
+      if (data is List) {
+        raw = data;
+      } else if (data is Map) {
+        raw = data['items'] ?? data['data'] ?? data['results'];
+      }
+      for (final entry in raw ?? const []) {
+        if (entry is Map) {
+          try {
+            list.add(
+              InventoryCostHistoryEntry.fromMap(
+                Map<String, dynamic>.from(entry),
+              ),
+            );
+          } catch (_) {}
+        }
+      }
+      return list;
+    } on DioException catch (e) {
+      final status = e.response?.statusCode ?? 0;
+      final message = _extractErrorMessage(
+        e,
+        'Erro ao buscar histórico de custo',
+      );
+      if (status == 400 || status == 404) {
+        throw InventoryFailure.validation(message);
+      }
+      throw InventoryFailure.firebase(message);
+    } catch (_) {
+      return [];
+    }
+  }
+
+  @override
+  Future<List<InventoryCategoryModel>> listCategories({String? search}) async {
+    try {
+      final searchTrimmed = (search ?? '').trim();
+      final res = await _api.dio.get(
+        _categoriesEndpoint,
+        queryParameters: searchTrimmed.isEmpty ? null : {'q': searchTrimmed},
+      );
+      final data = res.data;
+      Iterable<dynamic>? raw;
+      if (data is List) {
+        raw = data;
+      } else if (data is Map) {
+        raw = data['items'] ?? data['data'] ?? data['results'];
+      }
+      final list = <InventoryCategoryModel>[];
+      for (final entry in raw ?? const []) {
+        if (entry is Map) {
+          try {
+            list.add(
+              InventoryCategoryModel.fromMap(
+                Map<String, dynamic>.from(entry),
+              ),
+            );
+          } catch (_) {}
+        }
+      }
+      return list;
+    } on DioException catch (_) {
+      return [];
+    }
+  }
+
+  @override
+  Future<InventoryCategoryModel> createCategory({
+    required String name,
+    required double markupPercent,
+    String? description,
+  }) async {
+    final payload = {
+      'name': name.trim(),
+      'markupPercent': markupPercent,
+      if ((description ?? '').trim().isNotEmpty) 'description': description,
+    };
+    final res = await _api.dio
+        .post(_categoriesEndpoint, data: payload)
+        .timeout(const Duration(seconds: 12));
+    return InventoryCategoryModel.fromMap(
+      Map<String, dynamic>.from(res.data as Map),
+    );
+  }
+
+  @override
+  Future<InventoryCategoryModel> updateCategory({
+    required String id,
+    String? name,
+    double? markupPercent,
+    String? description,
+  }) async {
+    final payload = <String, dynamic>{};
+    final nameTrimmed = (name ?? '').trim();
+    if (nameTrimmed.isNotEmpty) payload['name'] = nameTrimmed;
+    if (markupPercent != null) payload['markupPercent'] = markupPercent;
+    if (description != null) payload['description'] = description;
+    final res = await _api.dio
+        .patch('$_categoriesEndpoint/$id', data: payload)
+        .timeout(const Duration(seconds: 12));
+    return InventoryCategoryModel.fromMap(
+      Map<String, dynamic>.from(res.data as Map),
+    );
+  }
+
+  @override
+  Future<void> deleteCategory(String id) async {
+    await _api.dio
+        .delete('$_categoriesEndpoint/$id')
+        .timeout(const Duration(seconds: 12));
+  }
+
+  @override
+  Future<List<InventoryRebalanceSuggestion>> rebalance({int days = 30}) async {
+    try {
+      final res = await _api.dio.get(
+        '/v1/inventory/rebalance',
+        queryParameters: {'days': days},
+      );
+      final data = res.data;
+      Iterable<dynamic> rawSuggestions = const [];
+      if (data is List) {
+        rawSuggestions = data;
+      } else if (data is Map) {
+        final items = data['items'] ?? data['data'] ?? data['results'];
+        if (items is List) {
+          rawSuggestions = items;
+        }
+      }
+      return rawSuggestions
+          .whereType<Map>()
+          .map((e) => InventoryRebalanceSuggestion.fromMap(
+                Map<String, dynamic>.from(e),
+              ))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  @override
+  Future<List<InventoryRebalanceSuggestion>> purchaseForecast({
+    int days = 30,
+  }) async {
+    try {
+      final res = await _api.dio
+          .post(
+            '/v1/inventory/insights/forecast',
+            data: const {},
+          )
+          .timeout(const Duration(seconds: 20));
+      final data = res.data;
+      Iterable<dynamic> rawSuggestions = const [];
+      if (data is List) {
+        rawSuggestions = data;
+      } else if (data is Map) {
+        final inner = data['items'] ?? data['recommendations'] ?? data['data'];
+        if (inner is List) {
+          rawSuggestions = inner;
+        }
+      }
+      return rawSuggestions
+          .whereType<Map>()
+          .map(
+            (entry) => InventoryRebalanceSuggestion.fromMap(
+              Map<String, dynamic>.from(entry),
+            ),
+          )
+          .toList();
+    } catch (_) {
+      return const [];
     }
   }
 }

@@ -1,3 +1,4 @@
+import 'package:air_sync/application/auth/auth_service_application.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/application/core/connectivity/connectivity_service.dart';
 import 'package:air_sync/application/core/sync/sync_service.dart';
@@ -8,6 +9,8 @@ import 'package:air_sync/modules/orders/orders_page.dart';
 import 'package:air_sync/modules/company_profile/company_profile_bindings.dart';
 import 'package:air_sync/modules/company_profile/company_profile_page.dart';
 import 'package:air_sync/modules/finance/finance_page.dart';
+import 'package:air_sync/modules/sales/sales_bindings.dart';
+import 'package:air_sync/modules/sales/sales_page.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -82,6 +85,8 @@ class HomePage extends GetView<HomeController> {
                   ),
 
                   const SizedBox(height: 20),
+                  const _QuickActionsRow(),
+                  const SizedBox(height: 16),
 
                   // ============== GRID DE MÓDULOS (MAIS ALTO) ==============
                   GridView(
@@ -245,6 +250,21 @@ class _HomeDrawer extends StatelessWidget {
               onTap: () => sync.syncInitial(),
             ),
             ListTile(
+              leading: const Icon(Icons.person_outline, color: Colors.white70),
+              title: const Text(
+                'Meu perfil',
+                style: TextStyle(color: Colors.white),
+              ),
+              subtitle: const Text(
+                'Atualize nome, e-mail e senha',
+                style: TextStyle(color: Colors.white70, fontSize: 12),
+              ),
+              onTap: () {
+                Navigator.of(context).pop();
+                Get.toNamed('/profile');
+              },
+            ),
+            ListTile(
               leading: const Icon(
                 Icons.business_center_outlined,
                 color: Colors.white70,
@@ -315,6 +335,7 @@ class _ModuleCardData {
     required this.icon,
     required this.onTap,
     this.requiredPermissions = const [],
+    this.ownerOnly = false,
   });
 
   final String title;
@@ -322,8 +343,12 @@ class _ModuleCardData {
   final IconData icon;
   final VoidCallback onTap;
   final List<String> requiredPermissions;
+  final bool ownerOnly;
 
   bool canAccess(UserModel? user) {
+    if (ownerOnly) {
+      return user?.isOwner ?? false;
+    }
     if (requiredPermissions.isEmpty) return true;
     if (user == null) return true;
     return user.hasAnyPermission(requiredPermissions);
@@ -354,10 +379,17 @@ final List<_ModuleCardData> _homeModuleItems = [
   ),
   _ModuleCardData(
     title: 'Financeiro',
-    subtitle: 'Faturas e receb?veis',
+    subtitle: 'Faturas e recebíveis',
     icon: Icons.account_balance_wallet_rounded,
     requiredPermissions: ['finance.read', 'finance.write'],
     onTap: () => Get.to(() => const FinancePage()),
+  ),
+  _ModuleCardData(
+    title: 'Assinaturas & Billing',
+    subtitle: 'Planos, faturas e Stripe',
+    icon: Icons.subscriptions_outlined,
+    ownerOnly: true,
+    onTap: () => Get.toNamed('/subscriptions'),
   ),
   _ModuleCardData(
     title: 'Fornecedores',
@@ -372,6 +404,16 @@ final List<_ModuleCardData> _homeModuleItems = [
     icon: Icons.shopping_cart_outlined,
     requiredPermissions: [],
     onTap: () => Get.toNamed('/purchases'),
+  ),
+  _ModuleCardData(
+    title: 'Vendas',
+    subtitle: 'Propostas e assistente comercial',
+    icon: Icons.sell_outlined,
+    requiredPermissions: ['sales.read', 'sales.write'],
+    onTap: () => Get.to(
+      () => const SalesPage(),
+      binding: SalesBindings(),
+    ),
   ),
   _ModuleCardData(
     title: 'Contratos',
@@ -399,6 +441,7 @@ final List<_ModuleCardData> _homeModuleItems = [
     subtitle: 'Permiss?es e holerites',
     icon: Icons.badge_outlined,
     requiredPermissions: ['users.write'],
+    ownerOnly: true,
     onTap: () => Get.toNamed('/users'),
   ),
 ];
@@ -423,9 +466,9 @@ class _KpiChip extends StatelessWidget {
       margin: const EdgeInsets.only(right: 12),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: color.withOpacity(.12),
+        color: color.withValues(alpha: .12),
         borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(.4)),
+        border: Border.all(color: color.withValues(alpha: .4)),
       ),
       child: Row(
         children: [
@@ -455,6 +498,122 @@ class _KpiChip extends StatelessWidget {
       ),
     );
   }
+}
+
+class _QuickActionsRow extends StatelessWidget {
+  const _QuickActionsRow();
+
+  @override
+  Widget build(BuildContext context) {
+    final auth = Get.find<AuthServiceApplication>();
+    return Obx(() {
+      final isOwner = auth.user.value?.isOwner ?? false;
+      final actions = <_QuickActionData>[
+        _QuickActionData(
+          label: 'Meu perfil',
+          icon: Icons.person_outline,
+          onTap: () => Get.toNamed('/profile'),
+        ),
+        _QuickActionData(
+          label: 'Nova OS',
+          icon: Icons.add_task_outlined,
+          onTap: () => Get.to(() => const OrdersPage(), binding: OrdersBindings()),
+        ),
+        _QuickActionData(
+          label: 'Registrar compra',
+          icon: Icons.point_of_sale,
+          onTap: () => Get.toNamed('/purchases'),
+        ),
+        _QuickActionData(
+          label: 'Financeiro',
+          icon: Icons.account_balance_wallet_outlined,
+          onTap: () => Get.to(() => const FinancePage()),
+        ),
+      ];
+      if (isOwner) {
+        actions.add(
+          _QuickActionData(
+            label: 'Assinaturas & Billing',
+            icon: Icons.subscriptions_outlined,
+            onTap: () => Get.toNamed('/subscriptions'),
+          ),
+        );
+        actions.add(
+          _QuickActionData(
+            label: 'Perfil da empresa',
+            icon: Icons.business_center_outlined,
+            onTap: () => Get.to(
+              () => const CompanyProfilePage(),
+              binding: CompanyProfileBindings(),
+            ),
+          ),
+        );
+      }
+      return SizedBox(
+        height: 96,
+        child: ListView.separated(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemBuilder: (_, index) => _QuickActionButton(data: actions[index]),
+          separatorBuilder: (_, __) => const SizedBox(width: 12),
+          itemCount: actions.length,
+        ),
+      );
+    });
+  }
+}
+
+class _QuickActionButton extends StatelessWidget {
+  const _QuickActionButton({required this.data});
+
+  final _QuickActionData data;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: data.onTap,
+      borderRadius: BorderRadius.circular(18),
+      child: Container(
+        width: 190,
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: context.themeSurface,
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white12),
+        ),
+        child: Row(
+          children: [
+            CircleAvatar(
+              backgroundColor: Colors.white10,
+              child: Icon(data.icon, color: Colors.white),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                data.label,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickActionData {
+  const _QuickActionData({
+    required this.label,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final IconData icon;
+  final VoidCallback onTap;
 }
 
 class _ModuleCard extends StatelessWidget {

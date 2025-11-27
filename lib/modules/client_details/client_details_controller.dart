@@ -2,12 +2,16 @@ import 'package:air_sync/application/core/errors/client_failure.dart';
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/client_model.dart';
+import 'package:air_sync/models/collaborator_models.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/location_model.dart';
 import 'package:air_sync/models/maintenance_model.dart';
+import 'package:air_sync/models/order_model.dart';
 import 'package:air_sync/services/client/client_service.dart';
 import 'package:air_sync/services/equipments/equipments_service.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
+import 'package:air_sync/services/orders/orders_service.dart';
+import 'package:air_sync/services/users/users_service.dart';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -20,9 +24,13 @@ class ClientDetailsController extends GetxController
     required ClientService clientService,
     required LocationsService locationsService,
     required EquipmentsService equipmentsService,
+    OrdersService? ordersService,
+    UsersService? usersService,
   }) : _clientService = clientService,
        _locationsService = locationsService,
        _equipmentsService = equipmentsService,
+       _ordersService = ordersService,
+       _usersService = usersService,
        _cepClient = Dio(
          BaseOptions(
            connectTimeout: const Duration(seconds: 5),
@@ -33,6 +41,8 @@ class ClientDetailsController extends GetxController
   final ClientService _clientService;
   final LocationsService _locationsService;
   final EquipmentsService _equipmentsService;
+  final OrdersService? _ordersService;
+  final UsersService? _usersService;
   final Dio _cepClient;
 
   final message = Rxn<MessageModel>();
@@ -50,8 +60,10 @@ class ClientDetailsController extends GetxController
 
   final locationEquipments = <String, List<EquipmentModel>>{}.obs;
   final equipmentLoading = <String, bool>{}.obs;
-  final equipmentHistory = <String, List<MaintenanceModel>>{}.obs;
+  final equipmentHistory = <String, List<Map<String, dynamic>>>{}.obs;
   final equipmentHistoryLoading = <String, bool>{}.obs;
+  List<CollaboratorModel>? _technicianCatalog;
+  final Map<String, String> _technicianNameIndex = {};
 
   late final String _clientId;
   String? _lastCepLookedUp;
@@ -146,8 +158,8 @@ class ClientDetailsController extends GetxController
   bool isEquipmentHistoryLoading(String equipmentId) =>
       equipmentHistoryLoading[equipmentId] ?? false;
 
-  List<MaintenanceModel> historyFor(String equipmentId) =>
-      equipmentHistory[equipmentId] ?? const <MaintenanceModel>[];
+  List<Map<String, dynamic>> historyFor(String equipmentId) =>
+      equipmentHistory[equipmentId] ?? const <Map<String, dynamic>>[];
 
   Future<void> loadEquipmentsForLocation(
     String locationId, {
@@ -533,10 +545,10 @@ class ClientDetailsController extends GetxController
     return false;
   }
 
-  Future<List<MaintenanceModel>> loadEquipmentHistory(
+  Future<List<Map<String, dynamic>>> loadEquipmentHistory(
     String equipmentId,
   ) async {
-    if (equipmentId.isEmpty) return const <MaintenanceModel>[];
+    if (equipmentId.isEmpty) return const <Map<String, dynamic>>[];
     if (equipmentHistory.containsKey(equipmentId)) {
       return equipmentHistory[equipmentId]!;
     }
@@ -545,15 +557,10 @@ class ClientDetailsController extends GetxController
     equipmentHistoryLoading.refresh();
     try {
       final raw = await _equipmentsService.listHistory(equipmentId);
-      final history =
-          raw
-              .map(
-                (entry) =>
-                    MaintenanceModel.fromMap(Map<String, dynamic>.from(entry)),
-              )
-              .toList();
-      equipmentHistory[equipmentId] = history;
-      return history;
+      final ordered = _orderHistory(raw);
+      final enriched = await _enrichHistoryEntries(ordered);
+      equipmentHistory[equipmentId] = enriched;
+      return enriched;
     } on ClientFailure catch (e) {
       message(MessageModel.error(title: 'Erro', message: e.message));
     } catch (_) {
@@ -567,7 +574,212 @@ class ClientDetailsController extends GetxController
       equipmentHistoryLoading[equipmentId] = false;
       equipmentHistoryLoading.refresh();
     }
-    return const <MaintenanceModel>[];
+    return const <Map<String, dynamic>>[];
+  }
+
+  Future<List<Map<String, dynamic>>> _enrichHistoryEntries(
+    List<Map<String, dynamic>> source,
+  ) async {
+    final ordersService =
+        _ordersService ??
+        (Get.isRegistered<OrdersService>() ? Get.find<OrdersService>() : null);
+    final result = <Map<String, dynamic>>[];
+    for (final entry in source) {
+      final normalized = Map<String, dynamic>.from(entry);
+      final orderId = (normalized['orderId'] ?? '').toString();
+      DateTime? parsedDate = _parseDate(
+        normalized['at'] ??
+            normalized['date'] ??
+            normalized['performedAt'] ??
+            normalized['createdAt'],
+      );
+      parsedDate ??= DateTime.now();
+      normalized['at'] = parsedDate;
+      if (orderId.isNotEmpty && ordersService != null) {
+        try {
+          final order = await ordersService.getById(orderId);
+          final performedBy = await _resolveTechnicianNames(
+            order.technicianIds,
+          );
+          final services = _extractServices(order);
+          final materials =
+              order.materials
+                  .map(
+                    (m) => {
+                      'name':
+                          (m.itemName ?? m.description ?? 'Item ${m.itemId}')
+                              .trim(),
+                      'qty': m.qty.toDouble(),
+                      'unitPrice': (m.unitPrice ?? 0).toDouble(),
+                    },
+                  )
+                  .toList();
+          normalized.addAll({
+            'orderStatus': order.status,
+            'locationLabel': order.locationLabel ?? '',
+            'performedBy': performedBy,
+            'duration':
+                order.timesheet.totalMinutes == null
+                    ? ''
+                    : '${order.timesheet.totalMinutes} min',
+            'materials': materials,
+            'billingTotal': (order.billing.total as num?)?.toDouble() ?? 0,
+            'notes': normalized['notes'] ?? order.notes ?? '',
+            'services': services,
+            'serviceSummary': services.isEmpty ? '' : services.join(', '),
+          });
+        } catch (_) {}
+      }
+      result.add(_withDescription(normalized));
+    }
+    return result;
+  }
+
+  Map<String, dynamic> _withDescription(Map<String, dynamic> entry) {
+    final buffer = StringBuffer();
+    final orderId = (entry['orderId'] ?? '').toString();
+    final status = (entry['orderStatus'] ?? '').toString();
+    final performedBy = (entry['performedBy'] ?? '').toString();
+    final location = (entry['locationLabel'] ?? '').toString();
+    final duration = (entry['duration'] ?? '').toString();
+    final notes = (entry['notes'] ?? '').toString();
+    final materials = entry['materials'] as List<dynamic>? ?? const [];
+    final serviceSummary = (entry['serviceSummary'] ?? '').toString();
+    if (orderId.isNotEmpty) {
+      buffer.writeln(status.isEmpty ? 'OS $orderId' : 'OS $orderId ($status)');
+    }
+    if (performedBy.isNotEmpty) {
+      buffer.writeln('Responsável: $performedBy');
+    }
+    if (location.isNotEmpty) {
+      buffer.writeln('Local: $location');
+    }
+    if (duration.isNotEmpty) {
+      buffer.writeln('Duração: $duration');
+    }
+    if (serviceSummary.isNotEmpty) {
+      buffer.writeln('Serviço(s): $serviceSummary');
+    }
+    if (materials.isNotEmpty) {
+      buffer.writeln(
+        'Materiais: ${materials.map((m) => '${m['name']} ${m['qty']} un').join(', ')}',
+      );
+    }
+    if (notes.isNotEmpty) {
+      buffer.writeln(notes);
+    }
+    entry['description'] = buffer.toString().trim();
+    return entry;
+  }
+
+  Future<void> _warmTechnicianCatalog({CollaboratorRole? role}) async {
+    final svc =
+        _usersService ??
+        (Get.isRegistered<UsersService>() ? Get.find<UsersService>() : null);
+    if (svc == null) return;
+    try {
+      final fetched = await svc.list(role: role);
+      if (fetched.isEmpty) return;
+      final merged = <String, CollaboratorModel>{};
+      if (_technicianCatalog != null) {
+        for (final tech in _technicianCatalog!) {
+          merged[tech.id] = tech;
+        }
+      }
+      for (final tech in fetched) {
+        merged[tech.id] = tech;
+        _technicianNameIndex[tech.id.trim()] = tech.name;
+      }
+      _technicianCatalog = merged.values.toList();
+    } catch (_) {
+      // ignore failures
+    }
+  }
+
+  Future<String> _resolveTechnicianNames(List<String> ids) async {
+    if (ids.isEmpty) return '';
+    final normalizedIds =
+        ids.map((id) => id.trim()).where((id) => id.isNotEmpty).toSet();
+    if (normalizedIds.isEmpty) return '';
+
+    await _warmTechnicianCatalog(role: CollaboratorRole.tech);
+
+    final missing =
+        normalizedIds
+            .where((id) => !_technicianNameIndex.containsKey(id))
+            .toList();
+    if (missing.isNotEmpty) {
+      await _warmTechnicianCatalog();
+    }
+
+    final names =
+        normalizedIds
+            .map(
+              (id) =>
+                  _technicianNameIndex[id]?.trim().isNotEmpty == true
+                      ? _technicianNameIndex[id]!.trim()
+                      : id,
+            )
+            .where((value) => value.isNotEmpty)
+            .toList();
+    return names.join(', ');
+  }
+
+  List<String> _extractServices(OrderModel order) {
+    final services = <String>[];
+    for (final item in order.billing.items) {
+      final label = item.name.trim();
+      if (label.isEmpty) continue;
+      if (item.type.toLowerCase() != 'service') continue;
+      final qty = item.qty;
+      if (qty == 0 || qty == 1) {
+        services.add(label);
+      } else {
+        services.add('$label (${qty}x)');
+      }
+    }
+    if (services.isNotEmpty) return services;
+    final note = (order.notes ?? '').trim();
+    if (note.isNotEmpty) return [note];
+    return const [];
+  }
+
+  List<Map<String, dynamic>> _orderHistory(List<Map<String, dynamic>> source) {
+    final list = List<Map<String, dynamic>>.from(source);
+    list.sort((a, b) {
+      final da = _parseDate(
+        a['at'] ?? a['date'] ?? a['createdAt'] ?? a['performedAt'],
+      );
+      final db = _parseDate(
+        b['at'] ?? b['date'] ?? b['createdAt'] ?? b['performedAt'],
+      );
+      if (da == null && db == null) return 0;
+      if (da == null) return 1;
+      if (db == null) return -1;
+      return db.compareTo(da);
+    });
+    return list;
+  }
+
+  DateTime? _parseDate(dynamic value) {
+    if (value == null) return null;
+    if (value is DateTime) return value;
+    if (value is int) {
+      if (value > 1e12) {
+        return DateTime.fromMillisecondsSinceEpoch(value);
+      }
+      return DateTime.fromMillisecondsSinceEpoch(value * 1000);
+    }
+    if (value is num) {
+      final millis =
+          value.abs() > 1e12
+              ? value.toInt()
+              : (value.toDouble() * 1000).round();
+      return DateTime.fromMillisecondsSinceEpoch(millis);
+    }
+    final text = value.toString().trim();
+    if (text.isEmpty) return null;
+    return DateTime.tryParse(text);
   }
 
   Future<void> openEquipmentPdf(String id) async {
@@ -607,13 +819,20 @@ class ClientDetailsController extends GetxController
     }
 
     final history = await loadEquipmentHistory(id);
+    final pdfHistory =
+        history
+            .map(
+              (entry) =>
+                  MaintenanceModel.fromMap(Map<String, dynamic>.from(entry)),
+            )
+            .toList();
 
     await Get.to(
       () => EquipmentPdfPreviewPage(
         equipment: equipment!,
         location: location!,
         client: currentClient,
-        history: history,
+        history: pdfHistory,
       ),
     );
   }

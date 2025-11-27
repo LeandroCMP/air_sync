@@ -1,4 +1,5 @@
 import 'package:air_sync/application/bindings/application_bindings.dart';
+import 'package:air_sync/application/core/network/app_config.dart';
 import 'package:air_sync/application/ui/airSync_app_ui_config.dart';
 import 'package:air_sync/modules/air_conditioner/air_conditioner_module.dart';
 import 'package:air_sync/modules/client/client_module.dart';
@@ -14,7 +15,13 @@ import 'package:air_sync/modules/timeline/timeline_module.dart';
 import 'package:air_sync/modules/users/users_module.dart';
 import 'package:air_sync/modules/login/login_module.dart';
 import 'package:air_sync/modules/splash/splash_module.dart';
+import 'package:air_sync/modules/cost_centers/cost_centers_module.dart';
+import 'package:air_sync/modules/sales/sales_module.dart';
+import 'package:air_sync/modules/profile/user_profile_module.dart';
+import 'package:air_sync/modules/subscriptions/subscriptions_module.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
+import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import 'package:intl/intl.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:get/get_navigation/src/root/get_material_app.dart';
@@ -28,11 +35,20 @@ void main() async {
   } catch (_) {
     // se falhar, segue com locale padrão
   }
-  runApp(const MyApp());
+  final appConfig = AppConfig();
+  await appConfig.load();
+  if (appConfig.stripePublishableKey.isNotEmpty) {
+    stripe.Stripe.publishableKey = appConfig.stripePublishableKey;
+    stripe.Stripe.merchantIdentifier = 'merchant.com.airsync';
+    await stripe.Stripe.instance.applySettings();
+  }
+  runApp(MyApp(appConfig: appConfig));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  const MyApp({super.key, required this.appConfig});
+
+  final AppConfig appConfig;
 
   @override
   Widget build(BuildContext context) {
@@ -40,7 +56,17 @@ class MyApp extends StatelessWidget {
       debugShowCheckedModeBanner: false,
       title: AirSyncAppUiConfig.tittle,
       theme: AirSyncAppUiConfig.theme,
-      initialBinding: ApplicationBindings(),
+      locale: const Locale('pt', 'BR'),
+      supportedLocales: const [
+        Locale('pt', 'BR'),
+        Locale('en', 'US'),
+      ],
+      localizationsDelegates: const [
+        GlobalMaterialLocalizations.delegate,
+        GlobalWidgetsLocalizations.delegate,
+        GlobalCupertinoLocalizations.delegate,
+      ],
+      initialBinding: ApplicationBindings(appConfig: appConfig),
       getPages: [
         ...SplashModule().routers,
         ...LoginModule().routers,
@@ -55,6 +81,10 @@ class MyApp extends StatelessWidget {
         ...ContractsModule().routers,
         ...FleetModule().routers,
         ...TimelineModule().routers,
+        ...CostCentersModule().routers,
+        ...SalesModule().routers,
+        ...SubscriptionsModule().routers,
+        ...UserProfileModule().routers,
         ...UsersModule().routers,
       ],
     );

@@ -13,7 +13,11 @@ class InventoryItemHistoryController extends GetxController {
   final isLoading = false.obs;
   final Rxn<InventoryItemModel> item = Rxn<InventoryItemModel>();
   final RxList<StockMovementModel> movements = <StockMovementModel>[].obs;
+  final RxList<InventoryCostHistoryEntry> costHistory =
+      <InventoryCostHistoryEntry>[].obs;
   final selectedFilter = InventoryHistoryFilter.all.obs;
+  final RxInt yearFilter = DateTime.now().year.obs;
+  final RxnInt monthFilter = RxnInt();
 
   late final String _itemId;
 
@@ -67,6 +71,8 @@ class InventoryItemHistoryController extends GetxController {
         limit: 200,
       );
       movements.assignAll(_sortMovements(fetchedMovements));
+      await _loadCostHistory(freshItem);
+      _syncFiltersWithData();
     } catch (_) {
       _hydrateMovementsFromItem();
     } finally {
@@ -76,7 +82,10 @@ class InventoryItemHistoryController extends GetxController {
 
   List<StockMovementModel> get filteredMovements {
     final filter = selectedFilter.value;
+    final year = yearFilter.value;
+    final month = monthFilter.value;
     return movements.where((movement) {
+      if (!_matchesDate(movement, year, month)) return false;
       switch (filter) {
         case InventoryHistoryFilter.all:
           return true;
@@ -90,9 +99,85 @@ class InventoryItemHistoryController extends GetxController {
     }).toList();
   }
 
+  List<InventoryCostHistoryEntry> get filteredCostHistory {
+    final year = yearFilter.value;
+    final month = monthFilter.value;
+    final list =
+        costHistory
+            .where((entry) => _matchesDateTime(entry.at, year, month))
+            .toList();
+    list.sort((a, b) => b.at.compareTo(a.at));
+    return list;
+  }
+
   void changeFilter(InventoryHistoryFilter filter) {
     if (selectedFilter.value == filter) return;
     selectedFilter.value = filter;
+  }
+
+  void setYearFilter(int year) {
+    if (yearFilter.value == year) return;
+    yearFilter.value = year;
+    final months = monthsForYear(year);
+    if (monthFilter.value != null && !months.contains(monthFilter.value)) {
+      monthFilter.value = null;
+    }
+  }
+
+  void setMonthFilter(int? month) {
+    monthFilter.value = month;
+  }
+
+  List<int> get availableYears {
+    final years = <int>{};
+    final movementSource =
+        movements.isNotEmpty
+            ? movements
+            : (item.value?.movements ?? const <StockMovementModel>[]);
+    for (final movement in movementSource) {
+      years.add(movement.createdAt.toLocal().year);
+    }
+    final costSource =
+        costHistory.isNotEmpty
+            ? costHistory
+            : (item.value?.costHistory ?? const <InventoryCostHistoryEntry>[]);
+    for (final entry in costSource) {
+      years.add(entry.at.toLocal().year);
+    }
+    if (years.isEmpty) {
+      years.add(DateTime.now().year);
+    }
+    final list = years.toList()..sort((a, b) => b.compareTo(a));
+    return list;
+  }
+
+  List<int> monthsForYear(int year) {
+    final months = <int>{};
+    final movementSource =
+        movements.isNotEmpty
+            ? movements
+            : (item.value?.movements ?? const <StockMovementModel>[]);
+    for (final movement in movementSource) {
+      final date = movement.createdAt.toLocal();
+      if (date.year == year) {
+        months.add(date.month);
+      }
+    }
+    final costSource =
+        costHistory.isNotEmpty
+            ? costHistory
+            : (item.value?.costHistory ?? const <InventoryCostHistoryEntry>[]);
+    for (final entry in costSource) {
+      final date = entry.at.toLocal();
+      if (date.year == year) {
+        months.add(date.month);
+      }
+    }
+    if (months.isEmpty) {
+      return List.generate(12, (index) => index + 1);
+    }
+    final list = months.toList()..sort();
+    return list;
   }
 
   bool isEntry(MovementType type) {
@@ -177,14 +262,25 @@ class InventoryItemHistoryController extends GetxController {
     final source = item.value;
     if (source == null) {
       movements.clear();
+      costHistory.clear();
       return;
     }
     movements.assignAll(_sortMovements(source.movements));
+    costHistory.assignAll(_sortCostHistory(source.costHistory));
+    _syncFiltersWithData();
   }
 
   List<StockMovementModel> _sortMovements(List<StockMovementModel> source) {
     final list = List<StockMovementModel>.from(source);
     list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return list;
+  }
+
+  List<InventoryCostHistoryEntry> _sortCostHistory(
+    List<InventoryCostHistoryEntry> source,
+  ) {
+    final list = List<InventoryCostHistoryEntry>.from(source);
+    list.sort((a, b) => b.at.compareTo(a.at));
     return list;
   }
 
@@ -196,5 +292,39 @@ class InventoryItemHistoryController extends GetxController {
     final hour = local.hour.toString().padLeft(2, '0');
     final minute = local.minute.toString().padLeft(2, '0');
     return '$day/$month/$year $hour:$minute';
+  }
+
+  bool _matchesDate(StockMovementModel movement, int year, int? month) =>
+      _matchesDateTime(movement.createdAt, year, month);
+
+  bool _matchesDateTime(DateTime date, int year, int? month) {
+    final local = date.toLocal();
+    if (local.year != year) return false;
+    if (month != null && local.month != month) return false;
+    return true;
+  }
+
+  Future<void> _loadCostHistory(InventoryItemModel freshItem) async {
+    try {
+      final fetched = await _inventoryService.getCostHistory(_itemId);
+      if (fetched.isNotEmpty) {
+        costHistory.assignAll(_sortCostHistory(fetched));
+        return;
+      }
+    } catch (_) {
+      // fall back to embedded history
+    }
+    costHistory.assignAll(_sortCostHistory(freshItem.costHistory));
+  }
+
+  void _syncFiltersWithData() {
+    final years = availableYears;
+    if (!years.contains(yearFilter.value)) {
+      yearFilter.value = years.first;
+    }
+    final months = monthsForYear(yearFilter.value);
+    if (monthFilter.value != null && !months.contains(monthFilter.value)) {
+      monthFilter.value = null;
+    }
   }
 }

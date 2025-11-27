@@ -270,20 +270,22 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
           source.materials
               .where((m) => m.itemId.isNotEmpty)
               .map(
-                (m) => OrderMaterialInput(
-                  itemId: m.itemId,
-                  qty: m.qty,
-                  itemName:
-                      (m.itemName ?? '').trim().isEmpty
-                          ? null
-                          : m.itemName!.trim(),
-                  description:
-                      (m.description ?? m.itemName)?.trim().isEmpty == true
-                          ? null
-                          : (m.description ?? m.itemName)!.trim(),
-                ),
-              )
-              .toList();
+        (m) => OrderMaterialInput(
+          itemId: m.itemId,
+          qty: m.qty,
+          itemName:
+              (m.itemName ?? '').trim().isEmpty
+                  ? null
+                  : m.itemName!.trim(),
+          description:
+              (m.description ?? m.itemName)?.trim().isEmpty == true
+                  ? null
+                  : (m.description ?? m.itemName)!.trim(),
+          unitPrice: m.unitPrice?.toDouble(),
+          unitCost: m.unitCost,
+        ),
+      )
+      .toList();
       final billingInputs =
           source.billing.items
               .map(

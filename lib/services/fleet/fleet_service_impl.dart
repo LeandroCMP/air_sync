@@ -54,4 +54,12 @@ class FleetServiceImpl implements FleetService {
         sort: sort,
         order: order,
       );
+
+  @override
+  Future<List<FleetInsightRecommendation>> getRecommendations() =>
+      _repo.getRecommendations();
+
+  @override
+  Future<FleetInsightChatResponse> askAi(String question) =>
+      _repo.askAi(question);
 }

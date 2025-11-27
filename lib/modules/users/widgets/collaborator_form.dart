@@ -93,7 +93,7 @@ class CollaboratorFormController extends GetxController {
       }
     }
 
-    if (role.value == CollaboratorRole.admin) {
+    if (_isAdminLike(role.value)) {
       active.value = true;
     }
   }
@@ -116,13 +116,13 @@ class CollaboratorFormController extends GetxController {
         usersController.defaultPermissionsForRole(value),
       );
     }
-    if (value == CollaboratorRole.admin) {
+    if (_isAdminLike(value)) {
       active.value = true;
     }
   }
 
   void toggleActive(bool value) {
-    if (role.value == CollaboratorRole.admin && !value) {
+    if (_isAdminLike(role.value) && !value) {
       usersController.message(
         MessageModel.error(
           title: 'Operação inválida',
@@ -167,7 +167,7 @@ class CollaboratorFormController extends GetxController {
     final permissions =
         useCustomPermissions.value ? selectedPermissions.toList() : null;
     final resolvedActive =
-        role.value == CollaboratorRole.admin ? true : active.value;
+        _isAdminLike(role.value) ? true : active.value;
 
     if (collaborator == null) {
       final success = await usersController.createCollaborator(
@@ -222,6 +222,9 @@ class CollaboratorFormController extends GetxController {
     super.onClose();
   }
 }
+
+bool _isAdminLike(CollaboratorRole role) =>
+    role == CollaboratorRole.admin || role == CollaboratorRole.owner;
 
 class CollaboratorForm extends StatelessWidget {
   const CollaboratorForm({
@@ -332,9 +335,9 @@ class CollaboratorForm extends StatelessWidget {
               ),
               const SizedBox(height: 12),
               SwitchListTile.adaptive(
-                value: role == CollaboratorRole.admin ? true : active,
+                value: _isAdminLike(role) ? true : active,
                 onChanged:
-                    loading || role == CollaboratorRole.admin
+                    loading || _isAdminLike(role)
                         ? null
                         : formController.toggleActive,
                 title: const Text(
@@ -342,7 +345,7 @@ class CollaboratorForm extends StatelessWidget {
                   style: TextStyle(color: Colors.white),
                 ),
                 subtitle:
-                    role == CollaboratorRole.admin
+                    _isAdminLike(role)
                         ? const Text(
                           'Administradores permanecem ativos',
                           style: TextStyle(color: Colors.white60),
@@ -756,6 +759,8 @@ class _PermissionsInfoCard extends StatelessWidget {
 
 String _roleLabel(CollaboratorRole role) {
   switch (role) {
+    case CollaboratorRole.owner:
+      return 'Administrador Global (owner)';
     case CollaboratorRole.admin:
       return 'Administrador';
     case CollaboratorRole.manager:

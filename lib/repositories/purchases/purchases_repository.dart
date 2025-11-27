@@ -8,6 +8,7 @@ abstract class PurchasesRepository {
     String status = 'ordered',
     double? freight,
     String? notes,
+    DateTime? paymentDueDate,
   });
   Future<void> receive({required String id, DateTime? receivedAt});
   Future<PurchaseModel> update({
@@ -17,5 +18,12 @@ abstract class PurchasesRepository {
     String? status,
     double? freight,
     String? notes,
+    DateTime? paymentDueDate,
   });
+
+  Future<PurchaseModel> cancel({required String id, String? reason});
+
+  Future<PurchaseModel> submit(String id, {String? notes});
+  Future<PurchaseModel> approve(String id, {String? notes});
+  Future<PurchaseModel> markAsOrdered(String id, {String? externalId});
 }

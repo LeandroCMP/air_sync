@@ -1,4 +1,7 @@
+import 'package:air_sync/models/create_order_purchase_dto.dart';
+import 'package:air_sync/models/order_costs_model.dart';
 import 'package:air_sync/models/order_model.dart';
+import 'package:air_sync/models/purchase_model.dart';
 
 abstract class OrdersRepository {
   Future<List<OrderModel>> list({
@@ -22,6 +25,7 @@ abstract class OrdersRepository {
     List<OrderMaterialInput> materials = const [],
     List<OrderBillingItemInput> billingItems = const [],
     num billingDiscount = 0,
+    String? costCenterId,
   });
 
   Future<OrderModel> update({
@@ -36,6 +40,7 @@ abstract class OrdersRepository {
     String? clientId,
     String? locationId,
     String? equipmentId,
+    String? costCenterId,
   });
 
   Future<OrderModel> start(String orderId);
@@ -44,7 +49,7 @@ abstract class OrdersRepository {
     required String orderId,
     required List<OrderBillingItemInput> billingItems,
     num discount,
-    required String signatureBase64,
+    String? signatureBase64,
     String? notes,
     List<OrderPaymentInput> payments,
   });
@@ -79,4 +84,18 @@ abstract class OrdersRepository {
   String pdfUrl(String orderId, {String type = 'report'});
 
   Future<void> delete(String orderId);
+
+  Future<OrderCostsModel?> getCosts(String orderId);
+
+  Future<PurchaseModel> createPurchaseFromOrder({
+    required String orderId,
+    required CreateOrderPurchaseDto dto,
+  });
+
+  Future<String> askTechnicalAssistant({
+    required String orderId,
+    required String question,
+  });
+
+  Future<String> generateCustomerSummary(String orderId);
 }

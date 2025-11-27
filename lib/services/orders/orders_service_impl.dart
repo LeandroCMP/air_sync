@@ -1,11 +1,20 @@
+import 'package:air_sync/models/create_order_purchase_dto.dart';
+import 'package:air_sync/models/order_costs_model.dart';
 import 'package:air_sync/models/order_model.dart';
+import 'package:air_sync/models/purchase_model.dart';
 import 'package:air_sync/repositories/orders/orders_repository.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
+import 'package:air_sync/services/purchases/purchases_service.dart';
 
 class OrdersServiceImpl implements OrdersService {
-  OrdersServiceImpl({required OrdersRepository repo}) : _repo = repo;
+  OrdersServiceImpl({
+    required OrdersRepository repo,
+    PurchasesService? purchasesService,
+  })  : _repo = repo,
+        _purchasesService = purchasesService;
 
   final OrdersRepository _repo;
+  final PurchasesService? _purchasesService;
 
   @override
   Future<List<OrderModel>> list({
@@ -36,6 +45,7 @@ class OrdersServiceImpl implements OrdersService {
     List<OrderMaterialInput> materials = const [],
     List<OrderBillingItemInput> billingItems = const [],
     num billingDiscount = 0,
+    String? costCenterId,
   }) => _repo.create(
     clientId: clientId,
     locationId: locationId,
@@ -48,6 +58,7 @@ class OrdersServiceImpl implements OrdersService {
     materials: materials,
     billingItems: billingItems,
     billingDiscount: billingDiscount,
+    costCenterId: costCenterId,
   );
 
   @override
@@ -63,6 +74,7 @@ class OrdersServiceImpl implements OrdersService {
     String? clientId,
     String? locationId,
     String? equipmentId,
+    String? costCenterId,
   }) => _repo.update(
     orderId: orderId,
     status: status,
@@ -75,6 +87,7 @@ class OrdersServiceImpl implements OrdersService {
     clientId: clientId,
     locationId: locationId,
     equipmentId: equipmentId,
+    costCenterId: costCenterId,
   );
 
   @override
@@ -85,7 +98,7 @@ class OrdersServiceImpl implements OrdersService {
     required String orderId,
     required List<OrderBillingItemInput> billingItems,
     num discount = 0,
-    required String signatureBase64,
+    String? signatureBase64,
     String? notes,
     List<OrderPaymentInput> payments = const [],
   }) => _repo.finish(
@@ -139,4 +152,45 @@ class OrdersServiceImpl implements OrdersService {
 
   @override
   Future<void> delete(String orderId) => _repo.delete(orderId);
+
+  @override
+  Future<OrderCostsModel?> getCosts(String orderId) => _repo.getCosts(orderId);
+
+  @override
+  Future<PurchaseModel> createPurchaseFromOrder({
+    required String orderId,
+    required CreateOrderPurchaseDto dto,
+  }) async {
+    try {
+      return await _repo.createPurchaseFromOrder(orderId: orderId, dto: dto);
+    } catch (error) {
+      final fallbackItems = dto.items;
+      final purchasesService = _purchasesService;
+      if (purchasesService != null &&
+          fallbackItems != null &&
+          fallbackItems.isNotEmpty) {
+        return purchasesService.create(
+          supplierId: dto.supplierId,
+          items: dto.toPurchaseItems(orderId: orderId),
+          freight: dto.freight,
+          notes: dto.notes,
+          paymentDueDate: dto.paymentDueDate,
+        );
+      }
+      rethrow;
+    }
+  }
+
+  @override
+  Future<String> askTechnicalAssistant({
+    required String orderId,
+    required String question,
+  }) => _repo.askTechnicalAssistant(
+    orderId: orderId,
+    question: question,
+  );
+
+  @override
+  Future<String> generateCustomerSummary(String orderId) =>
+      _repo.generateCustomerSummary(orderId);
 }
