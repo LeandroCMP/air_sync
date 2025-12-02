@@ -8,12 +8,13 @@ class SignupsRepositoryImpl implements SignupsRepository {
   final ApiClient _api;
 
   @override
-  Future<String> registerTenant({
+  Future<bool> registerTenant({
     required String companyName,
     required String ownerName,
     required String ownerEmail,
     required String ownerPhone,
     required String document,
+    required String password,
     int? billingDay,
     String? notes,
   }) async {
@@ -25,14 +26,15 @@ class SignupsRepositoryImpl implements SignupsRepository {
         'ownerEmail': ownerEmail,
         'ownerPhone': ownerPhone,
         'document': document,
+        'password': password,
         if (billingDay != null) 'billingDay': billingDay,
         if (notes != null && notes.trim().isNotEmpty) 'notes': notes.trim(),
       },
     );
     final data = res.data;
-    if (data is Map && data['temporaryPassword'] != null) {
-      return data['temporaryPassword'].toString();
+    if (data is Map && data['id'] != null) {
+      return true;
     }
-    return '';
+    return false;
   }
 }

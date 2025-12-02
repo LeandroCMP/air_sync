@@ -29,6 +29,7 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
   final Rxn<DateTime> invoiceFrom = Rxn<DateTime>();
   final Rxn<DateTime> invoiceTo = Rxn<DateTime>();
   final isLoading = false.obs;
+  final isCreatingCarnet = false.obs;
   final isRunningBilling = false.obs;
   final message = Rxn<MessageModel>();
   final isOwner = false.obs;
@@ -312,6 +313,34 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
           message: _resolveErrorMessage(error, 'Falha ao renegociar fatura.'),
         ),
       );
+    }
+  }
+
+  Future<void> createCarnet({required bool payUpfront}) async {
+    if (isCreatingCarnet.value) return;
+    isCreatingCarnet.value = true;
+    try {
+      await _withTimeout(
+        _service.createCarnet(payUpfront: payUpfront),
+        customTimeout: const Duration(seconds: 20),
+      );
+      await refreshAll();
+      final msg = payUpfront
+          ? 'Carnê gerado à vista com 20% de desconto sobre 6 meses.'
+          : 'Carnê semestral gerado em 6 parcelas mensais.';
+      message(MessageModel.success(title: 'Carnê', message: msg));
+    } catch (error) {
+      message(
+        MessageModel.error(
+          title: 'Carnê',
+          message: _resolveErrorMessage(
+            error,
+            'Não foi possível gerar o carnê.',
+          ),
+        ),
+      );
+    } finally {
+      isCreatingCarnet.value = false;
     }
   }
 

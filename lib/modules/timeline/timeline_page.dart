@@ -9,13 +9,15 @@ class TimelinePage extends GetView<TimelineController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.themeBg,
       appBar: AppBar(
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Timeline', style: TextStyle(color: Colors.white)),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: context.themePrimary,
+        backgroundColor: context.themeGreen,
         onPressed: () => _openAddDialog(context),
         child: const Icon(Icons.add_comment, color: Colors.white),
       ),
@@ -96,4 +98,3 @@ class TimelinePage extends GetView<TimelineController> {
     );
   }
 }
-

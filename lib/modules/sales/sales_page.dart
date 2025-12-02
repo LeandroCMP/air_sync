@@ -39,11 +39,15 @@ class SalesPage extends GetView<SalesController> {
 
     return Scaffold(
 
+      backgroundColor: context.themeBg,
+
       appBar: AppBar(
 
         title: const Text('Vendas'),
 
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+
+        elevation: 0,
 
         actions: [
 
@@ -472,20 +476,6 @@ class _SaleCard extends StatelessWidget {
                 'Entrega: ${dateFmt.format(sale.expectedAt!.toLocal())}',
 
                 style: const TextStyle(color: Colors.white70, fontSize: 13),
-
-              ),
-
-            ],
-
-            if ((sale.costCenterName ?? sale.costCenterId ?? '').isNotEmpty) ...[
-
-              const SizedBox(height: 4),
-
-              Text(
-
-                'Centro: ${sale.costCenterName ?? sale.costCenterId}',
-
-                style: const TextStyle(color: Colors.white60, fontSize: 13),
 
               ),
 
@@ -1408,7 +1398,6 @@ Future<void> _openSaleForm(
   final notesCtrl = TextEditingController(text: existing?.notes ?? '');
   final selectedClientId = RxnString(existing?.clientId);
   final selectedLocationId = RxnString(existing?.locationId);
-  final selectedCostCenterId = RxnString(existing?.costCenterId);
   final autoCreateOrder = RxBool(existing?.autoCreateOrder ?? false);
   final locationsLoading = false.obs;
   final locationOptions = <LocationModel>[].obs;
@@ -1697,11 +1686,6 @@ Future<void> _openSaleForm(
                         ),
                 ),
                 const SizedBox(height: 8),
-                _CostCenterDropdown(
-                  controller: controller,
-                  selectedCostCenterId: selectedCostCenterId,
-                ),
-                const SizedBox(height: 8),
                 TextFormField(
                   controller: discountCtrl,
                   keyboardType: const TextInputType.numberWithOptions(decimal: true),
@@ -1852,8 +1836,6 @@ Future<void> _openSaleForm(
                       final items = itemDrafts.map((draft) => draft.toModel()).toList();
                       final discountValue = parseCurrency(discountCtrl.text);
                       final notes = notesCtrl.text.trim().isEmpty ? null : notesCtrl.text.trim();
-                      final costCenterId =
-                          (selectedCostCenterId.value ?? '').isEmpty ? null : selectedCostCenterId.value;
                       final autoOrderValue =
                           allowAutoOrder ? autoCreateOrder.value : (existing?.autoCreateOrder ?? false);
 
@@ -1865,7 +1847,6 @@ Future<void> _openSaleForm(
                           discount: discountValue,
                           notes: notes,
                           moveRequest: null,
-                          costCenterId: costCenterId,
                           autoCreateOrder: autoOrderValue,
                         );
                       } else {
@@ -1877,7 +1858,6 @@ Future<void> _openSaleForm(
                           discount: discountValue,
                           notes: notes,
                           moveRequest: null,
-                          costCenterId: costCenterId,
                           autoCreateOrder: allowAutoOrder ? autoCreateOrder.value : null,
                         );
                       }
@@ -2408,92 +2388,6 @@ Future<InventoryItemModel?> _openInventoryPicker(
 }
 
 
-
-class _CostCenterDropdown extends StatelessWidget {
-
-  const _CostCenterDropdown({
-
-    required this.controller,
-
-    required this.selectedCostCenterId,
-
-  });
-
-
-
-  final SalesController controller;
-
-  final RxnString selectedCostCenterId;
-
-
-
-  @override
-
-  Widget build(BuildContext context) {
-
-    return Obx(
-
-      () {
-
-        if (controller.costCentersLoading.value) {
-
-          return const ListTile(
-
-            contentPadding: EdgeInsets.zero,
-
-            title: Text('Centro de custo', style: TextStyle(color: Colors.white70)),
-
-            subtitle: Padding(
-
-              padding: EdgeInsets.symmetric(vertical: 8),
-
-              child: LinearProgressIndicator(minHeight: 2),
-
-            ),
-
-          );
-
-        }
-
-        final centers = controller.costCenters;
-
-        return DropdownButtonFormField<String>(
-
-          value: selectedCostCenterId.value?.isEmpty ?? true ? null : selectedCostCenterId.value,
-
-          items: centers
-
-              .map(
-
-                (center) => DropdownMenuItem(
-
-                  value: center.id,
-
-                  child: Text(center.name),
-
-                ),
-
-              )
-
-              .toList(),
-
-          onChanged: (value) => selectedCostCenterId.value = value,
-
-          decoration: InputDecoration(
-
-            labelText: centers.isEmpty ? 'Centros no configurados' : 'Centro de custo',
-
-          ),
-
-        );
-
-      },
-
-    );
-
-  }
-
-}
 
 
 

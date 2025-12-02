@@ -24,8 +24,10 @@ class EquipmentsPage extends GetView<EquipmentsController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.themeBg,
       appBar: AppBar(
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
           'Equipamentos',

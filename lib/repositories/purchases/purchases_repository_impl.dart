@@ -101,9 +101,6 @@ class PurchasesRepositoryImpl implements PurchasesRepository {
         if ((it.orderId ?? '').trim().isNotEmpty) {
           map['orderId'] = it.orderId!.trim();
         }
-        if ((it.costCenterId ?? '').trim().isNotEmpty) {
-          map['costCenterId'] = it.costCenterId!.trim();
-        }
         return map;
       }).toList(),
       if (freight != null) 'freight': freight,
@@ -158,9 +155,6 @@ class PurchasesRepositoryImpl implements PurchasesRepository {
         }
         if ((it.orderId ?? '').trim().isNotEmpty) {
           map['orderId'] = it.orderId!.trim();
-        }
-        if ((it.costCenterId ?? '').trim().isNotEmpty) {
-          map['costCenterId'] = it.costCenterId!.trim();
         }
         return map;
       }).toList();

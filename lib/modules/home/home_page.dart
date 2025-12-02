@@ -1,4 +1,3 @@
-import 'package:air_sync/application/auth/auth_service_application.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/application/core/connectivity/connectivity_service.dart';
 import 'package:air_sync/application/core/sync/sync_service.dart';
@@ -21,7 +20,6 @@ class HomePage extends GetView<HomeController> {
 
   @override
   Widget build(BuildContext context) {
-    final border = BorderSide(color: context.themeBorder);
     final currentUser = controller.user.value;
     final moduleCards =
         _homeModuleItems
@@ -49,57 +47,21 @@ class HomePage extends GetView<HomeController> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // ================= KPI STRIP =================
-                  SizedBox(
-                    height: 118,
-                    child: ListView(
-                      scrollDirection: Axis.horizontal,
-                      physics: const BouncingScrollPhysics(),
-                      children: const [
-                        _KpiChip(
-                          label: 'OS abertas',
-                          value: '--',
-                          icon: Icons.assignment_rounded,
-                          colorHex: 0xFF4DA3FF,
-                        ),
-                        _KpiChip(
-                          label: 'Pendentes',
-                          value: '--',
-                          icon: Icons.schedule_rounded,
-                          colorHex: 0xFFFFA15C,
-                        ),
-                        _KpiChip(
-                          label: 'Atrasadas',
-                          value: '--',
-                          icon: Icons.warning_amber_rounded,
-                          colorHex: 0xFFFFA15C,
-                        ),
-                        _KpiChip(
-                          label: 'Hoje',
-                          value: '--',
-                          icon: Icons.today_rounded,
-                          colorHex: 0xFF00B686,
-                        ),
-                      ],
-                    ),
-                  ),
-
+                  _HeroCard(user: currentUser),
                   const SizedBox(height: 20),
-                  const _QuickActionsRow(),
-                  const SizedBox(height: 16),
-
-                  // ============== GRID DE MÓDULOS (MAIS ALTO) ==============
-                  GridView(
+                  GridView.builder(
                     physics: const NeverScrollableScrollPhysics(),
                     shrinkWrap: true,
+                    padding: EdgeInsets.zero,
+                    itemCount: moduleCards.length,
                     gridDelegate:
                         const SliverGridDelegateWithFixedCrossAxisCount(
                           crossAxisCount: 2,
                           mainAxisSpacing: 16,
                           crossAxisSpacing: 16,
-                          childAspectRatio: 0.98,
+                          childAspectRatio: 0.95,
                         ),
-                    children: moduleCards,
+                    itemBuilder: (_, idx) => moduleCards[idx],
                   ),
 
                   if (moduleCards.isEmpty)
@@ -110,21 +72,6 @@ class HomePage extends GetView<HomeController> {
                         style: TextStyle(color: context.themeTextSubtle),
                       ),
                     ),
-                  const SizedBox(height: 24),
-
-                  // ================= DICA / RODAPÉ =================
-                  Container(
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(
-                      color: context.themeSurface,
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.fromBorderSide(border),
-                    ),
-                    child: Text(
-                      'Dica: abra um módulo para criar registros (ex.: criar OS dentro de "Ordens de Serviço").',
-                      style: Theme.of(context).textTheme.bodySmall,
-                    ),
-                  ),
                 ],
               ),
             ),
@@ -328,6 +275,109 @@ class _HomeDrawer extends StatelessWidget {
 
 // ======================= COMPONENTES =======================
 
+
+
+class _HeroCard extends StatelessWidget {
+  const _HeroCard({required this.user});
+
+  final UserModel? user;
+
+  @override
+  Widget build(BuildContext context) {
+    final sync = Get.find<SyncService>();
+    final isOnline = Get.find<ConnectivityService>().isOnline.value;
+
+    return Container(
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            const Color(0xFF0f172a),
+            const Color(0xFF0d9488).withValues(alpha: .85),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.25),
+            blurRadius: 18,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              CircleAvatar(
+                backgroundColor: Colors.white10,
+                foregroundColor: Colors.white,
+                child: Text(
+                  (user?.name.isNotEmpty ?? false) ? user!.name[0].toUpperCase() : 'A',
+                  style: const TextStyle(fontWeight: FontWeight.bold),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Olá, ${user?.name.split(' ').first ?? 'Airsyncer'}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 18,
+                      ),
+                    ),
+                    Row(
+                      children: [
+                        Icon(
+                          isOnline ? Icons.wifi_rounded : Icons.wifi_off_rounded,
+                          size: 16,
+                          color: isOnline ? Colors.tealAccent : Colors.orangeAccent,
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          isOnline ? 'Online' : 'Offline',
+                          style: TextStyle(
+                            color: isOnline ? Colors.white70 : Colors.orangeAccent,
+                            fontSize: 12,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              TextButton.icon(
+                onPressed: sync.isSyncing.value ? null : sync.syncInitial,
+                icon: const Icon(Icons.refresh_rounded, color: Colors.white),
+                label: Text(
+                  sync.isSyncing.value ? 'Sincronizando...' : 'Sincronizar',
+                  style: const TextStyle(color: Colors.white),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Escolha um módulo para começar:',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.9),
+              fontSize: 14,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ModuleCardData {
   _ModuleCardData({
     required this.title,
@@ -357,7 +407,7 @@ class _ModuleCardData {
 
 final List<_ModuleCardData> _homeModuleItems = [
   _ModuleCardData(
-    title: 'Ordens de Servi?o',
+    title: 'Ordens de Serviço',
     subtitle: 'Acompanhe e crie',
     icon: Icons.assignment_rounded,
     requiredPermissions: ['orders.read', 'orders.write'],
@@ -372,7 +422,7 @@ final List<_ModuleCardData> _homeModuleItems = [
   ),
   _ModuleCardData(
     title: 'Estoque',
-    subtitle: 'Movimenta??es e itens',
+    subtitle: 'Movimentações e itens',
     icon: Icons.inventory_2_rounded,
     requiredPermissions: ['inventory.read', 'inventory.write'],
     onTap: () => Get.toNamed('/inventory'),
@@ -424,197 +474,20 @@ final List<_ModuleCardData> _homeModuleItems = [
   ),
   _ModuleCardData(
     title: 'Frota',
-    subtitle: 'Check, abastecimento e manuten??o',
+    subtitle: 'Check, abastecimento e manutenção',
     icon: Icons.local_shipping_outlined,
     requiredPermissions: ['fleet.read', 'fleet.write'],
     onTap: () => Get.toNamed('/fleet'),
   ),
   _ModuleCardData(
-    title: 'Linha do tempo',
-    subtitle: 'Eventos e atividades por cliente',
-    icon: Icons.timeline_outlined,
-    requiredPermissions: ['timeline.read', 'timeline.write'],
-    onTap: () => Get.toNamed('/timeline'),
-  ),
-  _ModuleCardData(
     title: 'Colaboradores',
-    subtitle: 'Permiss?es e holerites',
+    subtitle: 'Permissões e holerites',
     icon: Icons.badge_outlined,
     requiredPermissions: ['users.write'],
     ownerOnly: true,
     onTap: () => Get.toNamed('/users'),
   ),
 ];
-
-class _KpiChip extends StatelessWidget {
-  final String label;
-  final String value;
-  final IconData icon;
-  final int colorHex;
-  const _KpiChip({
-    required this.label,
-    required this.value,
-    required this.icon,
-    required this.colorHex,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final color = Color(colorHex);
-    return Container(
-      width: 200,
-      margin: const EdgeInsets.only(right: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: .12),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withValues(alpha: .4)),
-      ),
-      child: Row(
-        children: [
-          CircleAvatar(
-            backgroundColor: color,
-            child: Icon(icon, color: Colors.white),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(label, style: const TextStyle(color: Colors.white70)),
-                const SizedBox(height: 4),
-                Text(
-                  value,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _QuickActionsRow extends StatelessWidget {
-  const _QuickActionsRow();
-
-  @override
-  Widget build(BuildContext context) {
-    final auth = Get.find<AuthServiceApplication>();
-    return Obx(() {
-      final isOwner = auth.user.value?.isOwner ?? false;
-      final actions = <_QuickActionData>[
-        _QuickActionData(
-          label: 'Meu perfil',
-          icon: Icons.person_outline,
-          onTap: () => Get.toNamed('/profile'),
-        ),
-        _QuickActionData(
-          label: 'Nova OS',
-          icon: Icons.add_task_outlined,
-          onTap: () => Get.to(() => const OrdersPage(), binding: OrdersBindings()),
-        ),
-        _QuickActionData(
-          label: 'Registrar compra',
-          icon: Icons.point_of_sale,
-          onTap: () => Get.toNamed('/purchases'),
-        ),
-        _QuickActionData(
-          label: 'Financeiro',
-          icon: Icons.account_balance_wallet_outlined,
-          onTap: () => Get.to(() => const FinancePage()),
-        ),
-      ];
-      if (isOwner) {
-        actions.add(
-          _QuickActionData(
-            label: 'Assinaturas & Billing',
-            icon: Icons.subscriptions_outlined,
-            onTap: () => Get.toNamed('/subscriptions'),
-          ),
-        );
-        actions.add(
-          _QuickActionData(
-            label: 'Perfil da empresa',
-            icon: Icons.business_center_outlined,
-            onTap: () => Get.to(
-              () => const CompanyProfilePage(),
-              binding: CompanyProfileBindings(),
-            ),
-          ),
-        );
-      }
-      return SizedBox(
-        height: 96,
-        child: ListView.separated(
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          itemBuilder: (_, index) => _QuickActionButton(data: actions[index]),
-          separatorBuilder: (_, __) => const SizedBox(width: 12),
-          itemCount: actions.length,
-        ),
-      );
-    });
-  }
-}
-
-class _QuickActionButton extends StatelessWidget {
-  const _QuickActionButton({required this.data});
-
-  final _QuickActionData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: data.onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        width: 190,
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: context.themeSurface,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white12),
-        ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              backgroundColor: Colors.white10,
-              child: Icon(data.icon, color: Colors.white),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                data.label,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-class _QuickActionData {
-  const _QuickActionData({
-    required this.label,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String label;
-  final IconData icon;
-  final VoidCallback onTap;
-}
 
 class _ModuleCard extends StatelessWidget {
   final String title;

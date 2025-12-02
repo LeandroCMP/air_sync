@@ -196,9 +196,8 @@ class InventoryRepositoryImpl implements InventoryRepository {
   @override
   Future<InventoryItemModel> registerItem({
     required String name,
-    required String sku,
+    String? sku,
     required double minQty,
-    String? barcode,
     String? unit,
     double? maxQty,
     String? supplierId,
@@ -209,55 +208,31 @@ class InventoryRepositoryImpl implements InventoryRepository {
     String? pricingMode,
   }) async {
     final trimmedName = name.trim();
-    final trimmedSku = sku.trim();
-    if (trimmedName.isEmpty || trimmedSku.isEmpty) {
-      throw InventoryFailure.validation('Nome e SKU são obrigatórios');
+    final trimmedSku = (sku ?? '').trim();
+    if (trimmedName.isEmpty) {
+      throw InventoryFailure.validation('Nome é obrigatório');
     }
     if (minQty < 0) {
       throw InventoryFailure.validation('Estoque mínimo inválido');
     }
 
     final unitTrimmed = (unit ?? '').trim();
-    final baseUnit = unitTrimmed.isNotEmpty ? unitTrimmed : 'UN';
-    final normalizedName = _upper(trimmedName);
-    final normalizedSku = _upper(trimmedSku);
-    final normalizedUnit = _upper(baseUnit);
-
-    final legacyPayload = <String, dynamic>{
-      'name': normalizedName,
-      'sku': normalizedSku,
-      'minQty': minQty,
-      'unit': normalizedUnit,
-    };
-    final trimmedBarcode = (barcode ?? '').trim();
-    if (trimmedBarcode.isNotEmpty) {
-      legacyPayload['barcode'] = trimmedBarcode;
-    }
-    if (maxQty != null) {
-      legacyPayload['maxQty'] = maxQty;
-    }
-    final trimmedSupplier = (supplierId ?? '').trim();
-    if (trimmedSupplier.isNotEmpty) {
-      legacyPayload['supplierId'] = trimmedSupplier;
-    }
-    if (avgCost != null) {
-      legacyPayload['avgCost'] = avgCost;
-    }
-    if (sellPrice != null) {
-      legacyPayload['sellPrice'] = sellPrice;
-    }
+    final normalizedName = trimmedName;
+    final normalizedSku = trimmedSku.isEmpty ? null : _upper(trimmedSku);
+    final normalizedUnit =
+        unitTrimmed.isEmpty ? 'un' : unitTrimmed.toLowerCase();
 
     final pricingModeTrimmed = (pricingMode ?? '').trim();
     final pricingModeNormalized =
         pricingModeTrimmed.isEmpty ? null : pricingModeTrimmed;
     final trimmedCategory = (categoryId ?? '').trim();
+    final trimmedSupplier = (supplierId ?? '').trim();
+
     final newPayload = <String, dynamic>{
       'name': normalizedName,
-      'description': normalizedName,
-      'sku': normalizedSku,
-      'minQuantity': minQty,
+      if (normalizedSku != null) 'sku': normalizedSku,
+      'minQty': minQty,
       'unit': normalizedUnit,
-      if (trimmedBarcode.isNotEmpty) 'barcode': trimmedBarcode,
       if (maxQty != null) 'maxQty': maxQty,
       if (trimmedSupplier.isNotEmpty) 'supplierId': trimmedSupplier,
       if (avgCost != null) 'avgCost': avgCost,
@@ -268,37 +243,16 @@ class InventoryRepositoryImpl implements InventoryRepository {
     };
 
     try {
-      final legacyRes = await _api.dio.post(
-        _legacyItemsEndpoint,
-        data: legacyPayload,
+      final response = await _api.dio.post(
+        _itemsEndpoint,
+        data: newPayload,
       );
-      final data = Map<String, dynamic>.from(legacyRes.data as Map);
+      final data = Map<String, dynamic>.from(response.data as Map);
       final id = (data['id'] ?? data['_id'] ?? '').toString();
       return InventoryItemModel.fromMap(id, data);
-    } on DioException catch (legacyError) {
-      final legacyStatus = legacyError.response?.statusCode ?? 0;
-      if (_shouldFallback(legacyStatus)) {
-        try {
-          final response = await _api.dio.post(
-            _itemsEndpoint,
-            data: newPayload,
-          );
-          final data = Map<String, dynamic>.from(response.data as Map);
-          final id = (data['id'] ?? data['_id'] ?? '').toString();
-          return InventoryItemModel.fromMap(id, data);
-        } on DioException catch (e) {
-          final message = _extractErrorMessage(e, 'Erro ao registrar item');
-          throw InventoryFailure.validation(message);
-        }
-      }
-      final message = _extractErrorMessage(
-        legacyError,
-        'Erro ao registrar item',
-      );
-      if (legacyStatus == 400 || legacyStatus == 422 || legacyStatus == 409) {
-        throw InventoryFailure.validation(message);
-      }
-      throw InventoryFailure.firebase(message);
+    } on DioException catch (e) {
+      final message = _extractErrorMessage(e, 'Erro ao registrar item');
+      throw InventoryFailure.validation(message);
     } catch (_) {
       throw InventoryFailure.unknown('Erro inesperado ao cadastrar item');
     }
@@ -544,8 +498,8 @@ class InventoryRepositoryImpl implements InventoryRepository {
           case 'description':
             if (value != null) {
               final upperValue = _upper(value.toString());
-              payload['description'] = upperValue;
-              addLegacy('description', upperValue);
+              payload['name'] = upperValue;
+              addLegacy('name', upperValue);
             }
             break;
           case 'sku':
@@ -557,9 +511,12 @@ class InventoryRepositoryImpl implements InventoryRepository {
             break;
           case 'unit':
             if (value != null) {
-              final normalized = _upper(value.toString());
+              final normalized =
+                  value.toString().trim().isEmpty
+                      ? 'un'
+                      : value.toString().trim().toLowerCase();
               payload['unit'] = normalized;
-              addLegacy('unit', normalized);
+              addLegacy('unit', normalized.toUpperCase());
             }
             break;
           case 'minQty':
@@ -570,7 +527,6 @@ class InventoryRepositoryImpl implements InventoryRepository {
             payload['active'] = value;
             addLegacy('active', value);
             break;
-          case 'barcode':
           case 'maxQty':
           case 'supplierId':
           case 'avgCost':

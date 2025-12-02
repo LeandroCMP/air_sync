@@ -524,7 +524,7 @@ class _HistoryEmptyState extends StatelessWidget {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const Icon(Icons.timeline_outlined, size: 72, color: Colors.white54),
+          const Icon(Icons.history_outlined, size: 72, color: Colors.white54),
           const SizedBox(height: 16),
           Text(
             title,

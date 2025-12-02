@@ -12,14 +12,16 @@ import 'package:get/get.dart';
 import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import 'package:intl/intl.dart';
 
-const String _fixedPlanName = 'AirSync Standard - R\$ 120/m\u00eas';
 const double _fixedPlanAmount = 120;
-const int _graceDays = 3;
 const String _stripeMerchantIdentifier = 'merchant.com.airsync';
 
-bool _isProratedInvoice(SubscriptionInvoiceModel invoice) =>
-    invoice.amountDue < (_fixedPlanAmount - 0.01) &&
-    invoice.amountDue > 0;
+bool _isProratedInvoice(
+  SubscriptionInvoiceModel invoice, {
+  double? planAmount,
+}) {
+  final referenceAmount = planAmount ?? _fixedPlanAmount;
+  return invoice.amountDue > 0.01 && invoice.amountDue < (referenceAmount - 0.01);
+}
 
 bool _isTrialInvoice(SubscriptionInvoiceModel invoice) =>
     invoice.amountDue <= 0.01;
@@ -32,8 +34,11 @@ class SubscriptionsPage extends GetView<SubscriptionsController> {
     return DefaultTabController(
       length: 2,
       child: Scaffold(
+        backgroundColor: context.themeBg,
         appBar: AppBar(
           title: const Text('Minha assinatura'),
+          backgroundColor: Colors.transparent,
+          elevation: 0,
           actions: [
             IconButton(
               tooltip: 'Atualizar dados',
@@ -120,16 +125,19 @@ class _OverviewTab extends StatelessWidget {
             _CurrentPlanCard(
               current: current,
               alerts: alerts,
-              onEdit: () => _openBillingPreferencesForm(context, controller),
-              onRunCycle: controller.runBillingNow,
-              isRunningBilling: controller.isRunningBilling.value,
+              onEdit: () => _openBillingDayForm(context, controller),
+              onRunCycle: null,
+              isRunningBilling: false,
             ),
+            const SizedBox(height: 16),
+            _CarnetActions(controller: controller),
             const SizedBox(height: 16),
             if (highlightInvoice != null) ...[
               _PendingInvoiceCard(
                 invoice: highlightInvoice,
                 billingDay: billingDay,
                 startedAt: current?.startedAt,
+                planAmount: current?.plan?.amount,
               ),
               const SizedBox(height: 24),
             ],
@@ -158,6 +166,97 @@ class _OverviewTab extends StatelessWidget {
         ),
       );
     });
+  }
+
+  Future<void> _openBillingDayForm(
+    BuildContext context,
+    SubscriptionsController controller,
+  ) async {
+    final current = controller.current.value;
+    final formKey = GlobalKey<FormState>();
+    final billingDayCtrl =
+        TextEditingController(text: current?.billingDay?.toString() ?? '');
+
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.themeDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (sheetCtx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            left: 20,
+            right: 20,
+            top: 24,
+            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
+          ),
+          child: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                const Text(
+                  'Alterar dia de cobrança',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                const Text(
+                  'Informe um dia entre 1 e 28. As próximas faturas usarão este vencimento.',
+                  style: TextStyle(color: Colors.white70),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: billingDayCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(2),
+                  ],
+                  style: const TextStyle(color: Colors.white),
+                  decoration: const InputDecoration(
+                    labelText: 'Dia de cobrança (1-28)',
+                    labelStyle: TextStyle(color: Colors.white70),
+                  ),
+                  validator: (value) {
+                    if (value == null || value.isEmpty) return 'Informe o dia';
+                    final number = int.tryParse(value);
+                    if (number == null || number < 1 || number > 28) {
+                      return 'Digite um número entre 1 e 28';
+                    }
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 20),
+                SizedBox(
+                  height: 48,
+                  child: ElevatedButton(
+                    onPressed: () async {
+                      if (!formKey.currentState!.validate()) return;
+                      final day = int.tryParse(billingDayCtrl.text.trim());
+                      await controller.updateCurrentSettings(billingDay: day);
+                      if (sheetCtx.mounted) Navigator.of(sheetCtx).pop();
+                    },
+                    child: const Text(
+                      'Salvar dia de cobrança',
+                      style: TextStyle(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+
+    billingDayCtrl.dispose();
   }
 
   SubscriptionInvoiceModel? _highlightedPendingInvoice(
@@ -394,9 +493,11 @@ class _InvoicesTab extends StatelessWidget {
                       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
                       itemBuilder: (_, index) {
                         final invoice = invoices[index];
+                        final planAmount = controller.current.value?.plan?.amount;
                         return _InvoiceTile(
                           invoice: invoice,
                           billingDay: controller.current.value?.billingDay,
+                          planAmount: planAmount,
                           onTap: () => _openInvoiceDetail(context, invoice),
                         );
                       },
@@ -427,8 +528,10 @@ class _InvoicesTab extends StatelessWidget {
           final invoiceToUse = _findInvoice(invoice.id) ?? invoice;
           final billingDay = controller.current.value?.billingDay;
           final startedAt = controller.current.value?.startedAt;
+          final planAmount = controller.current.value?.plan?.amount;
           final isTrialAmount = _isTrialInvoice(invoiceToUse);
-          final isProratedAmount = _isProratedInvoice(invoiceToUse);
+          final isProratedAmount =
+              _isProratedInvoice(invoiceToUse, planAmount: planAmount);
           final startLabel = startedAt != null
               ? SubscriptionsPage.formatDate(startedAt)
               : 'a ativa\u00e7\u00e3o';
@@ -501,15 +604,15 @@ class _InvoicesTab extends StatelessWidget {
                   if (isTrialAmount) ...[
                     _InfoBanner(
                       icon: Icons.auto_awesome_rounded,
-                      text:
-                          'Trial ativo - nenhuma cobran\u00e7a hoje. Voc\u00ea tem $_graceDays dias de car\u00eancia e pode pagar at\u00e9 ${SubscriptionsPage.formatDate(invoiceToUse.dueDate)} sem juros.',
+                        text:
+                            'Trial ativo - nenhuma cobran\u00e7a hoje. Pague at\u00e9 ${SubscriptionsPage.formatDate(invoiceToUse.dueDate)} sem juros durante a car\u00eancia.',
                     ),
                     const SizedBox(height: 16),
                   ] else if (isProratedAmount) ...[
                     _InfoBanner(
                       icon: Icons.av_timer_rounded,
-                      text:
-                          'Cobran\u00e7a pr\u00f3-rata referente ao per\u00edodo entre $startLabel e o dia $billingLabel. Durante a car\u00eancia de $_graceDays dias, o pagamento \u00e9 opcional.',
+                        text:
+                            'Cobran\u00e7a pr\u00f3-rata referente ao per\u00edodo entre $startLabel e o dia $billingLabel. Pagamento opcional durante a car\u00eancia at\u00e9 ${SubscriptionsPage.formatDate(invoiceToUse.dueDate)}.',
                     ),
                     const SizedBox(height: 16),
                   ] else if (billingDay != null) ...[
@@ -531,7 +634,7 @@ class _InvoicesTab extends StatelessWidget {
                     ] else ...[
                       Text(
                         isProratedAmount
-                            ? 'Pagamento opcional durante os $_graceDays dias iniciais:'
+                            ? 'Pagamento opcional durante o per\u00edodo de car\u00eancia:'
                             : 'Selecione a forma de pagamento:',
                         style: Theme.of(context).textTheme.titleSmall,
                       ),
@@ -612,7 +715,7 @@ class _InvoicesTab extends StatelessWidget {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
-            'Pagamentos por cartão só estão disponíveis em Android, iOS ou Web.',
+            'Pagamentos por cart?o s? est?o dispon?veis em Android, iOS ou Web.',
           ),
         ),
       );
@@ -622,19 +725,6 @@ class _InvoicesTab extends StatelessWidget {
     if (method != 'PIX') {
       controller.lastIntentByInvoice.remove(invoice.id);
       controller.lastIntentByInvoice.refresh();
-    }
-    final publishableKey =
-        method == 'PIX' ? null : appConfig.stripePublishableKey;
-    if (method == 'CARD_CREDIT' &&
-        (publishableKey == null || publishableKey.isEmpty)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Configure a Stripe Publishable Key para aceitar pagamentos por cartão.',
-          ),
-        ),
-      );
-      return;
     }
     final intent = await controller.createPaymentIntent(
       invoiceId: invoice.id,
@@ -651,9 +741,22 @@ class _InvoicesTab extends StatelessWidget {
       );
       return;
     }
+    final publishableKey =
+        (intent.publishableKey != null && intent.publishableKey!.isNotEmpty)
+            ? intent.publishableKey
+            : appConfig.stripePublishableKey;
+    if (publishableKey == null || publishableKey.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Configure a Stripe Publishable Key para aceitar pagamentos por cart?o.',
+          ),
+        ),
+      );
+      return;
+    }
     try {
-      if (publishableKey != null &&
-          stripe.Stripe.publishableKey != publishableKey) {
+      if (stripe.Stripe.publishableKey != publishableKey) {
         stripe.Stripe.publishableKey = publishableKey;
         stripe.Stripe.merchantIdentifier = _stripeMerchantIdentifier;
         await stripe.Stripe.instance.applySettings();
@@ -891,8 +994,8 @@ class _CurrentPlanCard extends StatelessWidget {
 
   final SubscriptionCurrentModel? current;
   final SubscriptionAlertModel? alerts;
-  final VoidCallback onEdit;
-  final VoidCallback onRunCycle;
+  final VoidCallback? onEdit;
+  final VoidCallback? onRunCycle;
   final bool isRunningBilling;
 
   @override
@@ -923,7 +1026,9 @@ class _CurrentPlanCard extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        _fixedPlanName,
+                        (current?.plan?.name ?? '').isNotEmpty
+                            ? current!.plan!.name
+                            : 'Assinatura atual',
                         style: Theme.of(context)
                             .textTheme
                             .titleMedium
@@ -1045,7 +1150,7 @@ class _OverviewMetricsGrid extends StatelessWidget {
                 overview!.arr,
                 currency: overview!.currency,
               ),
-        icon: Icons.timeline_outlined,
+        icon: Icons.trending_up_outlined,
         helper: 'Equivalente a 12 meses de assinatura.',
       ),
       _MetricData(
@@ -1115,16 +1220,18 @@ class _PendingInvoiceCard extends StatelessWidget {
     required this.invoice,
     required this.billingDay,
     required this.startedAt,
+    this.planAmount,
   });
 
   final SubscriptionInvoiceModel invoice;
   final int? billingDay;
   final DateTime? startedAt;
+  final double? planAmount;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isProrated = _isProratedInvoice(invoice);
+    final isProrated = _isProratedInvoice(invoice, planAmount: planAmount);
     final isTrial = _isTrialInvoice(invoice);
     final dueDateLabel = SubscriptionsPage.formatDate(invoice.dueDate);
     final startLabel =
@@ -1132,9 +1239,9 @@ class _PendingInvoiceCard extends StatelessWidget {
     final billingLabel =
         billingDay != null ? 'dia $billingDay' : 'o vencimento informado';
     final subtitle = isTrial
-        ? 'Car\u00eancia de $_graceDays dias ativa: use o sistema sem cobran\u00e7a e pague at\u00e9 $dueDateLabel.'
+        ? 'Car\u00eancia ativa: use o sistema sem cobran\u00e7a e pague at\u00e9 $dueDateLabel.'
         : isProrated
-            ? 'Valor proporcional entre $startLabel e o $billingLabel. Durante a car\u00eancia o pagamento \u00e9 opcional.'
+            ? 'Valor proporcional entre $startLabel e o $billingLabel. Pagamento opcional at\u00e9 $dueDateLabel.'
             : 'Cobran\u00e7a fixa gerada todo $billingLabel.';
 
     return Card(
@@ -1178,7 +1285,7 @@ class _PendingInvoiceCard extends StatelessWidget {
                     ),
                     child: Text(
                       isTrial
-                          ? 'Car\u00eancia de $_graceDays dias'
+                          ? 'Em car\u00eancia'
                           : 'Pr\u00f3-rata aplicada',
                       style: const TextStyle(
                         color: Colors.orangeAccent,
@@ -1248,6 +1355,9 @@ class _AlertsCard extends StatelessWidget {
 
     final billingDay = current?.billingDay;
     final startedAt = current?.startedAt;
+    final planPrice =
+        current?.plan?.formattedPrice ??
+        SubscriptionsPage.formatCurrency(_fixedPlanAmount);
 
     final rows = <Widget>[
       _InfoTile(
@@ -1301,7 +1411,7 @@ class _AlertsCard extends StatelessWidget {
             if (alerts!.nextDueDate != null) ...[
               const SizedBox(height: 16),
               Text(
-                'Voc\u00ea pode usar o sistema sem cobran\u00e7a at\u00e9 ${SubscriptionsPage.formatDate(alerts!.nextDueDate)}. Depois da car\u00eancia, o valor fixo do plano \u00e9 ${SubscriptionsPage.formatCurrency(_fixedPlanAmount)}.',
+                'Voc\u00ea pode usar o sistema sem cobran\u00e7a at\u00e9 ${SubscriptionsPage.formatDate(alerts!.nextDueDate)}. Depois da car\u00eancia, o valor do plano \u00e9 $planPrice.',
                 style: Theme.of(context)
                     .textTheme
                     .bodySmall
@@ -1410,6 +1520,27 @@ class _InvoiceFiltersBar extends StatelessWidget {
                   selected: controller.invoiceStatusFilter.value == 'past_due',
                   onSelected: () => controller.setInvoiceFilter('past_due'),
                 ),
+                _FilterChip(
+                  label: 'Abertas',
+                  selected: controller.invoiceStatusFilter.value == 'open',
+                  onSelected: () => controller.setInvoiceFilter('open'),
+                ),
+                _FilterChip(
+                  label: 'Canceladas',
+                  selected: controller.invoiceStatusFilter.value == 'canceled',
+                  onSelected: () => controller.setInvoiceFilter('canceled'),
+                ),
+                _FilterChip(
+                  label: 'Anuladas',
+                  selected: controller.invoiceStatusFilter.value == 'void',
+                  onSelected: () => controller.setInvoiceFilter('void'),
+                ),
+                _FilterChip(
+                  label: 'Inadimplentes',
+                  selected:
+                      controller.invoiceStatusFilter.value == 'uncollectible',
+                  onSelected: () => controller.setInvoiceFilter('uncollectible'),
+                ),
               ],
             ),
             const SizedBox(height: 12),
@@ -1470,20 +1601,27 @@ class _InvoiceFiltersBar extends StatelessWidget {
 }
 
 class _InvoiceTile extends StatelessWidget {
-  const _InvoiceTile({required this.invoice, this.onTap, this.billingDay});
+  const _InvoiceTile({
+    required this.invoice,
+    this.onTap,
+    this.billingDay,
+    this.planAmount,
+  });
 
   final SubscriptionInvoiceModel invoice;
   final VoidCallback? onTap;
   final int? billingDay;
+  final double? planAmount;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isProrated = _isProratedInvoice(invoice);
+    final isProrated = _isProratedInvoice(invoice, planAmount: planAmount);
     final isTrial = _isTrialInvoice(invoice);
     final helperText = () {
       if (isTrial) {
-        return 'Car\u00eancia de $_graceDays dias aplicada.';
+        final due = SubscriptionsPage.formatDate(invoice.dueDate);
+        return 'Car\u00eancia ativa: pagamento at\u00e9 $due.';
       }
       if (isProrated) {
         return 'Pr\u00f3-rata inicial antes do ciclo cheio.';
@@ -1528,7 +1666,7 @@ class _InvoiceTile extends StatelessWidget {
                         ),
                         child: Text(
                           isTrial
-                              ? 'Car\u00eancia de $_graceDays dias'
+                              ? 'Em car\u00eancia'
                               : 'Pr\u00f3-rata',
                           style: const TextStyle(
                             color: Colors.orangeAccent,
@@ -1826,6 +1964,80 @@ class _InfoBanner extends StatelessWidget {
   }
 }
 
+class _CarnetActions extends StatelessWidget {
+  const _CarnetActions({required this.controller});
+
+  final SubscriptionsController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(
+      () => Card(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+              const Icon(Icons.receipt_long_outlined, color: Colors.white70),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Carnê semestral',
+                      style: Theme.of(context)
+                          .textTheme
+                          .titleMedium
+                          ?.copyWith(fontWeight: FontWeight.w600),
+                    ),
+                  ),
+                  if (controller.isCreatingCarnet.value)
+                    const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                ],
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'As faturas do carnê de 6 meses já aparecem automaticamente. Use aqui se quiser forçar nova geração (6x) ou uma fatura única com 20% de desconto à vista.',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const SizedBox(height: 12),
+              Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  SizedBox(
+                    width: 180,
+                    child: _ActionButton(
+                      icon: Icons.calendar_month_outlined,
+                      label: 'Carnê 6x',
+                      isLoading: controller.isCreatingCarnet.value,
+                      onPressed: () => controller.createCarnet(payUpfront: false),
+                    ),
+                  ),
+                  SizedBox(
+                    width: 200,
+                    child: _ActionButton(
+                      icon: Icons.percent_rounded,
+                      label: 'À vista (20% off)',
+                      isLoading: controller.isCreatingCarnet.value,
+                      onPressed: () => controller.createCarnet(payUpfront: true),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _ActionButton extends StatelessWidget {
   const _ActionButton({
     required this.icon,
@@ -1880,10 +2092,15 @@ class _StatusChip extends StatelessWidget {
       case 'active':
         return Colors.greenAccent;
       case 'pending':
+      case 'open':
         return Colors.amberAccent;
       case 'past_due':
       case 'suspended':
         return Colors.redAccent;
+      case 'canceled':
+      case 'void':
+      case 'uncollectible':
+        return Colors.white70;
       default:
         return Colors.blueAccent;
     }
@@ -1895,6 +2112,8 @@ class _StatusChip extends StatelessWidget {
         return 'Paga';
       case 'pending':
         return 'Pendente';
+      case 'open':
+        return 'Aberta';
       case 'past_due':
         return 'Em atraso';
       case 'suspended':
@@ -1903,6 +2122,12 @@ class _StatusChip extends StatelessWidget {
         return 'Em teste';
       case 'active':
         return 'Ativa';
+      case 'canceled':
+        return 'Cancelada';
+      case 'void':
+        return 'Anulada';
+      case 'uncollectible':
+        return 'Inadimplente';
       default:
         return status;
     }

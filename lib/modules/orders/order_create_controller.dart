@@ -5,7 +5,6 @@ import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/models/collaborator_models.dart';
-import 'package:air_sync/models/cost_center_model.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
@@ -20,7 +19,6 @@ import 'package:air_sync/services/orders/order_label_service.dart';
 import 'package:air_sync/services/orders/order_draft_storage.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:air_sync/services/users/users_service.dart';
-import 'package:air_sync/services/cost_centers/cost_centers_service.dart';
 import 'package:intl/intl.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -39,7 +37,6 @@ class OrderCreateController extends GetxController
     required InventoryService inventoryService,
     required OrderLabelService labelService,
     required UsersService usersService,
-    required CostCentersService costCentersService,
     required OrderDraftStorage draftStorage,
     OrderDraftModel? initialDraft,
   }) : _ordersService = ordersService,
@@ -49,7 +46,6 @@ class OrderCreateController extends GetxController
        _inventoryService = inventoryService,
        _labelService = labelService,
        _usersService = usersService,
-       _costCentersService = costCentersService,
        _draftStorage = draftStorage,
        _initialDraft = initialDraft {
     _setEditingDraft(initialDraft);
@@ -62,7 +58,6 @@ class OrderCreateController extends GetxController
   final InventoryService _inventoryService;
   final OrderLabelService _labelService;
   final UsersService _usersService;
-  final CostCentersService _costCentersService;
   final OrderDraftStorage _draftStorage;
   final OrderDraftModel? _initialDraft;
   OrderDraftModel? _editingDraft;
@@ -115,9 +110,6 @@ class OrderCreateController extends GetxController
   final RxList<OrderBillingDraft> billingItems = <OrderBillingDraft>[].obs;
   final RxList<CollaboratorModel> technicians = <CollaboratorModel>[].obs;
   final RxList<String> selectedTechnicianIds = <String>[].obs;
-  final RxList<CostCenterModel> costCenters = <CostCenterModel>[].obs;
-  final RxBool costCentersLoading = false.obs;
-  final RxnString selectedCostCenterId = RxnString();
 
   @override
   void onInit() {
@@ -130,7 +122,6 @@ class OrderCreateController extends GetxController
     await _loadClients();
     await _loadInventoryItems();
     await _loadTechnicians();
-    await _loadCostCenters();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 150), () {
         _maybeApplyInitialDraft();
@@ -212,34 +203,6 @@ class OrderCreateController extends GetxController
     }
   }
 
-  Future<void> _loadCostCenters() async {
-    costCentersLoading(true);
-    try {
-      final result = await _costCentersService.list(includeInactive: false);
-      final active = result.where((center) => center.active).toList()
-        ..sort(
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-        );
-      costCenters.assignAll(active);
-      final selected = selectedCostCenterId.value;
-      if (selected != null && selected.isNotEmpty) {
-        final exists = active.any((center) => center.id == selected);
-        if (!exists) {
-          selectedCostCenterId.value = null;
-        }
-      }
-    } catch (_) {
-      message(
-        MessageModel.error(
-          title: 'Centros de custo',
-          message: 'Falha ao carregar centros de custo.',
-        ),
-      );
-    } finally {
-      costCentersLoading(false);
-    }
-  }
-
   Future<void> _maybeApplyInitialDraft() async {
     final draft = _initialDraft;
     if (draft == null || _draftApplied) return;
@@ -266,9 +229,6 @@ class OrderCreateController extends GetxController
     }
     if ((draft.equipmentId ?? '').isNotEmpty) {
       selectedEquipmentId.value = draft.equipmentId;
-    }
-    if ((draft.costCenterId ?? '').isNotEmpty) {
-      setCostCenter(draft.costCenterId);
     }
     scheduledAt.value = draft.scheduledAt;
     _setControllerText(notesCtrl, draft.notes ?? '');
@@ -370,15 +330,6 @@ class OrderCreateController extends GetxController
   }
 
   void setEquipment(String? id) => selectedEquipmentId.value = id;
-
-  void setCostCenter(String? id) {
-    final normalized = id?.trim();
-    if (normalized == null || normalized.isEmpty) {
-      selectedCostCenterId.value = null;
-    } else {
-      selectedCostCenterId.value = normalized;
-    }
-  }
 
   void setScheduledAt(DateTime? dateTime) => scheduledAt.value = dateTime;
 
@@ -502,7 +453,6 @@ class OrderCreateController extends GetxController
         materials: materialInputs,
         billingItems: billingInputs,
         billingDiscount: discount,
-        costCenterId: selectedCostCenterId.value,
       );
       final orderWithMaterials = _decorateMaterials(order);
 
@@ -643,7 +593,6 @@ class OrderCreateController extends GetxController
       clientName: labels.clientName,
       locationLabel: labels.locationLabel,
       equipmentLabel: labels.equipmentLabel,
-      costCenterId: selectedCostCenterId.value,
       scheduledAt: scheduledAt.value,
       technicianIds: selectedTechnicianIds.toList(growable: false),
       checklist: checklist.toList(growable: false),

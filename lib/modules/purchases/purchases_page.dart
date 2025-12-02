@@ -3,12 +3,10 @@
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/application/core/form_validator.dart';
 import 'package:air_sync/application/ui/input_formatters.dart';
-import 'package:air_sync/models/cost_center_model.dart';
 import 'package:air_sync/models/purchase_model.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'purchases_controller.dart';
-import 'package:air_sync/services/cost_centers/cost_centers_service.dart';
 import 'package:air_sync/services/suppliers/suppliers_service.dart';
 import 'package:air_sync/models/supplier_model.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
@@ -717,7 +715,7 @@ void _openPurchaseDetailsBottomSheet(
                 ),
               if ((p.notes ?? '').isNotEmpty)
                 Text(
-                'Observações: ${p.notes}',
+                'Observacoes: ',
                   style: const TextStyle(color: Colors.white70),
                 ),
               const SizedBox(height: 12),
@@ -753,8 +751,7 @@ void _openPurchaseDetailsBottomSheet(
                             'Qtd: ${it.qty} - Unit: ${currency.format(it.unitCost)} - Total: ${currency.format(lineTotal)}',
                             style: const TextStyle(color: Colors.white70),
                           ),
-                          if ((it.orderId ?? '').isNotEmpty ||
-                              (it.costCenterId ?? '').isNotEmpty) ...[
+                          if ((it.orderId ?? '').isNotEmpty) ...[
                             const SizedBox(height: 4),
                             Wrap(
                               spacing: 6,
@@ -763,15 +760,6 @@ void _openPurchaseDetailsBottomSheet(
                                 if ((it.orderId ?? '').isNotEmpty)
                                   Chip(
                                     label: Text('OS: ${it.orderId}'),
-                                    backgroundColor: Colors.white12,
-                                    labelStyle:
-                                        const TextStyle(color: Colors.white),
-                                  ),
-                                if ((it.costCenterId ?? '').isNotEmpty)
-                                  Chip(
-                                    label: Text(
-                                      'Centro: ${it.costCenterId}',
-                                    ),
                                     backgroundColor: Colors.white12,
                                     labelStyle:
                                         const TextStyle(color: Colors.white),
@@ -988,19 +976,28 @@ void _openPurchaseDetailsBottomSheet(
     );
   }
 
-void _openCreateBottomSheet(
+Future<void> _openReceiveBottomSheet(
+  BuildContext context,
+  String purchaseId,
+) async {
+  final ctrl = Get.find<PurchasesController>();
+  await ctrl.receive(purchaseId, receivedAt: DateTime.now());
+  await ctrl.load();
+  if (context.mounted) {
+    Navigator.of(context).pop();
+  }
+}
+
+Future<void> _openCreateBottomSheet(
   BuildContext context, {
   PurchasePrefillData? prefill,
-}) {
+}) async {
   final formKey = GlobalKey<FormState>();
   final notesCtrl = TextEditingController();
   final supplierNameCtrl = TextEditingController();
   final supplierId = RxnString();
   final Rxn<SupplierModel> selectedSupplier = Rxn<SupplierModel>();
   final Map<String, SupplierModel> supplierCache = {};
-  final RxList<CostCenterModel> costCenters = <CostCenterModel>[].obs;
-  final RxBool costCentersLoading = false.obs;
-  final RxnString selectedCostCenterId = RxnString(prefill?.costCenterId);
 
   final itemNameCtrl = TextEditingController();
   String? selectedItemId;
@@ -1011,69 +1008,11 @@ void _openCreateBottomSheet(
   final status = 'ordered'.obs;
   final items = <PurchaseItemModel>[].obs;
   final displayItems = <Map<String, dynamic>>[].obs;
-  final ctrl = Get.find<PurchasesController>();
-
-  Future<void> loadCostCenters() async {
-    if (!Get.isRegistered<CostCentersService>()) return;
-    costCentersLoading(true);
-    try {
-      final service = Get.find<CostCentersService>();
-      final result = await service.list(includeInactive: false);
-      final active = result.where((center) => center.active).toList()
-        ..sort(
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-        );
-      costCenters.assignAll(active);
-      final current = selectedCostCenterId.value;
-      if (current != null && current.isNotEmpty) {
-        final exists = active.any((center) => center.id == current);
-        if (!exists) {
-          selectedCostCenterId.value = null;
-        }
-      }
-    } catch (_) {
-      // ignore load failures; user can salvar mesmo sem centros
-    } finally {
-      costCentersLoading(false);
-    }
-  }
-
-  unawaited(loadCostCenters());
-
-  Future<void> hydrateSupplier(String supplier) async {
-    if ((supplier).isEmpty) return;
-    if (supplierCache.containsKey(supplier)) {
-      selectedSupplier.value = supplierCache[supplier];
-      return;
-    }
-    if (!Get.isRegistered<SuppliersService>()) return;
-    try {
-      final service = Get.find<SuppliersService>();
-      final result = await service.list(text: '');
-      for (final entry in result) {
-        supplierCache[entry.id] = entry;
-        if (entry.id == supplier) {
-          selectedSupplier.value = entry;
-        }
-      }
-    } catch (_) {}
-  }
-
-  String labelForCostCenter(String? id) {
-    if (id == null || id.isEmpty) return '';
-    for (final center in costCenters) {
-      if (center.id == id) return center.name;
-    }
-    return id;
-  }
 
   Future<void> editLineMetadata(int index) async {
     if (index < 0 || index >= items.length) return;
     final current = items[index];
     final orderCtrl = TextEditingController(text: current.orderId ?? '');
-    String? lineCostCenter = current.costCenterId ?? selectedCostCenterId.value;
-    final centers = costCenters.toList(growable: false);
-    String? costCenterError;
     final applied = await showModalBottomSheet<bool>(
       context: context,
       isScrollControlled: true,
@@ -1087,1118 +1026,62 @@ void _openCreateBottomSheet(
           right: 20,
           bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
           top: 20,
-        ),
-        child: StatefulBuilder(
-          builder: (ctx, setState) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Vincular OS / Centro de custo',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: orderCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'ID da OS (opcional)',
-                    suffixIcon: Icon(Icons.confirmation_num_outlined),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: lineCostCenter,
-                  dropdownColor: context.themeDark,
-                  decoration: InputDecoration(
-                    labelText: 'Centro de custo',
-                    helperText: centers.isEmpty
-                        ? 'Nenhum centro de custo disponível.'
-                        : 'Selecione o centro utilizado nesta linha.',
-                    errorText: costCenterError,
-                  ),
-                  items: centers
-                      .map(
-                        (center) => DropdownMenuItem(
-                          value: center.id,
-                          child: Text(center.name),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: centers.isEmpty
-                      ? null
-                      : (value) => setState(() {
-                            lineCostCenter = value;
-                            costCenterError = null;
-                          }),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
-                        child: const Text('Cancelar'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: centers.isEmpty
-                            ? null
-                            : () {
-                                if ((lineCostCenter ?? '').isEmpty) {
-                                  setState(
-                                    () => costCenterError =
-                                        'Selecione o centro de custo',
-                                  );
-                                  return;
-                                }
-                                Navigator.of(ctx).pop(true);
-                              },
-                        child: const Text('Aplicar'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
-        ),
-      ),
-    );
-    if (applied == true) {
-      final orderId =
-          orderCtrl.text.trim().isEmpty ? null : orderCtrl.text.trim();
-      final costCenter =
-          (lineCostCenter ?? '').trim().isEmpty ? null : lineCostCenter;
-      items[index] = current.copyWith(
-        orderId: orderId,
-        costCenterId: costCenter,
-      );
-      items.refresh();
-      displayItems[index]['orderId'] = orderId;
-      displayItems[index]['costCenterId'] = costCenter;
-      displayItems.refresh();
-    }
-    orderCtrl.dispose();
-  }
-
-
-  if (prefill?.supplierId != null && prefill!.supplierId!.isNotEmpty) {
-    supplierId.value = prefill.supplierId;
-    supplierNameCtrl.text = ctrl.supplierNameFor(prefill.supplierId!);
-    unawaited(hydrateSupplier(prefill.supplierId!));
-  }
-  if (prefill?.items.isNotEmpty ?? false) {
-    for (final entry in prefill!.items) {
-      if (entry.quantity <= 0) continue;
-      items.add(
-        PurchaseItemModel(
-          itemId: entry.itemId,
-          qty: entry.quantity,
-          unitCost: entry.unitCost,
-          orderId: entry.orderId,
-          costCenterId: entry.costCenterId,
-        ),
-      );
-      displayItems.add({
-        'name': entry.itemName ?? entry.itemId,
-        'qty': entry.quantity,
-        'unit': entry.unitCost,
-        'orderId': entry.orderId,
-        'costCenterId': entry.costCenterId,
-      });
-    }
-  }
-
-  Future<void> pickSupplier() async {
-    final service = Get.find<SuppliersService>();
-    final initial = await service.list(text: '');
-    final list = RxList<SupplierModel>(initial);
-    for (final entry in initial) {
-      supplierCache[entry.id] = entry;
-    }
-    final searchCtrl = TextEditingController();
-    await Get.bottomSheet(
-      Container(
-        padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(
-          color: Get.context!.theme.scaffoldBackgroundColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
         ),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            TextField(
-              controller: searchCtrl,
-              decoration: const InputDecoration(
-                prefixIcon: Icon(Icons.search),
-                hintText: 'Buscar fornecedor',
+            const Text(
+              'Vincular OS',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
               ),
-              onChanged: (v) async {
-                final res = await service.list(text: v.trim());
-                list.assignAll(res);
-                for (final entry in res) {
-                  supplierCache[entry.id] = entry;
-                }
-              },
             ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: Obx(
-                () => ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: list.length,
-                  separatorBuilder: (_, __) => const Divider(height: 1),
-                  itemBuilder: (_, i) {
-                    final supplier = list[i];
-                    final subtitleParts = _supplierContactParts(supplier);
-                    return ListTile(
-                      title: Text(supplier.name),
-                      subtitle: subtitleParts.isEmpty
-                          ? null
-                          : Text(subtitleParts.join(' • ')),
-                      onTap: () {
-                        supplierCache[supplier.id] = supplier;
-                        supplierId.value = supplier.id;
-                        supplierNameCtrl.text = supplier.name;
-                        selectedSupplier.value = supplier;
-                        Get.back();
-                      },
-                    );
-                  },
-                ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: orderCtrl,
+              decoration: const InputDecoration(
+                labelText: 'ID da OS (opcional)',
+                suffixIcon: Icon(Icons.confirmation_num_outlined),
               ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('Aplicar'),
+                  ),
+                ),
+              ],
             ),
           ],
-        ),
-      ),
-      isScrollControlled: true,
-    );
-  }
-
-    Future<void> pickItem() async {
-      final inv = Get.find<InventoryService>();
-      final list = RxList<InventoryItemModel>(await inv.getItems(text: ''));
-      final searchCtrl = TextEditingController();
-      await Get.bottomSheet(
-        Container(
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            color: Get.context!.theme.scaffoldBackgroundColor,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: searchCtrl,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search),
-                  hintText: 'Buscar item (nome/sku)',
-                ),
-                onChanged: (v) async {
-                  final res = await inv.getItems(text: v.trim());
-                  list.assignAll(res);
-                },
-              ),
-              const SizedBox(height: 8),
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () async {
-                    // Abrir modal de novo item (mesmo do estoque)
-                    InventoryPage.showAddItemModal(context: Get.context!);
-                    // aguarda fechar
-                    await Future.delayed(const Duration(milliseconds: 300));
-                  },
-                  icon: const Icon(Icons.add),
-                  label: const Text('Cadastrar novo produto'),
-                ),
-              ),
-              const SizedBox(height: 8),
-              Flexible(
-                child: Obx(
-                  () => ListView.separated(
-                    shrinkWrap: true,
-                    itemCount: list.length,
-                    separatorBuilder: (_, __) => const Divider(height: 1),
-                    itemBuilder:
-                        (_, i) => ListTile(
-                          title: Text(list[i].name),
-                          subtitle: Text(
-                            'SKU: ${list[i].sku}  -  Em estoque: ${list[i].onHand} ${list[i].unit}',
-                          ),
-                          onTap: () {
-                            selectedItemId = list[i].id;
-                            itemNameCtrl.text = list[i].name;
-                            Get.back();
-                          },
-                        ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ),
-        isScrollControlled: true,
-      );
-    }
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      isDismissible: false,
-      builder:
-          (sheetCtx) => Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 30,
-              top: 30,
-            ),
-            child: Form(
-              key: formKey,
-              child: Obx(() {
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          const Expanded(
-                            child: Text(
-                              'Nova compra',
-                              style: TextStyle(
-                                fontSize: 20,
-                                color: Colors.white,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ),
-                          IconButton(
-                            onPressed: () => Navigator.of(sheetCtx).pop(),
-                            icon: const Icon(Icons.close, color: Colors.white70),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 12),
-                Obx(() {
-                  final hasSupplier =
-                      (supplierId.value ?? '').isNotEmpty;
-                  final supplierDetails =
-                      selectedSupplier.value ??
-                      (hasSupplier ? supplierCache[supplierId.value] : null);
-                  final helperParts = _supplierContactParts(
-                    supplierDetails,
-                    includeLabels: true,
-                  );
-                  final helperText =
-                      hasSupplier
-                          ? helperParts.isNotEmpty
-                              ? helperParts.join(' • ')
-                              : 'Fornecedor selecionado. Toque para alterar.'
-                          : 'Toque para escolher um fornecedor cadastrado';
-                  return TextFormField(
-                    controller: supplierNameCtrl,
-                    readOnly: true,
-                    onTap: pickSupplier,
-                    validator:
-                        (_) =>
-                            supplierId.value == null
-                                ? 'Selecione o fornecedor'
-                                : null,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      labelText: 'Fornecedor',
-                      helperText: helperText,
-                      hintText: hasSupplier ? null : 'Selecionar fornecedor',
-                      suffixIcon: SizedBox(
-                        width: hasSupplier ? 72 : 48,
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.end,
-                          children: [
-                            if (hasSupplier)
-                              IconButton(
-                                tooltip: 'Limpar seleção',
-                                onPressed: () {
-                                  supplierId.value = null;
-                                  supplierNameCtrl.clear();
-                                  selectedSupplier.value = null;
-                                },
-                                icon: const Icon(Icons.clear),
-                              ),
-                            const Icon(Icons.search),
-                          ],
-                        ),
-                      ),
-                    ),
-                  );
-                }),
-                const SizedBox(height: 10),
-                Obx(() {
-                  final loading = costCentersLoading.value;
-                  final centers = costCenters.toList(growable: false);
-                  final selected = selectedCostCenterId.value;
-                  final hasSelection =
-                      selected != null &&
-                      centers.any((center) => center.id == selected);
-                  final helper =
-                      loading
-                          ? 'Carregando centros de custo...'
-                          : centers.isEmpty
-                          ? 'Nenhum centro de custo ativo encontrado.'
-                          : 'Selecione o centro responsável por esta compra.';
-                  return Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      DropdownButtonFormField<String>(
-                        value: hasSelection ? selected : null,
-                        isExpanded: true,
-                        dropdownColor: context.themeDark,
-                        iconEnabledColor: Colors.white,
-                        autovalidateMode: AutovalidateMode.onUserInteraction,
-                        validator: (_) {
-                          if (centers.isEmpty) {
-                            return 'Cadastre ao menos um centro de custo';
-                          }
-                          if ((selectedCostCenterId.value ?? '').isEmpty) {
-                            return 'Selecione o centro de custo';
-                          }
-                          return null;
-                        },
-                        decoration: InputDecoration(
-                          labelText: 'Centro de custo',
-                          helperText: helper,
-                          suffixIcon:
-                              loading
-                                  ? Padding(
-                                    padding: const EdgeInsets.only(right: 12),
-                                    child: SizedBox(
-                                      width: 18,
-                                      height: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                      ),
-                                    ),
-                                  )
-                                  : hasSelection
-                                  ? IconButton(
-                                    tooltip: 'Limpar seleção',
-                                    onPressed: () {
-                                      selectedCostCenterId.value = null;
-                                    },
-                                    icon: const Icon(Icons.clear),
-                                  )
-                                  : IconButton(
-                                    tooltip: 'Atualizar lista',
-                                    onPressed: () => loadCostCenters(),
-                                    icon: const Icon(Icons.refresh),
-                                  ),
-                        ),
-                        items:
-                            centers
-                                .map(
-                                  (center) => DropdownMenuItem(
-                                    value: center.id,
-                                    child: Text(center.name),
-                                  ),
-                                )
-                                .toList(),
-                        onChanged:
-                            centers.isEmpty
-                                ? null
-                                : (value) => selectedCostCenterId.value = value,
-                      ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton.icon(
-                          onPressed: () => Get.toNamed('/finance/cost-centers'),
-                          icon: const Icon(Icons.manage_accounts_outlined),
-                          label: const Text('Gerenciar centros'),
-                        ),
-                      ),
-                    ],
-                  );
-                }),
-                const SizedBox(height: 10),
-                Row(
-                      children: [
-                        Expanded(
-                          child: DropdownButtonFormField<String>(
-                            value: status.value,
-                            dropdownColor: context.themeDark,
-                            iconEnabledColor: Colors.white,
-                            items: const [
-                              DropdownMenuItem(
-                                value: 'ordered',
-                                child: Text(
-                                  'Pedido',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ),
-                              DropdownMenuItem(
-                                value: 'received',
-                                child: Text(
-                                  'Recebida',
-                                  style: TextStyle(color: Colors.white),
-                                ),
-                              ),
-                            ],
-                            onChanged: (v) => status.value = v ?? 'ordered',
-                            decoration: const InputDecoration(
-                              labelText: 'Status',
-                              labelStyle: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            controller: freightCtrl,
-                            keyboardType:
-                                const TextInputType.numberWithOptions(
-                                  decimal: true,
-                                ),
-                            inputFormatters: [
-                              MoneyInputFormatter(locale: 'pt_BR', symbol: 'R\$'),
-                            ],
-                            validator: (value) {
-                              if (value == null || value.trim().isEmpty) {
-                                return null;
-                              }
-                              final parsed = _parseCurrencyText(value);
-                              if (parsed == null) return 'Frete inválido';
-                              if (parsed < 0) {
-                                return 'Frete deve ser maior ou igual a zero';
-                              }
-                              return null;
-                            },
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'Frete (opcional)',
-                              labelStyle: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: itemNameCtrl,
-                      readOnly: true,
-                      onTap: pickItem,
-                      validator:
-                          (v) =>
-                              (selectedItemId == null && items.isEmpty)
-                                  ? 'Selecione o item'
-                                  : null,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Item',
-                        labelStyle: TextStyle(color: Colors.white),
-                        suffixIcon: Icon(Icons.search),
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    Row(
-                      children: [
-                        SizedBox(
-                          width: 110,
-                          child: TextFormField(
-                            controller: qtyCtrl,
-                            keyboardType: TextInputType.number,
-                            validator:
-                                (v) =>
-                                    selectedItemId == null
-                                        ? null
-                                        : FormValidators.validateNumber(
-                                          v,
-                                          fieldName: 'Qtd',
-                                          positive: true,
-                                        ),
-                            decoration: const InputDecoration(
-                              labelText: 'Qtd',
-                              labelStyle: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        SizedBox(
-                          width: 140,
-                          child: TextFormField(
-                            controller: unitCtrl,
-                            keyboardType: TextInputType.number,
-                            validator:
-                                (v) =>
-                                    selectedItemId == null
-                                        ? null
-                                        : FormValidators.validateNumber(
-                                          v,
-                                          fieldName: 'Unit',
-                                          positive: true,
-                                        ),
-                            decoration: const InputDecoration(
-                              labelText: 'Custo unit.',
-                              prefixText: 'R\$ ',
-                              labelStyle: TextStyle(color: Colors.white),
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          icon: const Icon(
-                            Icons.add_circle_outline,
-                            color: Colors.white70,
-                          ),
-                          onPressed: () {
-                            final id = selectedItemId ?? '';
-                            final qty =
-                                double.tryParse(
-                                  qtyCtrl.text.trim().replaceAll(',', '.'),
-                                ) ??
-                                0;
-                            final unit =
-                                double.tryParse(
-                                  unitCtrl.text.trim().replaceAll(',', '.'),
-                                ) ??
-                                0;
-                            if (id.isEmpty || qty <= 0 || unit <= 0) return;
-                          items.add(
-                            PurchaseItemModel(
-                              itemId: id,
-                              qty: qty,
-                              unitCost: unit,
-                              costCenterId: selectedCostCenterId.value,
-                            ),
-                          );
-                          displayItems.add({
-                            'name': itemNameCtrl.text,
-                            'qty': qty,
-                            'unit': unit,
-                            'orderId': null,
-                            'costCenterId': selectedCostCenterId.value,
-                          });
-                            selectedItemId = null;
-                            itemNameCtrl.clear();
-                            qtyCtrl.text = '1';
-                            unitCtrl.text = '0';
-                          },
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    if (displayItems.isNotEmpty)
-                      Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white10,
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                        child: ListView.separated(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: displayItems.length,
-                          separatorBuilder:
-                              (_, __) => const Divider(
-                                height: 1,
-                                color: Colors.white12,
-                              ),
-                          itemBuilder: (_, i) {
-                            final it = displayItems[i];
-                            final orderId = it['orderId'] as String?;
-                            final lineCostCenter = it['costCenterId'] as String?;
-                            final costCenterLabel =
-                                labelForCostCenter(lineCostCenter);
-                            return ListTile(
-                              dense: true,
-                              title: Text(
-                                it['name'],
-                                style: const TextStyle(color: Colors.white),
-                              ),
-                              subtitle: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    'Qtd: ${it['qty']} - Unit: R\$ ${(it['unit'] as double).toStringAsFixed(2)}',
-                                    style: const TextStyle(color: Colors.white70),
-                                  ),
-                                  if ((orderId ?? '').isNotEmpty ||
-                                      (lineCostCenter ?? '').isNotEmpty) ...[
-                                    const SizedBox(height: 4),
-                                    Wrap(
-                                      spacing: 6,
-                                      runSpacing: 4,
-                                      children: [
-                                        if ((orderId ?? '').isNotEmpty)
-                                          Chip(
-                                            label: Text('OS: $orderId'),
-                                            backgroundColor: Colors.white12,
-                                            labelStyle:
-                                                const TextStyle(color: Colors.white),
-                                          ),
-                                        if ((lineCostCenter ?? '').isNotEmpty)
-                                          Chip(
-                                            label: Text('Centro: $costCenterLabel'),
-                                            backgroundColor: Colors.white12,
-                                            labelStyle:
-                                                const TextStyle(color: Colors.white),
-                                          ),
-                                      ],
-                                    ),
-                                  ],
-                                ],
-                              ),
-                              trailing: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  IconButton(
-                                    tooltip: 'Vincular OS/centro',
-                                    icon: const Icon(
-                                      Icons.link,
-                                      color: Colors.white70,
-                                    ),
-                                    onPressed: () => editLineMetadata(i),
-                                  ),
-                                  IconButton(
-                                    icon: const Icon(
-                                      Icons.delete_outline,
-                                      color: Colors.redAccent,
-                                    ),
-                                    onPressed: () {
-                                      items.removeAt(i);
-                                      displayItems.removeAt(i);
-                                    },
-                                  ),
-                                ],
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: notesCtrl,
-                      style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Observações (opcional)',
-                    labelStyle: TextStyle(color: Colors.white),
-                  ),
-                    ),
-                    const SizedBox(height: 16),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: SizedBox(
-                            height: 45,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: context.themeGreen,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(25),
-                                ),
-                              ),
-                              onPressed:
-                                  (supplierId.value == null || items.isEmpty)
-                                      ? null
-                                      : () async {
-                                        if (!formKey.currentState!.validate()) {
-                                          return;
-                                        }
-                                        final freight = _parseCurrencyText(
-                                          freightCtrl.text,
-                                        );
-                                         final created = await ctrl.create(
-                                           supplierId: supplierId.value!,
-                                           items: items.toList(),
-                                           status: status.value,
-                                           freight: freight,
-                                           notes:
-                                               notesCtrl.text.trim().isNotEmpty
-                                                   ? notesCtrl.text.trim()
-                                                   : null,
-                                           paymentDueDate: paymentDueDate.value,
-                                         );
-                                        if (created != null) {
-                                          if (status.value == 'received' &&
-                                              created.status.toLowerCase() !=
-                                                  'received') {
-                                            await ctrl.receive(
-                                              created.id,
-                                              receivedAt: DateTime.now(),
-                                            );
-                                          } else if (created.status
-                                                      .toLowerCase() ==
-                                                  'received' &&
-                                              Get.isRegistered<
-                                                InventoryController
-                                              >()) {
-                                            final inventoryController =
-                                                Get.find<InventoryController>();
-                                            await inventoryController
-                                                .refreshCurrentView(
-                                                  showLoader: false,
-                                                );
-                                            inventoryController.scheduleRefresh(
-                                              delay: const Duration(
-                                                milliseconds: 400,
-                                              ),
-                                              showLoader: false,
-                                            );
-                                          }
-                                          await ctrl.load();
-                                          if (!context.mounted) return;
-                                          if (created.alerts.isNotEmpty) {
-                                            await _showAlertsDialog(
-                                              context,
-                                              created.alerts,
-                                            );
-                                            if (!context.mounted) return;
-                                          }
-                                          final navigator = Navigator.of(
-                                            context,
-                                            rootNavigator: true,
-                                          );
-                                          if (navigator.canPop()) {
-                                            navigator.pop();
-                                          }
-                                        }
-                                      },
-                              child: Text(
-                                'Salvar',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.bold,
-                                  color: context.themeGray,
-                                  fontSize: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        SizedBox(
-                          height: 45,
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              side: const BorderSide(color: Colors.redAccent),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(25),
-                              ),
-                            ),
-                            onPressed: () => Get.back(),
-                            child: const Text(
-                              'Cancelar',
-                              style: TextStyle(color: Colors.redAccent),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                );
-              }),
-            ),
-          ),
-    ).whenComplete(() {
-      notesCtrl.dispose();
-      supplierNameCtrl.dispose();
-      itemNameCtrl.dispose();
-      qtyCtrl.dispose();
-      unitCtrl.dispose();
-      freightCtrl.dispose();
-    });
-  }
-
-  void _openReceiveBottomSheet(BuildContext context, String purchaseId) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder:
-          (_) => Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 20,
-              top: 20,
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Dar entrada na compra',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                SizedBox(
-                  width: double.infinity,
-                  height: 45,
-                  child: ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: context.themeGreen,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
-                      ),
-                    ),
-                    onPressed: () async {
-                      final ctrl = Get.find<PurchasesController>();
-                      // Fecha antes para evitar conflito de overlay/snackbar
-                      Get.back();
-                      await Future<void>.delayed(
-                        const Duration(milliseconds: 80),
-                      );
-                      await ctrl.receive(purchaseId);
-                      await ctrl.load();
-                    },
-                    child: Text(
-                      'Receber',
-                      style: TextStyle(
-                        color: context.themeGray,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                TextButton(
-                  onPressed: () => Get.back(),
-                  child: const Text(
-                    'Cancelar',
-                    style: TextStyle(color: Colors.redAccent),
-                  ),
-                ),
-              ],
-            ),
-          ),
-    );
-  }
-}
-
-void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
-  final formKey = GlobalKey<FormState>();
-  final notesCtrl = TextEditingController(text: original.notes ?? '');
-  final supplierNameCtrl = TextEditingController(
-    text: Get.find<PurchasesController>().supplierNameFor(original.supplierId),
-  );
-  final supplierId = RxnString(original.supplierId);
-  final Rxn<SupplierModel> selectedSupplier = Rxn<SupplierModel>();
-  final Map<String, SupplierModel> supplierCache = {};
-  final RxList<CostCenterModel> costCenters = <CostCenterModel>[].obs;
-  final RxBool costCentersLoading = false.obs;
-  final RxnString selectedCostCenterId = RxnString(original.costCenterId);
-
-  final itemNameCtrl = TextEditingController();
-  String? selectedItemId;
-  final qtyCtrl = TextEditingController(text: '1');
-  final unitCtrl = TextEditingController(text: '0');
-  final freightCtrl = TextEditingController(
-    text:
-        (original.freight ?? 0) > 0
-            ? _purchaseCurrencyFormatter.format(original.freight)
-            : '',
-  );
-  final status = original.status.obs;
-  final items = RxList<PurchaseItemModel>(
-    original.items
-        .map(
-          (e) => PurchaseItemModel(
-            itemId: e.itemId,
-            qty: e.qty,
-            unitCost: e.unitCost,
-          ),
-        )
-        .toList(),
-  );
-  final displayItems = <Map<String, dynamic>>[].obs;
-  final Rxn<DateTime> paymentDueDate = Rxn<DateTime>(original.paymentDueDate);
-
-  Future<void> loadCostCenters() async {
-    if (!Get.isRegistered<CostCentersService>()) return;
-    costCentersLoading(true);
-    try {
-      final service = Get.find<CostCentersService>();
-      final result = await service.list(includeInactive: false);
-      final active = result.where((center) => center.active).toList()
-        ..sort(
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-        );
-      costCenters.assignAll(active);
-      final current = selectedCostCenterId.value;
-      if (current != null && current.isNotEmpty) {
-        final exists = active.any((center) => center.id == current);
-        if (!exists) {
-          selectedCostCenterId.value = null;
-        }
-      }
-    } catch (_) {
-      // ignore load failures
-    } finally {
-      costCentersLoading(false);
-    }
-  }
-
-  unawaited(loadCostCenters());
-
-  Future<void> hydrateSupplier(String supplier) async {
-    if ((supplier).isEmpty) return;
-    if (supplierCache.containsKey(supplier)) {
-      selectedSupplier.value = supplierCache[supplier];
-      return;
-    }
-    if (!Get.isRegistered<SuppliersService>()) return;
-    try {
-      final service = Get.find<SuppliersService>();
-      final result = await service.list(text: '');
-      for (final entry in result) {
-        supplierCache[entry.id] = entry;
-        if (entry.id == supplier) {
-          selectedSupplier.value = entry;
-        }
-      }
-    } catch (_) {}
-  }
-
-  unawaited(hydrateSupplier(original.supplierId));
-
-  String labelForCostCenter(String? id) {
-    if (id == null || id.isEmpty) return '';
-    for (final center in costCenters) {
-      if (center.id == id) return center.name;
-    }
-    return id;
-  }
-
-  Future<void> editLineMetadata(int index) async {
-    if (index < 0 || index >= items.length) return;
-    final current = items[index];
-    final orderCtrl = TextEditingController(text: current.orderId ?? '');
-    String? lineCostCenter = current.costCenterId ?? selectedCostCenterId.value;
-    final centers = costCenters.toList(growable: false);
-    String? costCenterError;
-    final applied = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
-          top: 20,
-        ),
-        child: StatefulBuilder(
-          builder: (ctx, setState) {
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text(
-                  'Vincular OS / Centro de custo',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: orderCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'ID da OS (opcional)',
-                    suffixIcon: Icon(Icons.confirmation_num_outlined),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                DropdownButtonFormField<String>(
-                  value: lineCostCenter,
-                  dropdownColor: context.themeDark,
-                  decoration: InputDecoration(
-                    labelText: 'Centro de custo',
-                    helperText: centers.isEmpty
-                        ? 'Nenhum centro de custo disponível.'
-                        : 'Selecione o centro utilizado nesta linha.',
-                    errorText: costCenterError,
-                  ),
-                  items: centers
-                      .map(
-                        (center) => DropdownMenuItem(
-                          value: center.id,
-                          child: Text(center.name),
-                        ),
-                      )
-                      .toList(),
-                  onChanged: centers.isEmpty
-                      ? null
-                      : (value) => setState(() {
-                            lineCostCenter = value;
-                            costCenterError = null;
-                          }),
-                ),
-                const SizedBox(height: 20),
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () => Navigator.of(ctx).pop(false),
-                        child: const Text('Cancelar'),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: ElevatedButton(
-                        onPressed: centers.isEmpty
-                            ? null
-                            : () {
-                                if ((lineCostCenter ?? '').isEmpty) {
-                                  setState(
-                                    () => costCenterError =
-                                        'Selecione o centro de custo',
-                                  );
-                                  return;
-                                }
-                                Navigator.of(ctx).pop(true);
-                              },
-                        child: const Text('Aplicar'),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            );
-          },
         ),
       ),
     );
     if (applied == true) {
       final orderId =
           orderCtrl.text.trim().isEmpty ? null : orderCtrl.text.trim();
-      final costCenter =
-          (lineCostCenter ?? '').trim().isEmpty ? null : lineCostCenter;
       items[index] = current.copyWith(
         orderId: orderId,
-        costCenterId: costCenter,
       );
       items.refresh();
       displayItems[index]['orderId'] = orderId;
-      displayItems[index]['costCenterId'] = costCenter;
       displayItems.refresh();
     }
     orderCtrl.dispose();
   }
+
+
 
 
   await Get.find<PurchasesController>().ensureItemNamesLoaded();
@@ -2212,7 +1095,6 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
       'qty': it.qty,
       'unit': it.unitCost,
       'orderId': it.orderId,
-      'costCenterId': it.costCenterId,
     });
   }
 
@@ -2260,9 +1142,7 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                     final subtitleParts = _supplierContactParts(supplier);
                     return ListTile(
                       title: Text(supplier.name),
-                      subtitle: subtitleParts.isEmpty
-                          ? null
-                          : Text(subtitleParts.join(' • ')),
+                      subtitle: subtitleParts.isEmpty ? null : Text(subtitleParts.join(' - ')),
                       onTap: () {
                         supplierCache[supplier.id] = supplier;
                         supplierId.value = supplier.id;
@@ -2367,11 +1247,13 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
           child: Form(
             key: formKey,
             child: Obx(() {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
+              return SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
                   const Text(
-                    'Editar Compra',
+                    'Nova compra',
                     style: TextStyle(
                       fontSize: 20,
                       color: Colors.white,
@@ -2391,9 +1273,9 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                     );
                     final helperText =
                         hasSupplier
-                            ? helperParts.isNotEmpty
-                                ? helperParts.join(' • ')
-                                : 'Fornecedor selecionado. Toque para alterar.'
+                            ? (helperParts.isNotEmpty
+                                ? helperParts.join(' - ')
+                                : 'Fornecedor selecionado. Toque para alterar.')
                             : 'Toque para escolher um fornecedor cadastrado';
                     return TextFormField(
                       controller: supplierNameCtrl,
@@ -2418,7 +1300,7 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                             children: [
                               if (hasSupplier)
                                 IconButton(
-                                  tooltip: 'Limpar seleção',
+                                  tooltip: 'Limpar selecao',
                                   onPressed: () {
                                     supplierId.value = null;
                                     supplierNameCtrl.clear();
@@ -2434,91 +1316,7 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                     );
                   }),
                   const SizedBox(height: 10),
-                  Obx(() {
-                    final loading = costCentersLoading.value;
-                    final centers = costCenters.toList(growable: false);
-                    final selected = selectedCostCenterId.value;
-                    final hasSelection =
-                        selected != null &&
-                        centers.any((center) => center.id == selected);
-                    final helper =
-                        loading
-                            ? 'Carregando centros de custo...'
-                            : centers.isEmpty
-                            ? 'Nenhum centro de custo ativo encontrado.'
-                            : 'Selecione o centro responsável por esta compra.';
-                    return Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        DropdownButtonFormField<String>(
-                          value: hasSelection ? selected : null,
-                          isExpanded: true,
-                          dropdownColor: context.themeDark,
-                          iconEnabledColor: Colors.white,
-                          autovalidateMode: AutovalidateMode.onUserInteraction,
-                          validator: (_) {
-                            if (centers.isEmpty) {
-                              return 'Cadastre ao menos um centro de custo';
-                            }
-                            if ((selectedCostCenterId.value ?? '').isEmpty) {
-                              return 'Selecione o centro de custo';
-                            }
-                            return null;
-                          },
-                          decoration: InputDecoration(
-                            labelText: 'Centro de custo',
-                            helperText: helper,
-                            suffixIcon:
-                                loading
-                                    ? Padding(
-                                      padding: const EdgeInsets.only(right: 12),
-                                      child: SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                        ),
-                                      ),
-                                    )
-                                    : hasSelection
-                                    ? IconButton(
-                                      tooltip: 'Limpar seleção',
-                                      onPressed: () {
-                                        selectedCostCenterId.value = null;
-                                      },
-                                      icon: const Icon(Icons.clear),
-                                    )
-                                    : IconButton(
-                                      tooltip: 'Atualizar lista',
-                                      onPressed: () => loadCostCenters(),
-                                      icon: const Icon(Icons.refresh),
-                                    ),
-                          ),
-                          items:
-                              centers
-                                  .map(
-                                    (center) => DropdownMenuItem(
-                                      value: center.id,
-                                      child: Text(center.name),
-                                    ),
-                                  )
-                                  .toList(),
-                          onChanged:
-                              centers.isEmpty
-                                  ? null
-                                  : (value) => selectedCostCenterId.value = value,
-                        ),
-                        Align(
-                          alignment: Alignment.centerRight,
-                          child: TextButton.icon(
-                            onPressed: () => Get.toNamed('/finance/cost-centers'),
-                            icon: const Icon(Icons.manage_accounts_outlined),
-                            label: const Text('Gerenciar centros'),
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
+                  
                   const SizedBox(height: 10),
                   Row(
                     children: [
@@ -2566,7 +1364,7 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                               return null;
                             }
                             final parsed = _parseCurrencyText(value);
-                            if (parsed == null) return 'Frete inválido';
+                            if (parsed == null) return 'Frete invÃ¡lido';
                             if (parsed < 0) {
                               return 'Frete deve ser maior ou igual a zero';
                             }
@@ -2580,49 +1378,6 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                         ),
                       ),
                     ],
-                  ),
-                  const SizedBox(height: 10),
-                  Obx(
-                    () => Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton.icon(
-                            icon: const Icon(
-                              Icons.event,
-                              color: Colors.white70,
-                            ),
-                            label: Text(
-                              paymentDueDate.value == null
-                                  ? 'Definir vencimento'
-                                  : 'Vencimento: ${DateFormat('dd/MM/yyyy').format(paymentDueDate.value!)}',
-                            ),
-                            onPressed: () async {
-                              final now = DateTime.now();
-                              final picked = await showDatePicker(
-                                context: context,
-                                initialDate: paymentDueDate.value ?? now,
-                                firstDate: DateTime(now.year - 2),
-                                lastDate: DateTime(now.year + 5),
-                              );
-                              if (picked != null) {
-                                paymentDueDate.value = picked;
-                              }
-                            },
-                          ),
-                        ),
-                        if (paymentDueDate.value != null) ...[
-                          const SizedBox(width: 8),
-                          IconButton(
-                            tooltip: 'Limpar vencimento',
-                            icon: const Icon(
-                              Icons.clear,
-                              color: Colors.white54,
-                            ),
-                            onPressed: () => paymentDueDate.value = null,
-                          ),
-                        ],
-                      ],
-                    ),
                   ),
                   const SizedBox(height: 10),
                   Obx(
@@ -2747,13 +1502,11 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                               ) ??
                               0;
                           if (id.isEmpty || qty <= 0 || unit <= 0) return;
-                          final defaultCostCenter = selectedCostCenterId.value;
                           items.add(
                             PurchaseItemModel(
                               itemId: id,
                               qty: qty,
                               unitCost: unit,
-                              costCenterId: defaultCostCenter,
                             ),
                           );
                           displayItems.add({
@@ -2761,7 +1514,6 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                             'qty': qty,
                             'unit': unit,
                             'orderId': null,
-                            'costCenterId': defaultCostCenter,
                           });
                           selectedItemId = null;
                           itemNameCtrl.clear();
@@ -2788,9 +1540,6 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                         itemBuilder: (_, i) {
                           final it = displayItems[i];
                           final orderId = it['orderId'] as String?;
-                          final lineCostCenter = it['costCenterId'] as String?;
-                          final costCenterLabel =
-                              labelForCostCenter(lineCostCenter);
                           return ListTile(
                             dense: true,
                             title: Text(
@@ -2804,8 +1553,7 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                                   'Qtd: ${it['qty']} - Unit: R\$ ${(it['unit'] as double).toStringAsFixed(2)}',
                                   style: const TextStyle(color: Colors.white70),
                                 ),
-                                if ((orderId ?? '').isNotEmpty ||
-                                    (lineCostCenter ?? '').isNotEmpty) ...[
+                                if ((orderId ?? '').isNotEmpty) ...[
                                   const SizedBox(height: 4),
                                   Wrap(
                                     spacing: 6,
@@ -2814,13 +1562,6 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                                       if ((orderId ?? '').isNotEmpty)
                                         Chip(
                                           label: Text('OS: $orderId'),
-                                          backgroundColor: Colors.white12,
-                                          labelStyle:
-                                              const TextStyle(color: Colors.white),
-                                        ),
-                                      if ((lineCostCenter ?? '').isNotEmpty)
-                                        Chip(
-                                          label: Text('Centro: $costCenterLabel'),
                                           backgroundColor: Colors.white12,
                                           labelStyle:
                                               const TextStyle(color: Colors.white),
@@ -2862,7 +1603,7 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                     controller: notesCtrl,
                     style: const TextStyle(color: Colors.white),
                     decoration: const InputDecoration(
-                      labelText: 'Observações (opcional)',
+                      labelText: 'Observacoes (opcional)',
                       labelStyle: TextStyle(color: Colors.white),
                     ),
                   ),
@@ -2883,52 +1624,51 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                                 (supplierId.value == null || items.isEmpty)
                                     ? null
                                     : () async {
-                                      if (!formKey.currentState!.validate()) {
-                                        return;
-                                      }
+                                        if (!formKey.currentState!.validate()) {
+                                          return;
+                                        }
                                         final freight = _parseCurrencyText(
                                           freightCtrl.text,
                                         );
-                                      final ctrl =
-                                          Get.find<PurchasesController>();
-                                       final updated = await ctrl.updatePurchase(
-                                         id: original.id,
-                                         supplierId: supplierId.value,
-                                         items: items.toList(),
-                                         status: status.value,
-                                         freight: freight,
-                                         notes:
-                                             notesCtrl.text.trim().isNotEmpty
-                                                 ? notesCtrl.text.trim()
-                                                 : null,
-                                         paymentDueDate: paymentDueDate.value,
-                                       );
-                                      if (updated == null) return;
-                                      if (status.value == 'received' &&
-                                          original.status.toLowerCase() !=
-                                              'received') {
-                                        await ctrl.receive(
-                                          updated.id,
-                                          receivedAt: DateTime.now(),
+                                        final ctrl =
+                                            Get.find<PurchasesController>();
+                                        final created = await ctrl.create(
+                                          supplierId: supplierId.value!,
+                                          items: items.toList(),
+                                          status: status.value,
+                                          freight: freight,
+                                          notes: notesCtrl.text.trim().isNotEmpty
+                                              ? notesCtrl.text.trim()
+                                              : null,
+                                          paymentDueDate: paymentDueDate.value,
                                         );
-                                      }
-                                      await ctrl.load();
-                                      if (!context.mounted) return;
-                                      if (updated.alerts.isNotEmpty) {
-                                        await _showAlertsDialog(
-                                          context,
-                                          updated.alerts,
-                                        );
-                                        if (!context.mounted) return;
-                                      }
-                                      final navigator = Navigator.of(
-                                        context,
-                                        rootNavigator: true,
-                                      );
-                                      if (navigator.canPop()) {
-                                        navigator.pop();
-                                      }
-                                    },
+                                        if (created != null) {
+                                          if (status.value == 'received' &&
+                                              created.status.toLowerCase() !=
+                                                  'received') {
+                                            await ctrl.receive(
+                                              created.id,
+                                              receivedAt: DateTime.now(),
+                                            );
+                                          } else if (created.status.toLowerCase() ==
+                                                  'received' &&
+                                              Get.isRegistered<InventoryController>()) {
+                                            final inventoryController =
+                                                Get.find<InventoryController>();
+                                            await inventoryController
+                                                .refreshCurrentView(
+                                              showLoader: false,
+                                            );
+                                            inventoryController.scheduleRefresh(
+                                              delay:
+                                                  const Duration(milliseconds: 400),
+                                              showLoader: false,
+                                            );
+                                          }
+                                          await ctrl.load();
+                                          if (context.mounted) Get.back();
+                                        }
+                                      },
                             child: Text(
                               'Salvar',
                               style: TextStyle(
@@ -2960,8 +1700,9 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
                     ],
                   ),
                 ],
-              );
-            }),
+              ),
+            );
+          }),
           ),
         ),
   ).whenComplete(() {
@@ -2972,6 +1713,713 @@ void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
     unitCtrl.dispose();
     freightCtrl.dispose();
   });
+}
+
+void _openEditBottomSheet(BuildContext context, PurchaseModel original) async {
+  final formKey = GlobalKey<FormState>();
+  final ctrl = Get.find<PurchasesController>();
+  final notesCtrl = TextEditingController(text: original.notes ?? '');
+  final supplierNameCtrl = TextEditingController(
+    text: ctrl.supplierNameFor(original.supplierId),
+  );
+  final supplierId = RxnString(original.supplierId);
+  final Rxn<SupplierModel> selectedSupplier = Rxn<SupplierModel>();
+  final Map<String, SupplierModel> supplierCache = {};
+
+  final itemNameCtrl = TextEditingController();
+  String? selectedItemId;
+  final qtyCtrl = TextEditingController(text: '1');
+  final unitCtrl = TextEditingController(text: '0');
+  final freightCtrl = TextEditingController(
+    text: (original.freight ?? 0) > 0
+        ? _purchaseCurrencyFormatter.format(original.freight)
+        : '',
+  );
+  final status = original.status.obs;
+  final items = RxList<PurchaseItemModel>(
+    original.items
+        .map(
+          (e) => PurchaseItemModel(
+            itemId: e.itemId,
+            qty: e.qty,
+            unitCost: e.unitCost,
+            orderId: e.orderId,
+          ),
+        )
+        .toList(),
+  );
+  final displayItems = <Map<String, dynamic>>[].obs;
+  final Rxn<DateTime> paymentDueDate = Rxn<DateTime>(original.paymentDueDate);
+
+  Future<void> hydrateSupplier(String supplier) async {
+    if ((supplier).isEmpty) return;
+    if (supplierCache.containsKey(supplier)) {
+      selectedSupplier.value = supplierCache[supplier];
+      return;
+    }
+    if (!Get.isRegistered<SuppliersService>()) return;
+    try {
+      final service = Get.find<SuppliersService>();
+      final result = await service.list(text: '');
+      for (final entry in result) {
+        supplierCache[entry.id] = entry;
+        if (entry.id == supplier) {
+          selectedSupplier.value = entry;
+        }
+      }
+    } catch (_) {}
+  }
+
+  unawaited(hydrateSupplier(original.supplierId));
+
+  Future<void> editLineMetadata(int index) async {
+    if (index < 0 || index >= items.length) return;
+    final current = items[index];
+    final orderCtrl = TextEditingController(text: current.orderId ?? '');
+    final applied = await showModalBottomSheet<bool>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.themeDark,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+          top: 20,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(
+              'Vincular OS',
+              style: TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.bold,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: orderCtrl,
+              decoration: const InputDecoration(
+                labelText: 'ID da OS (opcional)',
+                suffixIcon: Icon(Icons.confirmation_num_outlined),
+              ),
+            ),
+            const SizedBox(height: 20),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton(
+                    onPressed: () => Navigator.of(ctx).pop(false),
+                    child: const Text('Cancelar'),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(ctx).pop(true),
+                    child: const Text('Aplicar'),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (applied == true) {
+      final orderId =
+          orderCtrl.text.trim().isEmpty ? null : orderCtrl.text.trim();
+      items[index] = current.copyWith(orderId: orderId);
+      items.refresh();
+      displayItems[index]['orderId'] = orderId;
+      displayItems.refresh();
+    }
+    orderCtrl.dispose();
+  }
+
+  await ctrl.ensureItemNamesLoaded();
+  if (!context.mounted) return;
+  final names = Map<String, String>.from(ctrl.itemNames);
+  for (final it in items) {
+    displayItems.add({
+      'name': names[it.itemId] ?? it.itemId,
+      'qty': it.qty,
+      'unit': it.unitCost,
+      'orderId': it.orderId,
+    });
+  }
+
+  Future<void> pickSupplier() async {
+    final service = Get.find<SuppliersService>();
+    final initial = await service.list(text: '');
+    final list = RxList<SupplierModel>(initial);
+    for (final entry in initial) {
+      supplierCache[entry.id] = entry;
+    }
+    final searchCtrl = TextEditingController();
+    await Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Get.context!.theme.scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: searchCtrl,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Buscar fornecedor',
+              ),
+              onChanged: (v) async {
+                final res = await service.list(text: v.trim());
+                list.assignAll(res);
+                for (final entry in res) {
+                  supplierCache[entry.id] = entry;
+                }
+              },
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: Obx(
+                () => ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: list.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) {
+                    final supplier = list[i];
+                    final subtitleParts = _supplierContactParts(supplier);
+                    return ListTile(
+                      title: Text(supplier.name),
+                      subtitle: subtitleParts.isEmpty ? null : Text(subtitleParts.join(' - ')),
+                      onTap: () {
+                        supplierCache[supplier.id] = supplier;
+                        supplierId.value = supplier.id;
+                        supplierNameCtrl.text = supplier.name;
+                        selectedSupplier.value = supplier;
+                        Get.back();
+                      },
+                    );
+                  },
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  Future<void> pickItem() async {
+    final inv = Get.find<InventoryService>();
+    final list = RxList<InventoryItemModel>(await inv.getItems(text: ''));
+    final searchCtrl = TextEditingController();
+    await Get.bottomSheet(
+      Container(
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: Get.context!.theme.scaffoldBackgroundColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextField(
+              controller: searchCtrl,
+              decoration: const InputDecoration(
+                prefixIcon: Icon(Icons.search),
+                hintText: 'Buscar item (nome/sku)',
+              ),
+              onChanged: (v) async {
+                final res = await inv.getItems(text: v.trim());
+                list.assignAll(res);
+              },
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: TextButton.icon(
+                onPressed: () async {
+                  InventoryPage.showAddItemModal(context: Get.context!);
+                  await Future.delayed(const Duration(milliseconds: 300));
+                },
+                icon: const Icon(Icons.add),
+                label: const Text('Cadastrar novo produto'),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Flexible(
+              child: Obx(
+                () => ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: list.length,
+                  separatorBuilder: (_, __) => const Divider(height: 1),
+                  itemBuilder: (_, i) => ListTile(
+                    title: Text(list[i].name),
+                    subtitle: Text(
+                      'SKU: ${list[i].sku}  -  Em estoque: ${list[i].onHand} ${list[i].unit}',
+                    ),
+                    onTap: () {
+                      selectedItemId = list[i].id;
+                      itemNameCtrl.text = list[i].name;
+                      unitCtrl.text = (list[i].avgCost ?? 0).toStringAsFixed(2);
+                      Get.back();
+                    },
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      isScrollControlled: true,
+    );
+  }
+
+  await showModalBottomSheet(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: context.themeDark,
+    shape: const RoundedRectangleBorder(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+    ),
+    builder: (ctx) => LayoutBuilder(
+      builder: (ctx, constraints) {
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: constraints.maxHeight * 0.92,
+            minHeight: constraints.maxHeight * 0.6,
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 20,
+              right: 20,
+              top: 20,
+              bottom: MediaQuery.of(ctx).viewInsets.bottom + 16,
+            ),
+            child: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        const Text(
+                          'Editar compra',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 18,
+                          ),
+                        ),
+                        const Spacer(),
+                        IconButton(
+                          icon: const Icon(Icons.close, color: Colors.white70),
+                          onPressed: () => Get.back(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Obx(() {
+                      final hasSupplier = supplierId.value != null;
+                      final helperText = hasSupplier
+                          ? selectedSupplier.value == null
+                              ? 'Fornecedor selecionado. Toque para alterar.'
+                              : 'Fornecedor selecionado. Toque para alterar.'
+                          : 'Toque para escolher um fornecedor cadastrado';
+                      return TextFormField(
+                        controller: supplierNameCtrl,
+                        readOnly: true,
+                        onTap: pickSupplier,
+                        validator: (_) =>
+                            supplierId.value == null ? 'Selecione o fornecedor' : null,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: InputDecoration(
+                          labelText: 'Fornecedor',
+                          helperText: helperText,
+                          hintText: hasSupplier ? null : 'Selecionar fornecedor',
+                          suffixIcon: SizedBox(
+                            width: hasSupplier ? 72 : 48,
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.end,
+                              children: [
+                                if (hasSupplier)
+                                  IconButton(
+                                    tooltip: 'Limpar selecao',
+                                    onPressed: () {
+                                      supplierId.value = null;
+                                      supplierNameCtrl.clear();
+                                      selectedSupplier.value = null;
+                                    },
+                                    icon: const Icon(Icons.clear),
+                                  ),
+                                const Icon(Icons.search),
+                              ],
+                            ),
+                          ),
+                        ),
+                      );
+                    }),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: DropdownButtonFormField<String>(
+                            value: status.value,
+                            dropdownColor: context.themeDark,
+                            iconEnabledColor: Colors.white,
+                            items: const [
+                              DropdownMenuItem(
+                                value: 'ordered',
+                                child: Text(
+                                  'Pedido',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                              DropdownMenuItem(
+                                value: 'received',
+                                child: Text(
+                                  'Recebida',
+                                  style: TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            ],
+                            onChanged: (v) => status.value = v ?? 'ordered',
+                            decoration: const InputDecoration(
+                              labelText: 'Status',
+                              labelStyle: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: freightCtrl,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            inputFormatters: [
+                              MoneyInputFormatter(locale: 'pt_BR', symbol: 'R\$'),
+                            ],
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) return null;
+                              final parsed = _parseCurrencyText(value);
+                              if (parsed == null) return 'Frete invÃ¡lido';
+                              if (parsed < 0) {
+                                return 'Frete deve ser maior ou igual a zero';
+                              }
+                              return null;
+                            },
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Frete (opcional)',
+                              labelStyle: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Obx(
+                      () => Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              icon: const Icon(
+                                Icons.event,
+                                color: Colors.white70,
+                              ),
+                              label: Text(
+                                paymentDueDate.value == null
+                                    ? 'Definir vencimento'
+                                    : 'Vencimento: ${DateFormat('dd/MM/yyyy').format(paymentDueDate.value!)}',
+                              ),
+                              onPressed: () async {
+                                final now = DateTime.now();
+                                final picked = await showDatePicker(
+                                  context: context,
+                                  initialDate: paymentDueDate.value ?? now,
+                                  firstDate: DateTime(now.year - 2),
+                                  lastDate: DateTime(now.year + 5),
+                                );
+                                if (picked != null) {
+                                  paymentDueDate.value = picked;
+                                }
+                              },
+                            ),
+                          ),
+                          if (paymentDueDate.value != null) ...[
+                            const SizedBox(width: 8),
+                            IconButton(
+                              tooltip: 'Limpar vencimento',
+                              icon: const Icon(
+                                Icons.clear,
+                                color: Colors.white54,
+                              ),
+                              onPressed: () => paymentDueDate.value = null,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: itemNameCtrl,
+                            readOnly: true,
+                            onTap: pickItem,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Item',
+                              hintText: 'Buscar item',
+                              suffixIcon: Icon(Icons.search),
+                              labelStyle: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 70,
+                          child: TextFormField(
+                            controller: qtyCtrl,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Qtd',
+                              labelStyle: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        SizedBox(
+                          width: 110,
+                          child: TextFormField(
+                            controller: unitCtrl,
+                            keyboardType:
+                                const TextInputType.numberWithOptions(decimal: true),
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Valor unitario',
+                              labelStyle: TextStyle(color: Colors.white),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(
+                            Icons.add_circle_outline,
+                            color: Colors.white70,
+                          ),
+                          onPressed: () {
+                            final id = selectedItemId ?? '';
+                            final qty =
+                                double.tryParse(qtyCtrl.text.trim().replaceAll(',', '.')) ??
+                                    0;
+                            final unit =
+                                double.tryParse(unitCtrl.text.trim().replaceAll(',', '.')) ??
+                                    0;
+                            if (id.isEmpty || qty <= 0 || unit <= 0) return;
+                            items.add(
+                              PurchaseItemModel(
+                                itemId: id,
+                                qty: qty,
+                                unitCost: unit,
+                              ),
+                            );
+                            displayItems.add({
+                              'name': itemNameCtrl.text,
+                              'qty': qty,
+                              'unit': unit,
+                              'orderId': null,
+                            });
+                            selectedItemId = null;
+                            itemNameCtrl.clear();
+                            qtyCtrl.text = '1';
+                            unitCtrl.text = '0';
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (displayItems.isNotEmpty)
+                      Container(
+                        decoration: BoxDecoration(
+                          color: Colors.white10,
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: ListView.separated(
+                          shrinkWrap: true,
+                          physics: const NeverScrollableScrollPhysics(),
+                          itemCount: displayItems.length,
+                          separatorBuilder:
+                              (_, __) => const Divider(height: 1, color: Colors.white12),
+                          itemBuilder: (_, i) {
+                            final it = displayItems[i];
+                            final orderId = it['orderId'] as String?;
+                            return ListTile(
+                              dense: true,
+                              title: Text(
+                                it['name'],
+                                style: const TextStyle(color: Colors.white),
+                              ),
+                              subtitle: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'Qtd: ${it['qty']} - Unit: R\$ ${(it['unit'] as double).toStringAsFixed(2)}',
+                                    style: const TextStyle(color: Colors.white70),
+                                  ),
+                                  if ((orderId ?? '').isNotEmpty) ...[
+                                    const SizedBox(height: 4),
+                                    Wrap(
+                                      spacing: 6,
+                                      runSpacing: 4,
+                                      children: [
+                                        Chip(
+                                          label: Text('OS: $orderId'),
+                                          backgroundColor: Colors.white12,
+                                          labelStyle:
+                                              const TextStyle(color: Colors.white),
+                                        ),
+                                      ],
+                                    ),
+                                  ],
+                                ],
+                              ),
+                              trailing: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    tooltip: 'Vincular OS',
+                                    icon: const Icon(
+                                      Icons.link,
+                                      color: Colors.white70,
+                                    ),
+                                    onPressed: () => editLineMetadata(i),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(
+                                      Icons.delete_outline,
+                                      color: Colors.redAccent,
+                                    ),
+                                    onPressed: () {
+                                      items.removeAt(i);
+                                      displayItems.removeAt(i);
+                                    },
+                                  ),
+                                ],
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: notesCtrl,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Observacoes (opcional)',
+                        labelStyle: TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: SizedBox(
+                            height: 45,
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: context.themeGreen,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(25),
+                                ),
+                              ),
+                              onPressed:
+                                  (supplierId.value == null || items.isEmpty)
+                                      ? null
+                                      : () async {
+                                          if (!formKey.currentState!.validate()) {
+                                            return;
+                                          }
+                                          final freight = _parseCurrencyText(
+                                            freightCtrl.text,
+                                          );
+                                          final updated = await ctrl.updatePurchase(
+                                            id: original.id,
+                                            supplierId: supplierId.value!,
+                                            items: items.toList(),
+                                            status: status.value,
+                                            freight: freight,
+                                            notes: notesCtrl.text.trim().isNotEmpty
+                                                ? notesCtrl.text.trim()
+                                                : null,
+                                            paymentDueDate: paymentDueDate.value,
+                                          );
+                                          if (updated != null) {
+                                            if (status.value == 'received' &&
+                                                updated.status.toLowerCase() != 'received') {
+                                              await ctrl.receive(
+                                                updated.id,
+                                                receivedAt: DateTime.now(),
+                                              );
+                                            } else if (updated.status.toLowerCase() ==
+                                                    'received' &&
+                                                Get.isRegistered<InventoryController>()) {
+                                              final inventoryController =
+                                                  Get.find<InventoryController>();
+                                              await inventoryController.refreshCurrentView(
+                                                showLoader: false,
+                                              );
+                                              inventoryController.scheduleRefresh(
+                                                delay: const Duration(milliseconds: 400),
+                                                showLoader: false,
+                                              );
+                                            }
+                                            await ctrl.load();
+                                            if (ctx.mounted) Get.back();
+                                          }
+                                        },
+                              child: const Text('Salvar alteracoes'),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        TextButton(
+                          onPressed: () => Get.back(),
+                          child: const Text(
+                            'Cancelar',
+                            style: TextStyle(color: Colors.redAccent),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        );
+      },
+    ),
+  );
+
+  notesCtrl.dispose();
+  supplierNameCtrl.dispose();
+  itemNameCtrl.dispose();
+  qtyCtrl.dispose();
+  unitCtrl.dispose();
+  freightCtrl.dispose();
 }
 
 Future<void> _showAlertsDialog(
@@ -3010,6 +2458,8 @@ Future<void> _showAlertsDialog(
       );
     },
   );
+}
+
 }
 
 class _PurchaseSearchField extends StatelessWidget {
@@ -3155,7 +2605,7 @@ class _PurchaseFiltersBar extends StatelessWidget {
                 child: TextButton.icon(
                   onPressed: () => controller.setMonthFilter(null),
                   icon: const Icon(Icons.clear, size: 16),
-                  label: const Text('Limpar mês'),
+                  label: const Text('Limpar mes'),
                 ),
               ),
           ],
@@ -3288,7 +2738,7 @@ class _PurchasesEmptyState extends StatelessWidget {
 
             ? 'Nenhuma compra encontrada para os filtros selecionados'
 
-            : 'Ainda não há compras cadastradas';
+            : 'Ainda nÃ£o hÃ¡ compras cadastradas';
 
     final subtitle =
 
@@ -3296,7 +2746,7 @@ class _PurchasesEmptyState extends StatelessWidget {
 
             ? 'Revise os filtros ou limpe-os para visualizar outros registros.'
 
-            : 'Use o botão "+" para registrar as próximas compras.';
+            : 'Use o botÃ£o  para registrar as prÃ³ximas compras.';
 
     return Padding(
 
@@ -3358,7 +2808,7 @@ class _PurchasesEmptyState extends StatelessWidget {
 
               child: Text(
 
-                'Existem compras com alertas. Você pode habilitar o filtro para visualizá-las rapidamente.',
+                'Existem compras com alertas. VocÃª pode habilitar o filtro para vÃª-las rapidamente.',
 
                 textAlign: TextAlign.center,
 
@@ -3873,7 +3323,7 @@ class _PurchaseCard extends StatelessWidget {
                     return Chip(
                       backgroundColor: Colors.white10,
                       label: Text(
-                        '${classification.categoryName.isEmpty ? 'Sem categoria' : classification.categoryName} · ${_purchaseCurrencyFormatter.format(classification.total)}',
+                        ' · ',
                       ),
                     );
                   }).toList(),
@@ -4232,7 +3682,7 @@ class _PurchaseAlertCard extends StatelessWidget {
       subtitle.add('Item: ${alert.itemId}');
     }
     if (delta != null) {
-      subtitle.add('Variação: ${delta.toStringAsFixed(1)}%');
+      subtitle.add('VariaÃ§Ã£o: %');
     }
     return Container(
       padding: const EdgeInsets.all(12),

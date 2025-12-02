@@ -15,8 +15,10 @@ class ClientPage extends GetView<ClientController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.themeBg,
       appBar: AppBar(
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Clientes', style: TextStyle(color: Colors.white)),
       ),
@@ -144,11 +146,6 @@ class _ClientCard extends StatelessWidget {
     final doc = client.docNumber?.trim();
     final primaryPhone = client.primaryPhone;
     final primaryEmail = client.primaryEmail;
-    final tagLabels =
-        client.tags
-            .map((tag) => tag.trim())
-            .where((tag) => tag.isNotEmpty)
-            .toList();
     final badges = <Widget>[];
     if (client.isDeleted) {
       badges.add(
@@ -159,15 +156,6 @@ class _ClientCard extends StatelessWidget {
         ),
       );
     }
-    badges.addAll(
-      tagLabels.map(
-        (tag) => _ClientBadge(
-          label: tag,
-          color: theme.colorScheme.primary,
-          icon: Icons.label_important_outline,
-        ),
-      ),
-    );
 
     return Card(
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
@@ -179,14 +167,15 @@ class _ClientCard extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              if (badges.isNotEmpty) ...[
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: badges,
+              if (badges.isNotEmpty)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 12),
+                  child: Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: badges,
+                  ),
                 ),
-                const SizedBox(height: 12),
-              ],
               Row(
                 children: [
                   Expanded(
@@ -423,30 +412,6 @@ class _ClientForm extends StatelessWidget {
               const SizedBox(height: 12),
               _ContactsValidator(controller: controller),
               const SizedBox(height: 12),
-              _ListInputSection(
-                label: 'Etiquetas',
-                controller: controller.tagInputController,
-                items: controller.tags,
-                textCapitalization: TextCapitalization.characters,
-                formatter: const UpperCaseTextFormatter(),
-                onAdd: controller.addTag,
-                onRemove: controller.removeTag,
-                hint: 'vip, manutenção, etc.',
-              ),
-              const SizedBox(height: 12),
-              TextFormField(
-                controller: controller.npsController,
-                decoration: const InputDecoration(labelText: 'NPS (0 a 10)'),
-                style: const TextStyle(color: Colors.white),
-                keyboardType: const TextInputType.numberWithOptions(
-                  decimal: true,
-                ),
-                inputFormatters: [
-                  FilteringTextInputFormatter.allow(RegExp(r'[0-9,.]')),
-                ],
-                validator: controller.validateNps,
-              ),
-              const SizedBox(height: 12),
               TextFormField(
                 controller: controller.notesController,
                 decoration: const InputDecoration(labelText: 'Observações'),
@@ -506,7 +471,6 @@ class _ListInputSection extends StatelessWidget {
     this.formatter,
     this.validator,
     this.allowDuplicates = true,
-    this.textCapitalization = TextCapitalization.none,
   });
 
   final String label;
@@ -519,7 +483,8 @@ class _ListInputSection extends StatelessWidget {
   final TextInputFormatter? formatter;
   final String? Function(String?)? validator;
   final bool allowDuplicates;
-  final TextCapitalization textCapitalization;
+  static const TextCapitalization _defaultTextCap =
+      TextCapitalization.none;
 
   @override
   Widget build(BuildContext context) {
@@ -534,7 +499,7 @@ class _ListInputSection extends StatelessWidget {
               child: TextFormField(
                 controller: controller,
                 keyboardType: keyboardType,
-                textCapitalization: textCapitalization,
+                textCapitalization: _defaultTextCap,
                 inputFormatters:
                     formatter != null ? <TextInputFormatter>[formatter!] : null,
                 decoration: InputDecoration(hintText: hint),
@@ -923,7 +888,7 @@ class _ClientSearchField extends StatelessWidget {
         decoration: InputDecoration(
           labelText: 'Buscar clientes',
           labelStyle: const TextStyle(color: Colors.white70),
-          prefixIcon: const Icon(Icons.search),
+          prefixIcon: const Icon(Icons.search, color: Colors.white70),
           suffixIcon: hasText
               ? IconButton(
                 tooltip: 'Limpar busca',

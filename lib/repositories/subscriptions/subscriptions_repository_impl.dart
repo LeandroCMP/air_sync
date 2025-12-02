@@ -131,6 +131,29 @@ class SubscriptionsRepositoryImpl implements SubscriptionsRepository {
   }
 
   @override
+  Future<List<SubscriptionInvoiceModel>> createCarnet({bool payUpfront = false}) async {
+    final payload = <String, dynamic>{'payUpfront': payUpfront};
+    final res = await _api.dio.post(
+      '/v1/subscriptions/invoices/carnet',
+      data: payload,
+    );
+    final data = res.data;
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((e) => SubscriptionInvoiceModel.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+    if (data is Map && data['invoices'] is List) {
+      return (data['invoices'] as List)
+          .whereType<Map>()
+          .map((e) => SubscriptionInvoiceModel.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+    return const [];
+  }
+
+  @override
   Future<void> runBillingNow() async {
     await _api.dio.post('/v1/subscriptions/billing/run');
   }

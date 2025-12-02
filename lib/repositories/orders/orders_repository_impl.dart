@@ -67,7 +67,6 @@ class OrdersRepositoryImpl implements OrdersRepository {
     List<OrderMaterialInput> materials = const [],
     List<OrderBillingItemInput> billingItems = const [],
     num billingDiscount = 0,
-    String? costCenterId,
   }) async {
     final payload = <String, dynamic>{
       'clientId': clientId,
@@ -84,8 +83,6 @@ class OrdersRepositoryImpl implements OrdersRepository {
         'materials': materials.toJsonList(includeMetadata: true),
       if (billingItems.isNotEmpty) 'billingItems': billingItems.toJsonList(),
       if (billingDiscount != 0) 'billingDiscount': billingDiscount,
-      if (costCenterId != null && costCenterId.isNotEmpty)
-        'costCenterId': costCenterId,
     };
     final res = await _dio.post('/v1/orders', data: payload);
     return OrderModel.fromMap(_asMap(res.data));
@@ -104,7 +101,6 @@ class OrdersRepositoryImpl implements OrdersRepository {
     String? clientId,
     String? locationId,
     String? equipmentId,
-    String? costCenterId,
   }) async {
     final payload = <String, dynamic>{};
     if (status != null) payload['status'] = status;
@@ -121,7 +117,6 @@ class OrdersRepositoryImpl implements OrdersRepository {
     if (clientId != null) payload['clientId'] = clientId;
     if (locationId != null) payload['locationId'] = locationId;
     if (equipmentId != null) payload['equipmentId'] = equipmentId;
-    if (costCenterId != null) payload['costCenterId'] = costCenterId;
 
     final res = await _dio.patch('/v1/orders/$orderId', data: payload);
     return OrderModel.fromMap(_asMap(res.data));

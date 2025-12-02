@@ -23,20 +23,17 @@ class FinanceServiceImpl implements FinanceService {
   @override
   Future<FinanceDashboardModel> dashboard({
     String? month,
-    String? costCenterId,
   }) =>
-      _repo.dashboard(month: month, costCenterId: costCenterId);
+      _repo.dashboard(month: month);
 
   @override
-  Future<FinanceAuditModel> audit({String? costCenterId}) =>
-      _repo.audit(costCenterId: costCenterId);
+  Future<FinanceAuditModel> audit() => _repo.audit();
 
   @override
   Future<FinanceForecastModel> forecast({
     int days = 30,
-    String? costCenterId,
   }) =>
-      _repo.forecast(days: days, costCenterId: costCenterId);
+      _repo.forecast(days: days);
 
   @override
   Future<void> pay({
@@ -70,6 +67,5 @@ class FinanceServiceImpl implements FinanceService {
   @override
   Future<FinanceAnomalyReport> anomalies({
     required String month,
-    String? costCenterId,
-  }) => _repo.anomalies(month: month, costCenterId: costCenterId);
+  }) => _repo.anomalies(month: month);
 }

@@ -12,9 +12,11 @@ class UserProfilePage extends GetView<UserProfileController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.themeBg,
       appBar: AppBar(
         title: const Text('Meu perfil'),
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         actions: [
           Obx(
             () => IconButton(
@@ -247,7 +249,7 @@ class _ProfileHeader extends StatelessWidget {
       final document = _firstNonEmpty([user?.cpfOrCnpj, controller.documentController.text]) ?? 'Não informado';
       final isOwner = user?.isOwner ?? false;
       final roleLabel = isOwner
-          ? 'Administrador Global (owner)'
+          ? 'Administrador Global'
           : _firstNonEmpty([user?.role, 'Colaborador'])!;
       final permissionsValue = isOwner ? 'Todas' : (user?.permissions.length ?? 0).toString();
       final planDate = _formatDate(user?.planExpiration);
@@ -500,9 +502,23 @@ class _SectionCard extends StatelessWidget {
       width: double.infinity,
       padding: const EdgeInsets.all(18),
       decoration: BoxDecoration(
-        color: context.themeSurface,
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withValues(alpha: 0.04),
+            Colors.white.withValues(alpha: 0.02),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(18),
         border: Border.all(color: Colors.white12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.2),
+            blurRadius: 16,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

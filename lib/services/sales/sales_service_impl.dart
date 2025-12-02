@@ -23,7 +23,6 @@ class SalesServiceImpl implements SalesService {
     double? discount,
     String? notes,
     Map<String, dynamic>? moveRequest,
-    String? costCenterId,
     bool autoCreateOrder = false,
   }) async {
     final sale = await _repository.create(
@@ -33,7 +32,6 @@ class SalesServiceImpl implements SalesService {
       notes: notes,
       discount: discount,
       moveRequest: moveRequest,
-      costCenterId: costCenterId,
       autoCreateOrder: autoCreateOrder,
     );
     if (!autoCreateOrder) {
@@ -63,7 +61,6 @@ class SalesServiceImpl implements SalesService {
     double? discount,
     String? notes,
     Map<String, dynamic>? moveRequest,
-    String? costCenterId,
     bool? autoCreateOrder,
   }) =>
       _repository.update(
@@ -74,7 +71,6 @@ class SalesServiceImpl implements SalesService {
         discount: discount,
         notes: notes,
         moveRequest: moveRequest,
-        costCenterId: costCenterId,
         autoCreateOrder: autoCreateOrder,
       );
 

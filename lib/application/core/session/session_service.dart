@@ -56,10 +56,32 @@ class SessionService extends GetxService {
   }
 
   Future<void> _silentRefresh() async {
-    // O ApiClient já tenta refresh automático ao pegar 401; aqui forçamos um ping leve
+    // Atualiza o token de forma proativa para evitar redirecionamento tardio
     try {
-      // opcional: chamar uma rota leve que exija token, para acionar o interceptor
-      // se houver endpoint /v1/auth/refresh direto por body, poderíamos chamar aqui
+      final refresh = _tokens.refreshToken;
+      if (refresh == null || refresh.isEmpty) {
+        _handleForcedLogout();
+        return;
+      }
+      final res = await _apiClient.dio.post(
+        '/v1/auth/refresh',
+        data: {'refreshToken': refresh},
+      );
+      final raw = res.data;
+      final data =
+          raw is Map<String, dynamic>
+              ? raw
+              : (raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{});
+      final access = (data['accessToken'] ?? '').toString();
+      final newRefresh = (data['refreshToken'] ?? refresh).toString();
+      final jti = data['jti']?.toString();
+      if (access.isEmpty) {
+        _handleForcedLogout();
+        return;
+      }
+      await _tokens.save(access: access, refresh: newRefresh, jti: jti);
+    } catch (_) {
+      _handleForcedLogout();
     } finally {
       _scheduleSilentRefresh();
     }

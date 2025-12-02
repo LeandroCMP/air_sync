@@ -2260,10 +2260,6 @@ class _CostSummarySection extends StatelessWidget {
 
       final error = controller.costSummaryError.value;
 
-      final centerName = summary?.costCenterName ?? order.costCenterName;
-
-      final centerId = summary?.costCenterId ?? order.costCenterId;
-
       final revenue = summary?.revenue ?? order.billing.total.toDouble();
 
       final totalCost = summary?.totalCost ?? summary?.materialsCost ??
@@ -2357,66 +2353,6 @@ class _CostSummarySection extends StatelessWidget {
             ),
 
             const SizedBox(height: 8),
-
-            Row(
-
-              crossAxisAlignment: CrossAxisAlignment.start,
-
-              children: [
-
-                Icon(
-
-                  Icons.account_tree_outlined,
-
-                  color: centerName == null
-
-                      ? Colors.white54
-
-                      : context.themePrimary,
-
-                ),
-
-                const SizedBox(width: 12),
-
-                Expanded(
-
-                  child: Column(
-
-                    crossAxisAlignment: CrossAxisAlignment.start,
-
-                    children: [
-
-                      Text(
-
-                        centerName ?? 'Sem centro de custo definido',
-
-                        style: const TextStyle(
-
-                          color: Colors.white,
-
-                          fontWeight: FontWeight.w600,
-
-                        ),
-
-                      ),
-
-                      Text(
-
-                        centerId == null ? 'ID no informado' : 'ID $centerId',
-
-                        style: TextStyle(color: context.themeTextSubtle),
-
-                      ),
-
-                    ],
-
-                  ),
-
-                ),
-
-              ],
-
-            ),
 
             if (error != null) ...[
 
@@ -3462,7 +3398,7 @@ Future<void> _openPurchaseFromOrderSheet(
 
           description: material.description ?? material.itemName,
 
-          costCenterId: order.costCenterId,
+          
 
         ),
 
@@ -3562,7 +3498,7 @@ Future<void> _openPurchaseFromOrderSheet(
 
                 .map(
 
-                  (draft) => draft.toDto(order.costCenterId),
+                  (draft) => draft.toDto(),
 
                 )
 
@@ -4232,8 +4168,6 @@ class _OrderPurchaseItemForm {
 
     this.description,
 
-    this.costCenterId,
-
   })  : include = true,
 
         initialUnitCost = unitCost,
@@ -4266,8 +4200,6 @@ class _OrderPurchaseItemForm {
 
   final String? description;
 
-  final String? costCenterId;
-
   final double? initialUnitCost;
 
   bool include;
@@ -4280,7 +4212,7 @@ class _OrderPurchaseItemForm {
 
 
 
-  CreateOrderPurchaseItemDto toDto(String? fallbackCostCenterId) {
+  CreateOrderPurchaseItemDto toDto() {
 
     final qtyValue =
 
@@ -4300,7 +4232,7 @@ class _OrderPurchaseItemForm {
 
       description: desc.isEmpty ? null : desc,
 
-      costCenterId: costCenterId ?? fallbackCostCenterId,
+      
 
     );
 

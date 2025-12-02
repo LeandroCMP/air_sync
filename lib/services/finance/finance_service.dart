@@ -15,14 +15,12 @@ abstract class FinanceService {
 
   Future<FinanceDashboardModel> dashboard({
     String? month,
-    String? costCenterId,
   });
 
-  Future<FinanceAuditModel> audit({String? costCenterId});
+  Future<FinanceAuditModel> audit();
 
   Future<FinanceForecastModel> forecast({
     int days = 30,
-    String? costCenterId,
   });
 
   Future<void> pay({
@@ -47,6 +45,5 @@ abstract class FinanceService {
 
   Future<FinanceAnomalyReport> anomalies({
     required String month,
-    String? costCenterId,
   });
 }

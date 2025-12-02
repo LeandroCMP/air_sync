@@ -9,7 +9,6 @@ abstract class SalesService {
     double? discount,
     String? notes,
     Map<String, dynamic>? moveRequest,
-    String? costCenterId,
     bool autoCreateOrder = false,
   });
   Future<SaleModel> update(
@@ -20,7 +19,6 @@ abstract class SalesService {
     double? discount,
     String? notes,
     Map<String, dynamic>? moveRequest,
-    String? costCenterId,
     bool? autoCreateOrder,
   });
   Future<SaleModel> approve(String id, {bool forceOrder = false});

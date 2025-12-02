@@ -11,7 +11,12 @@ class CompanyProfilePage extends GetView<CompanyProfileController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Perfil da Empresa')),
+      backgroundColor: Theme.of(context).colorScheme.surface,
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('Perfil da Empresa'),
+      ),
       body: Obx(() {
         final isLoading = controller.isLoading.value;
         return Stack(

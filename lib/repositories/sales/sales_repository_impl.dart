@@ -54,7 +54,6 @@ class SalesRepositoryImpl implements SalesRepository {
     double? discount,
     String? notes,
     Map<String, dynamic>? moveRequest,
-    String? costCenterId,
     bool autoCreateOrder = false,
   }) async {
     final payload = <String, dynamic>{
@@ -65,8 +64,6 @@ class SalesRepositoryImpl implements SalesRepository {
       if (discount != null) 'discount': discount,
       if ((notes ?? '').trim().isNotEmpty) 'notes': notes!.trim(),
       if (moveRequest != null && moveRequest.isNotEmpty) 'moveRequest': moveRequest,
-      if ((costCenterId ?? '').trim().isNotEmpty)
-        'costCenterId': costCenterId!.trim(),
     };
     final res = await _api.dio
         .post('/v1/sales', data: payload)
@@ -83,14 +80,12 @@ class SalesRepositoryImpl implements SalesRepository {
     double? discount,
     String? notes,
     Map<String, dynamic>? moveRequest,
-    String? costCenterId,
     bool? autoCreateOrder,
   }) async {
     final payload = <String, dynamic>{};
     if (clientId != null) payload['clientId'] = clientId.trim();
     if (locationId != null) payload['locationId'] = locationId.trim();
     if (notes != null) payload['notes'] = notes.trim();
-    if (costCenterId != null) payload['costCenterId'] = costCenterId.trim();
     if (autoCreateOrder != null) payload['autoCreateOrder'] = autoCreateOrder;
     if (discount != null) payload['discount'] = discount;
     if (moveRequest != null) payload['moveRequest'] = moveRequest;

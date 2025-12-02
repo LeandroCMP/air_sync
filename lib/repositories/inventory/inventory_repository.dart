@@ -5,9 +5,8 @@ import 'package:air_sync/models/inventory_rebalance_model.dart';
 abstract class InventoryRepository {
   Future<InventoryItemModel> registerItem({
     required String name,
-    required String sku,
+    String? sku,
     required double minQty,
-    String? barcode,
     String? unit,
     double? maxQty,
     String? supplierId,

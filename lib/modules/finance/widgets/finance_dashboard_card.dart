@@ -1,4 +1,3 @@
-import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:flutter/material.dart';
 
 class FinanceDashboardCard extends StatelessWidget {
@@ -19,13 +18,25 @@ class FinanceDashboardCard extends StatelessWidget {
       margin: margin,
       padding: padding,
       decoration: BoxDecoration(
-        color: context.themeSurface,
+        gradient: LinearGradient(
+          colors: [
+            Colors.white.withValues(alpha: 0.04),
+            Colors.white.withValues(alpha: 0.02),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
         borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: context.themeBorder),
-        boxShadow: context.shadowCard,
+        border: Border.all(color: Colors.white12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.16),
+            blurRadius: 18,
+            offset: const Offset(0, 10),
+          ),
+        ],
       ),
       child: child,
     );
   }
 }
-

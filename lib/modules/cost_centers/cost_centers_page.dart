@@ -10,7 +10,10 @@ class CostCentersPage extends GetView<CostCentersController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.themeBg,
       appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         title: const Text('Centros de custo'),
         actions: [
           IconButton(
@@ -29,9 +32,21 @@ class CostCentersPage extends GetView<CostCentersController> {
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: TextField(
-              decoration: const InputDecoration(
+              style: const TextStyle(color: Colors.white),
+              decoration: InputDecoration(
                 labelText: 'Buscar centro de custo',
-                prefixIcon: Icon(Icons.search),
+                labelStyle: const TextStyle(color: Colors.white70),
+                prefixIcon: const Icon(Icons.search, color: Colors.white70),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.08),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  borderSide: BorderSide(color: context.themePrimary),
+                ),
               ),
               onChanged: (value) => controller.search.value = value,
             ),

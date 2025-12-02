@@ -15,7 +15,12 @@ class OrdersPage extends GetView<OrdersController> {
   Widget build(BuildContext context) {
     final dateFmt = DateFormat("dd/MM 'às' HH:mm");
     return Scaffold(
-      appBar: AppBar(title: const Text('Ordens de Serviço')),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        title: const Text('Ordens de Serviço'),
+      ),
+      backgroundColor: context.themeBg,
       floatingActionButton: FloatingActionButton(
         backgroundColor: context.themeGreen,
         onPressed: controller.openCreate,
@@ -34,8 +39,45 @@ class OrdersPage extends GetView<OrdersController> {
                       ? const LinearProgressIndicator(minHeight: 2)
                       : const SizedBox.shrink(),
             ),
-            _StatusSummaryBar(controller: controller),
-            _FiltersHeader(controller: controller),
+            Container(
+              margin: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    const Color(0xFF0f172a),
+                    const Color(0xFF0d9488).withValues(alpha: .8),
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(16),
+                border: Border.all(color: Colors.white10),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.2),
+                    blurRadius: 14,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    'Filtros e resumo',
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 16,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  _StatusSummaryBar(controller: controller),
+                  _FiltersHeader(controller: controller),
+                ],
+              ),
+            ),
             Expanded(
               child:
                   orders.isEmpty

@@ -17,7 +17,10 @@ class InventoryCategoriesPage extends StatelessWidget {
       ),
       builder: (controller) {
         return Scaffold(
+          backgroundColor: context.themeBg,
           appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
             title: const Text('Categorias de estoque'),
             actions: [
               IconButton(
@@ -319,7 +322,7 @@ Future<void> _openCategoryForm(
               const SizedBox(height: 20),
               ElevatedButton(
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: context.themePrimary,
+                  backgroundColor: context.themeGreen,
                   padding: const EdgeInsets.symmetric(vertical: 14),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(25),

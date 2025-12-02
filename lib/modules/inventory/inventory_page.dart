@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/supplier_model.dart';
@@ -33,10 +35,13 @@ class InventoryPage extends GetView<InventoryController> {
           ),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         backgroundColor: context.themeGreen,
+        foregroundColor: Colors.white,
+        elevation: 6,
+        icon: const Icon(Icons.add),
+        label: const Text('Adicionar item'),
         onPressed: () => showAddItemModal(context: context),
-        child: const Icon(Icons.add, color: Colors.white),
       ),
       body: Obx(() {
         final items = controller.items;
@@ -140,20 +145,20 @@ class InventoryPage extends GetView<InventoryController> {
 
     if (status == _InventoryStatus.danger) {
       backgroundColor = Color.alphaBlend(
-        Colors.redAccent.withOpacity(0.12),
+        Colors.redAccent.withValues(alpha: 0.12),
         baseColor,
       );
-      borderColor = Colors.redAccent.withOpacity(0.7);
-      badgeColor = Colors.redAccent.withOpacity(0.2);
+      borderColor = Colors.redAccent.withValues(alpha: 0.7);
+      badgeColor = Colors.redAccent.withValues(alpha: 0.2);
       badgeIcon = Icons.warning_amber_rounded;
       badgeLabel = 'Abaixo do mínimo';
     } else if (status == _InventoryStatus.warning) {
       backgroundColor = Color.alphaBlend(
-        context.themeWarning.withOpacity(0.12),
+        context.themeWarning.withValues(alpha: 0.12),
         baseColor,
       );
       borderColor = context.themeWarning;
-      badgeColor = context.themeWarning.withOpacity(0.2);
+      badgeColor = context.themeWarning.withValues(alpha: 0.2);
       badgeIcon = Icons.remove_red_eye_outlined;
       badgeLabel = 'Próximo do mínimo';
     }
@@ -341,6 +346,8 @@ class InventoryPage extends GetView<InventoryController> {
       }
     }
 
+    if (!context.mounted) return;
+
     final formKey = GlobalKey<FormState>();
     if (c.unitController.text.isEmpty) {
       c.unitController.text = 'UN';
@@ -349,277 +356,261 @@ class InventoryPage extends GetView<InventoryController> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       isDismissible: false,
       useRootNavigator: true,
       builder: (sheetCtx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 30,
-            top: 30,
-          ),
+        final bottom = MediaQuery.of(sheetCtx).viewInsets.bottom;
+        final maxHeight =
+            (MediaQuery.of(sheetCtx).size.height - bottom - 60).clamp(
+          320.0,
+          double.infinity,
+        );
+        return _InventoryModalShell(
+          title: 'Cadastrar item',
+          onClose: () {
+            c.clearForm();
+            Navigator.of(sheetCtx, rootNavigator: true).pop();
+          },
           child: Form(
             key: formKey,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Row(
-                    children: [
-                      const Expanded(
-                        child: Text(
-                          'Cadastrar item',
-                          style: TextStyle(
-                            fontSize: 20,
-                            color: Colors.white,
-                            fontWeight: FontWeight.bold,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxHeight),
+              child: SingleChildScrollView(
+                padding: EdgeInsets.only(bottom: bottom),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: c.descriptionController,
+                      textCapitalization: TextCapitalization.characters,
+                      style: const TextStyle(color: Colors.white),
+                      validator: (v) =>
+                          (v == null || v.trim().isEmpty)
+                              ? 'Informe o nome do item'
+                              : null,
+                      decoration: const InputDecoration(
+                        labelText: 'Nome do item',
+                        labelStyle: TextStyle(color: Colors.white70),
+                        hintStyle: TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    TextFormField(
+                      controller: c.skuController,
+                      textCapitalization: TextCapitalization.characters,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'SKU (opcional)',
+                        hintText: 'Deixe em branco para gerar automaticamente',
+                        labelStyle: TextStyle(color: Colors.white70),
+                        hintStyle: TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: c.quantityController,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9.,]'),
+                              ),
+                            ],
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Quantidade inicial (opcional)',
+                              labelStyle: TextStyle(color: Colors.white70),
+                              hintStyle: TextStyle(color: Colors.white54),
+                            ),
                           ),
                         ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: c.unitController,
+                            textCapitalization: TextCapitalization.characters,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Unidade (padrão: un)',
+                              hintText: 'un',
+                              labelStyle: TextStyle(color: Colors.white70),
+                              hintStyle: TextStyle(color: Colors.white54),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: c.maxQtyController,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9.,]'),
+                              ),
+                            ],
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Estoque máximo (opcional)',
+                              labelStyle: TextStyle(color: Colors.white70),
+                              hintStyle: TextStyle(color: Colors.white54),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: TextFormField(
+                            controller: c.minStockController,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9.,]'),
+                              ),
+                            ],
+                            keyboardType: TextInputType.number,
+                            validator: (v) {
+                              final text =
+                                  (v ?? '').replaceAll(',', '.').trim();
+                              if (text.isEmpty) return null;
+                              final number = double.tryParse(text);
+                              if (number == null || number < 0) {
+                                return 'Valor inválido';
+                              }
+                              return null;
+                            },
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Estoque mínimo',
+                              labelStyle: TextStyle(color: Colors.white70),
+                              hintStyle: TextStyle(color: Colors.white54),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: TextFormField(
+                            controller: c.costController,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.allow(
+                                RegExp(r'[0-9.,]'),
+                              ),
+                            ],
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(color: Colors.white),
+                            decoration: const InputDecoration(
+                              labelText: 'Custo médio (opcional)',
+                              labelStyle: TextStyle(color: Colors.white70),
+                              hintStyle: TextStyle(color: Colors.white54),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    if (suppliers.isNotEmpty)
+                      DropdownButtonFormField<String>(
+                        dropdownColor: sheetCtx.themeSurface,
+                        value:
+                            c.supplierIdController.text.isEmpty
+                                ? null
+                                : c.supplierIdController.text,
+                        items: suppliers
+                            .map(
+                              (s) => DropdownMenuItem(
+                                value: s.id,
+                                child: Text(
+                                  s.name,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged:
+                            (value) => c.supplierIdController.text = value ?? '',
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Colors.white70,
+                        ),
+                        decoration: const InputDecoration(
+                          labelText: 'Fornecedor (opcional)',
+                          labelStyle: TextStyle(color: Colors.white70),
+                          hintStyle: TextStyle(color: Colors.white54),
+                        ),
+                        style: const TextStyle(color: Colors.white),
                       ),
-                      IconButton(
+                    if (suppliers.isNotEmpty) const SizedBox(height: 10),
+                    TextFormField(
+                      controller: c.sellPriceController,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                      ],
+                      keyboardType: TextInputType.number,
+                      style: const TextStyle(color: Colors.white),
+                      decoration: const InputDecoration(
+                        labelText: 'Preço de venda (opcional)',
+                        prefixText: 'R\$ ',
+                        labelStyle: TextStyle(color: Colors.white70),
+                        hintStyle: TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                    const SizedBox(height: 20),
+                    SizedBox(
+                      width: double.infinity,
+                      child: ElevatedButton.icon(
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: sheetCtx.themePrimary,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(25),
+                          ),
+                        ),
+                        onPressed: () async {
+                          if (!formKey.currentState!.validate()) return;
+                          if (sheetCtx.mounted &&
+                              Navigator.of(
+                                sheetCtx,
+                                rootNavigator: true,
+                              ).canPop()) {
+                            Navigator.of(sheetCtx, rootNavigator: true).pop();
+                            await Future.delayed(
+                              const Duration(milliseconds: 50),
+                            );
+                          }
+                          await c.registerItem();
+                        },
+                        icon: const Icon(Icons.save_outlined),
+                        label: const Text('Cadastrar'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    SizedBox(
+                      width: double.infinity,
+                      child: TextButton(
+                        style: TextButton.styleFrom(
+                          foregroundColor: Colors.redAccent,
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                        ),
                         onPressed: () {
                           c.clearForm();
                           Navigator.of(sheetCtx, rootNavigator: true).pop();
                         },
-                        icon: const Icon(Icons.close, color: Colors.white70),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  TextFormField(
-                    controller: c.descriptionController,
-                    validator:
-                        (v) =>
-                            (v == null || v.trim().isEmpty)
-                                ? 'Informe o nome do item'
-                                : null,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Nome do item',
-                      labelStyle: TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: c.skuController,
-                    validator:
-                        (v) =>
-                            (v == null || v.trim().isEmpty)
-                                ? 'Informe o código/SKU'
-                                : null,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Código/SKU',
-                      labelStyle: TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: c.quantityController,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.,]'),
-                            ),
-                          ],
-                          keyboardType: TextInputType.number,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Quantidade inicial (opcional)',
-                            labelStyle: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: c.unitController,
-                          style: const TextStyle(color: Colors.white),
-                          textCapitalization: TextCapitalization.characters,
-                          decoration: const InputDecoration(
-                            labelText: 'Unidade',
-                            labelStyle: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: c.barcodeController,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Código de barras (opcional)',
-                            labelStyle: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: c.maxQtyController,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.,]'),
-                            ),
-                          ],
-                          keyboardType: TextInputType.number,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Estoque máximo (opcional)',
-                            labelStyle: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: c.minStockController,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.,]'),
-                            ),
-                          ],
-                          keyboardType: TextInputType.number,
-                          validator: (v) {
-                            final text = (v ?? '').replaceAll(',', '.').trim();
-                            final number = double.tryParse(text);
-                            if (number == null) {
-                              return 'Informe o estoque mínimo';
-                            }
-                            if (number < 0) {
-                              return 'Valor inválido';
-                            }
-                            return null;
-                          },
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Estoque mínimo',
-                            labelStyle: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: c.costController,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.,]'),
-                            ),
-                          ],
-                          keyboardType: TextInputType.number,
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Custo médio (opcional)',
-                            labelStyle: TextStyle(color: Colors.white70),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  if (suppliers.isNotEmpty)
-                    DropdownButtonFormField<String>(
-                      dropdownColor: context.themeSurface,
-                      value:
-                          c.supplierIdController.text.isEmpty
-                              ? null
-                              : c.supplierIdController.text,
-                      items:
-                          suppliers
-                              .map(
-                                (s) => DropdownMenuItem(
-                                  value: s.id,
-                                  child: Text(
-                                    s.name,
-                                    style: const TextStyle(color: Colors.white),
-                                  ),
-                                ),
-                              )
-                              .toList(),
-                      onChanged:
-                          (value) => c.supplierIdController.text = value ?? '',
-                      icon: const Icon(
-                        Icons.keyboard_arrow_down,
-                        color: Colors.white70,
-                      ),
-                      decoration: const InputDecoration(
-                        labelText: 'Fornecedor (opcional)',
-                        labelStyle: TextStyle(color: Colors.white70),
-                      ),
-                      style: const TextStyle(color: Colors.white),
-                    ),
-                  if (suppliers.isNotEmpty) const SizedBox(height: 10),
-                  TextFormField(
-                    controller: c.sellPriceController,
-                    inputFormatters: [
-                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                    ],
-                    keyboardType: TextInputType.number,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Preço de venda (opcional)',
-                      prefixText: 'R\$ ',
-                      labelStyle: TextStyle(color: Colors.white70),
-                    ),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton(
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: context.themeGreen,
-                      foregroundColor: context.themeGray,
-                      padding: const EdgeInsets.symmetric(vertical: 14),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(25),
+                        child: const Text('Cancelar'),
                       ),
                     ),
-                    onPressed: () async {
-                      if (!formKey.currentState!.validate()) return;
-                      if (Navigator.of(
-                        sheetCtx,
-                        rootNavigator: true,
-                      ).canPop()) {
-                        Navigator.of(sheetCtx, rootNavigator: true).pop();
-                        await Future.delayed(const Duration(milliseconds: 50));
-                      }
-                      await c.registerItem();
-                    },
-                    child: const Text(
-                      'Cadastrar',
-                      style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextButton(
-                    onPressed: () {
-                      c.clearForm();
-                      Navigator.of(sheetCtx, rootNavigator: true).pop();
-                    },
-                    child: const Text(
-                      'Cancelar',
-                      style: TextStyle(color: Colors.redAccent),
-                    ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
@@ -633,14 +624,14 @@ class InventoryPage extends GetView<InventoryController> {
     InventoryController c,
     InventoryItemModel item,
   ) async {
-    String _formatOptionalNumber(double? value) {
+    String formatOptionalNumber(double? value) {
       if (value == null) return '';
       return value == value.roundToDouble()
           ? value.toStringAsFixed(0).replaceAll('.', ',')
           : value.toStringAsFixed(2).replaceAll('.', ',');
     }
 
-    String _formatOptionalMoney(double? value) {
+    String formatOptionalMoney(double? value) {
       if (value == null) return '';
       return value.toStringAsFixed(2).replaceAll('.', ',');
     }
@@ -662,21 +653,21 @@ class InventoryPage extends GetView<InventoryController> {
       } catch (_) {}
     }
 
+    if (!context.mounted) return;
     final nameController = TextEditingController(text: item.description);
     final skuController = TextEditingController(text: item.sku);
     final unitController = TextEditingController(text: item.unit);
     final minController = TextEditingController(
       text: _formatQuantity(item.minQuantity),
     );
-    final barcodeController = TextEditingController(text: item.barcode ?? '');
     final maxQtyController = TextEditingController(
-      text: _formatOptionalNumber(item.maxQuantity),
+      text: formatOptionalNumber(item.maxQuantity),
     );
     final costController = TextEditingController(
-      text: _formatOptionalMoney(item.avgCost),
+      text: formatOptionalMoney(item.avgCost),
     );
     final sellPriceController = TextEditingController(
-      text: _formatOptionalMoney(item.sellPrice),
+      text: formatOptionalMoney(item.sellPrice),
     );
     final supplierManualController = TextEditingController(
       text: item.supplierId ?? '',
@@ -686,345 +677,288 @@ class InventoryPage extends GetView<InventoryController> {
     await showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       useRootNavigator: true,
       isDismissible: false,
       builder: (sheetCtx) {
+        final bottom = MediaQuery.of(sheetCtx).viewInsets.bottom;
+        final maxHeight =
+            (MediaQuery.of(sheetCtx).size.height - bottom - 60).clamp(
+          320.0,
+          double.infinity,
+        );
         return Obx(() {
           final current = currentItem.value;
           final supplierValue = selectedSupplierId.value ?? '';
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 30,
-              top: 30,
-            ),
+          return _InventoryModalShell(
+            title: 'Editar item',
+            subtitle:
+                'Estoque atual: ${_formatQuantity(current.quantity)} ${current.unit}',
+            onClose: () => Navigator.of(sheetCtx, rootNavigator: true).pop(),
             child: Form(
               key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'Editar item',
-                            style: TextStyle(
-                              fontSize: 20,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: maxHeight,
+                ),
+                child: SingleChildScrollView(
+                  padding: EdgeInsets.only(bottom: bottom),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      TextFormField(
+                        controller: nameController,
+                        textCapitalization: TextCapitalization.characters,
+                        style: const TextStyle(color: Colors.white),
+                        validator: (v) =>
+                            (v == null || v.trim().isEmpty)
+                                ? 'Informe o nome do item'
+                                : null,
+                        decoration: const InputDecoration(
+                          labelText: 'Nome do item',
+                          labelStyle: TextStyle(color: Colors.white70),
+                          hintStyle: TextStyle(color: Colors.white54),
                         ),
-                        IconButton(
-                          onPressed: () {
-                            Navigator.of(sheetCtx, rootNavigator: true).pop();
-                          },
-                          icon: const Icon(Icons.close, color: Colors.white70),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      'Estoque atual: ${_formatQuantity(current.quantity)} ${current.unit}',
-                      style: const TextStyle(color: Colors.white70),
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: nameController,
-                      validator:
-                          (v) =>
-                              (v == null || v.trim().isEmpty)
-                                  ? 'Informe o nome do item'
-                                  : null,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Nome do item',
-                        labelStyle: TextStyle(color: Colors.white70),
                       ),
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: skuController,
-                      readOnly: true,
-                      enableInteractiveSelection: false,
-                      style: const TextStyle(color: Colors.white70),
-                      decoration: const InputDecoration(
-                        labelText: 'SKU',
-                        helperText: 'Edição não permitida neste fluxo.',
-                        helperStyle: TextStyle(color: Colors.white38),
-                        labelStyle: TextStyle(color: Colors.white70),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: unitController,
-                            style: const TextStyle(color: Colors.white),
-                            textCapitalization: TextCapitalization.characters,
-                            decoration: const InputDecoration(
-                              labelText: 'Unidade',
-                              labelStyle: TextStyle(color: Colors.white70),
-                            ),
-                          ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: skuController,
+                        readOnly: true,
+                        enableInteractiveSelection: false,
+                        style: const TextStyle(color: Colors.white70),
+                        decoration: const InputDecoration(
+                          labelText: 'SKU',
+                          labelStyle: TextStyle(color: Colors.white70),
+                          helperText: 'Edição não permitida neste fluxo.',
+                          helperStyle: TextStyle(color: Colors.white38),
                         ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            controller: minController,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9.,]'),
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: unitController,
+                              textCapitalization: TextCapitalization.characters,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'Unidade',
+                                labelStyle: TextStyle(color: Colors.white70),
+                                hintStyle: TextStyle(color: Colors.white54),
                               ),
-                            ],
-                            keyboardType: TextInputType.number,
-                            validator: (value) {
-                              final sanitized =
-                                  (value ?? '').replaceAll(',', '.').trim();
-                              final number = double.tryParse(sanitized);
-                              if (number == null) return 'Informe o mínimo';
-                              if (number < 0) return 'Valor inválido';
-                              return null;
-                            },
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'Quantidade mínima',
-                              labelStyle: TextStyle(color: Colors.white70),
                             ),
                           ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: barcodeController,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Código de barras (opcional)',
-                        labelStyle: TextStyle(color: Colors.white70),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextFormField(
-                            controller: maxQtyController,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9.,]'),
-                              ),
-                            ],
-                            keyboardType: TextInputType.number,
-                            validator: (value) {
-                              final text = value?.trim() ?? '';
-                              if (text.isEmpty) return null;
-                              final parsed = double.tryParse(
-                                text.replaceAll(',', '.'),
-                              );
-                              if (parsed == null) return 'Valor inválido';
-                              if (parsed < 0) return 'Deve ser positivo';
-                              return null;
-                            },
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'Estoque máximo (opcional)',
-                              labelStyle: TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: TextFormField(
-                            controller: costController,
-                            inputFormatters: [
-                              FilteringTextInputFormatter.allow(
-                                RegExp(r'[0-9.,]'),
-                              ),
-                            ],
-                            keyboardType: TextInputType.number,
-                            style: const TextStyle(color: Colors.white),
-                            decoration: const InputDecoration(
-                              labelText: 'Custo médio (opcional)',
-                              prefixText: 'R\$ ',
-                              labelStyle: TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 10),
-                    TextFormField(
-                      controller: sellPriceController,
-                      inputFormatters: [
-                        FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
-                      ],
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: const InputDecoration(
-                        labelText: 'Preço de venda (opcional)',
-                        prefixText: 'R\$ ',
-                        labelStyle: TextStyle(color: Colors.white70),
-                      ),
-                    ),
-                    const SizedBox(height: 10),
-                    if (suppliers.isNotEmpty)
-                      DropdownButtonFormField<String>(
-                        value: supplierValue,
-                        dropdownColor: context.themeSurface,
-                        items: [
-                          const DropdownMenuItem(
-                            value: '',
-                            child: Text(
-                              'Sem fornecedor',
-                              style: TextStyle(color: Colors.white70),
-                            ),
-                          ),
-                          ...suppliers.map(
-                            (s) => DropdownMenuItem(
-                              value: s.id,
-                              child: Text(
-                                s.name,
-                                style: const TextStyle(color: Colors.white),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: minController,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9.,]'),
+                                ),
+                              ],
+                              keyboardType: TextInputType.number,
+                              validator: (value) {
+                                final sanitized =
+                                    (value ?? '').replaceAll(',', '.').trim();
+                                if (sanitized.isEmpty) return null;
+                                final number = double.tryParse(sanitized);
+                                if (number == null || number < 0) {
+                                  return 'Valor inválido';
+                                }
+                                return null;
+                              },
+                              style: const TextStyle(color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'Quantidade mínima',
+                                labelStyle: TextStyle(color: Colors.white70),
+                                hintStyle: TextStyle(color: Colors.white54),
                               ),
                             ),
                           ),
                         ],
-                        onChanged: (value) {
-                          selectedSupplierId.value =
-                              (value == null || value.isEmpty) ? null : value;
-                        },
+                      ),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: TextFormField(
+                              controller: maxQtyController,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9.,]'),
+                                ),
+                              ],
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'Estoque máximo (opcional)',
+                                labelStyle: TextStyle(color: Colors.white70),
+                                hintStyle: TextStyle(color: Colors.white54),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: TextFormField(
+                              controller: costController,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(
+                                  RegExp(r'[0-9.,]'),
+                                ),
+                              ],
+                              keyboardType: TextInputType.number,
+                              style: const TextStyle(color: Colors.white),
+                              decoration: const InputDecoration(
+                                labelText: 'Custo médio (opcional)',
+                                labelStyle: TextStyle(color: Colors.white70),
+                                hintStyle: TextStyle(color: Colors.white54),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 10),
+                      TextFormField(
+                        controller: sellPriceController,
+                        inputFormatters: [
+                          FilteringTextInputFormatter.allow(
+                            RegExp(r'[0-9.,]'),
+                          ),
+                        ],
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(color: Colors.white),
+                        decoration: const InputDecoration(
+                          labelText: 'Preço de venda (opcional)',
+                          prefixText: 'R\$ ',
+                          labelStyle: TextStyle(color: Colors.white70),
+                          hintStyle: TextStyle(color: Colors.white54),
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      DropdownButtonFormField<String>(
+                        dropdownColor: sheetCtx.themeSurface,
+                        value: supplierValue.isEmpty ? null : supplierValue,
+                        items: suppliers
+                            .map(
+                              (s) => DropdownMenuItem(
+                                value: s.id,
+                                child: Text(
+                                  s.name,
+                                  style: const TextStyle(color: Colors.white),
+                                ),
+                              ),
+                            )
+                            .toList(),
+                        onChanged: (value) => selectedSupplierId.value = value,
+                        icon: const Icon(
+                          Icons.keyboard_arrow_down,
+                          color: Colors.white70,
+                        ),
                         decoration: const InputDecoration(
                           labelText: 'Fornecedor (opcional)',
                           labelStyle: TextStyle(color: Colors.white70),
+                          hintStyle: TextStyle(color: Colors.white54),
                         ),
                         style: const TextStyle(color: Colors.white),
-                      )
-                    else
+                      ),
+                      const SizedBox(height: 10),
                       TextFormField(
                         controller: supplierManualController,
+                        textCapitalization: TextCapitalization.characters,
                         style: const TextStyle(color: Colors.white),
                         decoration: const InputDecoration(
-                          labelText: 'Fornecedor (ID opcional)',
+                          labelText: 'Fornecedor (manual)',
                           labelStyle: TextStyle(color: Colors.white70),
+                          hintStyle: TextStyle(color: Colors.white54),
+                          helperText:
+                              'Use este campo se o cadastro de fornecedores estiver indisponível.',
+                          helperStyle: TextStyle(color: Colors.white38),
                         ),
                       ),
-                    const SizedBox(height: 12),
-                    Obx(() {
-                      final busy = c.isLoading.value;
-                      final isDisabled = busy || current.quantity <= 0;
-                      return OutlinedButton.icon(
-                        onPressed:
-                            isDisabled
-                                ? null
-                                : () async {
-                                  final updated = await c.zeroItemStock(
-                                    current,
-                                  );
-                                  if (updated != null) {
-                                    currentItem.value = updated;
-                                  }
-                                },
-                        icon:
-                            busy
-                                ? SizedBox(
-                                  width: 16,
-                                  height: 16,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    valueColor: AlwaysStoppedAnimation<Color>(
-                                      context.themePrimary,
-                                    ),
-                                  ),
-                                )
-                                : const Icon(Icons.inventory_2_outlined),
-                        label: Text(
-                          current.quantity <= 0
-                              ? 'Estoque já está zerado'
-                              : 'Zerar estoque',
+                      if (current.costHistory.isNotEmpty) ...[
+                        const SizedBox(height: 16),
+                        const Text(
+                          'Histórico de custo (últimos registros)',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.white,
-                          side: BorderSide(color: context.themePrimary),
+                        const SizedBox(height: 8),
+                        ...current.costHistory.take(3).map(
+                          (entry) => Text(
+                            '- R\$ ${entry.cost.toStringAsFixed(2)} em ${entry.at.day.toString().padLeft(2, '0')}/${entry.at.month.toString().padLeft(2, '0')}/${entry.at.year}',
+                            style: const TextStyle(color: Colors.white54),
+                          ),
                         ),
-                      );
-                    }),
-                    const SizedBox(height: 24),
-                    ElevatedButton(
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: context.themePrimary,
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(25),
-                        ),
-                      ),
-                      onPressed: () async {
-                        if (!formKey.currentState!.validate()) return;
-                        final minQty =
-                            double.tryParse(
-                              minController.text.replaceAll(',', '.'),
-                            ) ??
-                            item.minQuantity;
-                        final barcodeText = barcodeController.text.trim();
-                        final maxQty = parseNullableDouble(
-                          maxQtyController.text,
-                        );
-                        final avgCost = parseNullableDouble(
-                          costController.text,
-                        );
-                        final sellPrice = parseNullableDouble(
-                          sellPriceController.text,
-                        );
-                        final supplierValueToSave =
-                            suppliers.isNotEmpty
-                                ? selectedSupplierId.value
-                                : (supplierManualController.text.trim().isEmpty
-                                    ? null
-                                    : supplierManualController.text.trim());
-                        final updatedItem = item.copyWith(
-                          description: nameController.text.trim(),
-                          unit:
-                              unitController.text.trim().isEmpty
+                      ],
+                      const SizedBox(height: 20),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: sheetCtx.themePrimary,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 14),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(25),
+                            ),
+                          ),
+                          onPressed: () async {
+                            if (!formKey.currentState!.validate()) return;
+                            final minQty =
+                                double.tryParse(
+                                  minController.text.replaceAll(',', '.'),
+                                ) ??
+                                item.minQuantity;
+                            final maxQty = parseNullableDouble(
+                              maxQtyController.text,
+                            );
+                            final avgCost = parseNullableDouble(
+                              costController.text,
+                            );
+                            final sellPrice = parseNullableDouble(
+                              sellPriceController.text,
+                            );
+                            final supplierValueToSave =
+                                suppliers.isNotEmpty
+                                    ? selectedSupplierId.value
+                                    : (supplierManualController.text
+                                            .trim()
+                                            .isEmpty
+                                        ? null
+                                        : supplierManualController.text.trim());
+                            final updatedItem = item.copyWith(
+                              description: nameController.text.trim(),
+                              unit: unitController.text.trim().isEmpty
                                   ? item.unit
                                   : unitController.text.trim(),
-                          minQuantity: minQty,
-                          barcode:
-                              barcodeText.isEmpty ? item.barcode : barcodeText,
-                          maxQuantity: maxQty ?? item.maxQuantity,
-                          supplierId: supplierValueToSave ?? item.supplierId,
-                          avgCost: avgCost ?? item.avgCost,
-                          sellPrice: sellPrice ?? item.sellPrice,
-                          active: item.active,
-                        );
-                        final success = await c.updateItem(
-                          original: item,
-                          updated: updatedItem,
-                        );
-                        if (success &&
-                            Navigator.of(
-                              sheetCtx,
-                              rootNavigator: true,
-                            ).canPop()) {
-                          Navigator.of(sheetCtx, rootNavigator: true).pop();
-                        }
-                      },
-                      child: const Text(
-                        'Salvar alterações',
-                        style: TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.white,
+                              minQuantity: minQty,
+                              maxQuantity: maxQty ?? item.maxQuantity,
+                              supplierId: supplierValueToSave ?? item.supplierId,
+                              avgCost: avgCost ?? item.avgCost,
+                              sellPrice: sellPrice ?? item.sellPrice,
+                              active: item.active,
+                            );
+                            final success = await c.updateItem(
+                              original: item,
+                              updated: updatedItem,
+                            );
+                            if (!sheetCtx.mounted) return;
+                            if (success &&
+                                Navigator.of(sheetCtx, rootNavigator: true)
+                                    .canPop()) {
+                              Navigator.of(sheetCtx, rootNavigator: true).pop();
+                            }
+                          },
+                          icon: const Icon(Icons.save_outlined),
+                          label: const Text('Salvar alterações'),
                         ),
                       ),
-                    ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -1032,16 +966,6 @@ class InventoryPage extends GetView<InventoryController> {
         });
       },
     );
-
-    nameController.dispose();
-    skuController.dispose();
-    unitController.dispose();
-    minController.dispose();
-    barcodeController.dispose();
-    maxQtyController.dispose();
-    costController.dispose();
-    sellPriceController.dispose();
-    supplierManualController.dispose();
   }
 
   static Future<void> _confirmDeleteItem(
@@ -1080,7 +1004,7 @@ class InventoryPage extends GetView<InventoryController> {
               ],
             ),
       );
-      if (goToEdit == true) {
+      if (goToEdit == true && context.mounted) {
         await _showEditItemModal(context, c, item);
       }
       return;
@@ -1167,6 +1091,91 @@ class InventoryPage extends GetView<InventoryController> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _InventoryModalShell extends StatelessWidget {
+  const _InventoryModalShell({
+    required this.title,
+    this.subtitle,
+    required this.child,
+    this.onClose,
+  });
+
+  final String title;
+  final String? subtitle;
+  final Widget child;
+  final VoidCallback? onClose;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+        gradient: LinearGradient(
+          colors: [
+            context.themeSurface,
+            context.themeSurface.withValues(alpha: 0.95),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        border: Border.all(color: context.themeBorder),
+        boxShadow: context.shadowCard,
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 22, 20, bottom + 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            title,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.w700,
+                              fontSize: 18,
+                            ),
+                          ),
+                          if (subtitle != null) ...[
+                            const SizedBox(height: 4),
+                            Text(
+                              subtitle!,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 12,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: onClose ?? () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                child,
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

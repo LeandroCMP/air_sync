@@ -4,18 +4,14 @@ import 'package:air_sync/application/core/form_validator.dart';
 import 'package:air_sync/application/ui/input_formatters.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:get/get.dart';
-import 'package:intl/intl.dart';
 
 import './login_controller.dart';
 
-const int _signupTrialDays = 3;
-
 class LoginPage extends GetView<LoginController> {
-  const LoginPage({super.key});
+  LoginPage({super.key});
 
-  static final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+  final _formKey = GlobalKey<FormState>();
 
   @override
   Widget build(BuildContext context) {
@@ -120,7 +116,7 @@ class LoginPage extends GetView<LoginController> {
                                   duration: const Duration(milliseconds: 500),
                                   curve: Curves.easeOutBack,
                                   builder: (_, value, child) => Opacity(
-                                    opacity: value,
+                                    opacity: value.clamp(0.0, 1.0),
                                     child: Transform.translate(
                                       offset: Offset(0, (1 - value) * 18),
                                       child: child,
@@ -145,9 +141,9 @@ class LoginPage extends GetView<LoginController> {
                                         builder: (_, value, __) => AnimatedOpacity(
                                           duration: const Duration(milliseconds: 250),
                                           opacity: value.text.isEmpty ? 0 : 1,
-                                          child: Text(
-                                            'Pronto para sincronizar, ${value.text.split('@').first}?',
-                                            style: const TextStyle(color: Colors.white70),
+                                          child: const Text(
+                                            'Pronto para sincronizar?',
+                                            style: TextStyle(color: Colors.white70),
                                             textAlign: TextAlign.center,
                                           ),
                                         ),
@@ -166,7 +162,7 @@ class LoginPage extends GetView<LoginController> {
                                   tween: Tween(begin: 0.0, end: 1.0),
                                   duration: const Duration(milliseconds: 600),
                                   builder: (_, value, child) => Opacity(
-                                    opacity: value,
+                                    opacity: value.clamp(0.0, 1.0),
                                     child: Transform.scale(
                                       scale: 0.98 + (value * 0.02),
                                       child: child,
@@ -248,32 +244,93 @@ class LoginPage extends GetView<LoginController> {
                                               ),
                                               const SizedBox(height: 14),
                                               Obx(
-                                                () => Row(
-                                                  children: [
-                                                    Switch(
-                                                      value: controller.saveUserVar.value,
-                                                      onChanged: loading ? null : controller.toggleRememberMe,
-                                                      activeColor: context.themeGreen,
-                                                    ),
-                                                    const SizedBox(width: 6),
-                                                    const Expanded(
-                                                      child: Text(
-                                                        'Manter meu e-mail salvo',
-                                                        style: TextStyle(color: Colors.white70, fontSize: 13),
+                                                () {
+                                                  final canBio = controller.canUseBiometrics.value;
+                                                  final enabled = controller.biometricEnabled.value;
+                                                  final hasCreds = controller.hasBiometricCredentials.value;
+                                                  final statusText = !canBio
+                                                      ? 'Biometria indisponível neste dispositivo.'
+                                                      : enabled
+                                                          ? (hasCreds
+                                                              ? 'Pronto: você pode entrar com biometria.'
+                                                              : 'Ative e faça um login para salvar as credenciais.')
+                                                          : 'Ative para usar impressão digital/rosto no próximo login.';
+
+                                                  return Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Container(
+                                                        padding: const EdgeInsets.all(14),
+                                                        decoration: BoxDecoration(
+                                                          color: Colors.white.withValues(alpha: 0.06),
+                                                          borderRadius: BorderRadius.circular(14),
+                                                          border: Border.all(color: Colors.white12),
+                                                        ),
+                                                        child: Row(
+                                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                                          children: [
+                                                            Container(
+                                                              padding: const EdgeInsets.all(10),
+                                                              decoration: BoxDecoration(
+                                                                color: Colors.white.withValues(alpha: 0.08),
+                                                                shape: BoxShape.circle,
+                                                              ),
+                                                              child: Icon(
+                                                                hasCreds
+                                                                    ? Icons.verified_rounded
+                                                                    : Icons.fingerprint_rounded,
+                                                                color: hasCreds ? Colors.tealAccent : Colors.white,
+                                                              ),
+                                                            ),
+                                                            const SizedBox(width: 12),
+                                                            Expanded(
+                                                              child: Column(
+                                                                crossAxisAlignment: CrossAxisAlignment.start,
+                                                                children: [
+                                                                  const Text(
+                                                                    'Entrar com biometria',
+                                                                    style: TextStyle(
+                                                                      color: Colors.white,
+                                                                      fontWeight: FontWeight.w700,
+                                                                    ),
+                                                                  ),
+                                                                  const SizedBox(height: 4),
+                                                                  Text(
+                                                                    statusText,
+                                                                    style: const TextStyle(
+                                                                      color: Colors.white70,
+                                                                      fontSize: 12.5,
+                                                                    ),
+                                                                  ),
+                                                                ],
+                                                              ),
+                                                            ),
+                                                            Switch(
+                                                              value: enabled,
+                                                              onChanged:
+                                                                  (!canBio || loading) ? null : controller.enableBiometric,
+                                                              activeColor: context.themeGreen,
+                                                            ),
+                                                          ],
+                                                        ),
                                                       ),
-                                                    ),
-                                                    TextButton(
-                                                      onPressed: loading
-                                                          ? null
-                                                          : () {
-                                                              FocusScope.of(context).unfocus();
-                                                              final email = controller.emailController.text;
-                                                              controller.resetPassword(email);
-                                                            },
-                                                      child: const Text('Esqueci a senha'),
-                                                    ),
-                                                  ],
-                                                ),
+                                                      const SizedBox(height: 6),
+                                                      Align(
+                                                        alignment: Alignment.centerRight,
+                                                        child: TextButton(
+                                                          onPressed: loading
+                                                              ? null
+                                                              : () {
+                                                                  FocusScope.of(context).unfocus();
+                                                                  final email = controller.emailController.text;
+                                                                  controller.resetPassword(email);
+                                                                },
+                                                          child: const Text('Esqueci a senha'),
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  );
+                                                },
                                               ),
                                             ],
                                           ),
@@ -343,11 +400,43 @@ class LoginPage extends GetView<LoginController> {
                                   ),
                                 ),
                                 const SizedBox(height: 12),
-                                Align(
-                                  alignment: Alignment.center,
-                                  child: TextButton(
+                                Obx(
+                                  () => controller.canUseBiometrics.value &&
+                                          controller.biometricEnabled.value
+                                      ? SizedBox(
+                                          width: double.infinity,
+                                          child: OutlinedButton.icon(
+                                            onPressed: controller.isLoading.value
+                                                ? null
+                                                : controller.biometricLogin,
+                                            icon: const Icon(Icons.fingerprint_rounded),
+                                            label: Text(
+                                              controller.hasBiometricCredentials.value
+                                                  ? 'Entrar com biometria'
+                                                  : 'Ativar biometria e salvar acesso',
+                                            ),
+                                          ),
+                                        )
+                                      : const SizedBox.shrink(),
+                                ),
+                                const SizedBox(height: 10),
+                                SizedBox(
+                                  width: double.infinity,
+                                  child: ElevatedButton.icon(
                                     onPressed: () => _showSignupSheet(context, controller),
-                                    child: const Text('Criar conta como Administrador Global'),
+                                    icon: const Icon(Icons.apartment_rounded),
+                                    label: const Text(
+                                      'Criar nova empresa/usuário',
+                                      style: TextStyle(fontWeight: FontWeight.bold),
+                                    ),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.white,
+                                      foregroundColor: Colors.black87,
+                                      padding: const EdgeInsets.symmetric(vertical: 14),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(14),
+                                      ),
+                                    ),
                                   ),
                                 ),
                               ],
@@ -398,11 +487,15 @@ Future<void> _showSignupSheet(
   final ownerCtrl = TextEditingController();
   final ownerEmailCtrl = TextEditingController();
   final ownerPhoneCtrl = TextEditingController();
+  final passwordCtrl = TextEditingController();
+  final confirmPassCtrl = TextEditingController();
   final companyCtrl = TextEditingController();
   final documentCtrl = TextEditingController();
   final notesCtrl = TextEditingController();
   int billingDay = 5;
   int step = 0;
+  bool showPass = false;
+  bool showConfirm = false;
 
   await showModalBottomSheet<void>(
     context: context,
@@ -484,6 +577,51 @@ Future<void> _showSignupSheet(
                             validator: (value) => (value == null || value.trim().isEmpty)
                                 ? 'Informe o telefone'
                                 : null,
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: passwordCtrl,
+                            obscureText: !showPass,
+                            decoration: InputDecoration(
+                              labelText: 'Defina sua senha',
+                              suffixIcon: IconButton(
+                                onPressed: () => setState(() => showPass = !showPass),
+                                icon: Icon(
+                                  showPass ? Icons.visibility_off_rounded : Icons.visibility_rounded,
+                                ),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.trim().length < 6) {
+                                return 'Mínimo de 6 caracteres';
+                              }
+                              return null;
+                            },
+                          ),
+                          const SizedBox(height: 12),
+                          TextFormField(
+                            controller: confirmPassCtrl,
+                            obscureText: !showConfirm,
+                            decoration: InputDecoration(
+                              labelText: 'Confirme a senha',
+                              suffixIcon: IconButton(
+                                onPressed: () => setState(() => showConfirm = !showConfirm),
+                                icon: Icon(
+                                  showConfirm
+                                      ? Icons.visibility_off_rounded
+                                      : Icons.visibility_rounded,
+                                ),
+                              ),
+                            ),
+                            validator: (value) {
+                              if (value == null || value.trim().isEmpty) {
+                                return 'Confirme a senha';
+                              }
+                              if (value.trim() != passwordCtrl.text.trim()) {
+                                return 'As senhas não coincidem';
+                              }
+                              return null;
+                            },
                           ),
                         ],
                       ),
@@ -569,35 +707,38 @@ Future<void> _showSignupSheet(
                                       return;
                                     }
                                     if (!companyFormKey.currentState!.validate()) return;
-                                    final tempPassword = await controller.createTenant(
+                                    final success = await controller.createTenant(
                                       companyName: companyCtrl.text.trim(),
                                       ownerName: ownerCtrl.text.trim(),
                                       ownerEmail: ownerEmailCtrl.text.trim(),
                                       ownerPhone: ownerPhoneCtrl.text.trim(),
                                       document: documentCtrl.text.trim(),
+                                      password: passwordCtrl.text.trim(),
                                       billingDay: billingDay,
                                       notes: notesCtrl.text.trim().isEmpty
                                           ? null
                                           : notesCtrl.text.trim(),
                                     );
-                                    if (tempPassword == null ||
-                                        tempPassword.isEmpty ||
-                                        !sheetCtx.mounted) {
+                                    if (!success || !sheetCtx.mounted) {
                                       return;
                                     }
                                     final ownerEmail = ownerEmailCtrl.text.trim();
-                                    await _showTempPasswordDialog(
-                                      context: sheetCtx,
-                                      email: ownerEmail,
-                                      tempPassword: tempPassword,
-                                    );
                                     if (sheetCtx.mounted) {
                                       controller.emailController.text = ownerEmail;
-                                      controller.passwordController.text = tempPassword;
-                                      controller.viewPassword.value = true;
+                                      controller.passwordController.text = passwordCtrl.text.trim();
+                                      controller.viewPassword.value = false;
                                       controller.saveUserVar.value = true;
-                                      Navigator.of(sheetCtx).pop();
+                                      await controller.ensureActivationPendingFlag(ownerEmail);
                                     }
+                                    if (!sheetCtx.mounted) return;
+                                    Get.snackbar(
+                                      'Conta criada',
+                                      'Use o código SMS para ativar no primeiro login.',
+                                      snackPosition: SnackPosition.BOTTOM,
+                                      backgroundColor: Colors.black.withValues(alpha: 0.7),
+                                      colorText: Colors.white,
+                                    );
+                                    Navigator.of(sheetCtx).pop();
                                   },
                             child: controller.isSignupLoading.value
                                 ? const SizedBox(
@@ -619,169 +760,6 @@ Future<void> _showSignupSheet(
             ),
           );
         },
-      );
-    },
-  );
-}
-
-Future<void> _showTempPasswordDialog({
-  required BuildContext context,
-  required String email,
-  required String tempPassword,
-}) async {
-  await showDialog<void>(
-    context: context,
-    barrierDismissible: false,
-    builder: (dialogCtx) {
-      final accent = dialogCtx.themeGreen;
-      final secondary = Colors.tealAccent;
-      final background = dialogCtx.themeDark;
-      final subtle = dialogCtx.themeTextSubtle;
-      final trialEndsLabel =
-          DateFormat('dd/MM').format(DateTime.now().add(const Duration(days: _signupTrialDays)));
-
-      return Dialog(
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        child: Container(
-          padding: const EdgeInsets.all(24),
-          decoration: BoxDecoration(
-            color: background,
-            borderRadius: BorderRadius.circular(28),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.65),
-                blurRadius: 40,
-                offset: const Offset(0, 24),
-              ),
-            ],
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 24),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [accent, secondary],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                  ),
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Column(
-                  children: const [
-                    Icon(Icons.lock_open_rounded, color: Colors.white, size: 48),
-                    SizedBox(height: 8),
-                    Text(
-                      'Senha temporária criada!',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 18,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 20),
-              Text(
-                'Administrador Global',
-                style: TextStyle(
-                  color: subtle,
-                  fontWeight: FontWeight.w500,
-                  fontSize: 13,
-                  letterSpacing: 0.4,
-                ),
-              ),
-              Text(
-                email,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.04),
-                  borderRadius: BorderRadius.circular(18),
-                  border: Border.all(color: Colors.white10),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Senha temporária',
-                      style: TextStyle(color: subtle, fontSize: 13),
-                    ),
-                    const SizedBox(height: 8),
-                    SelectableText(
-                      tempPassword,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 24,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 2,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Use-a apenas no primeiro login. Em seguida o app solicitará a troca definitiva.',
-                      style: TextStyle(color: subtle, fontSize: 13.5),
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      'Seu período de teste de $_signupTrialDays dias já está ativo. Você pode pagar a primeira fatura até $trialEndsLabel sem cobrança extra.',
-                      style: TextStyle(color: subtle, fontSize: 13.5),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 24),
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Clipboard.setData(ClipboardData(text: tempPassword));
-                        Get.snackbar(
-                          'Senha copiada',
-                          'Cole no campo de senha para entrar.',
-                          snackPosition: SnackPosition.BOTTOM,
-                          backgroundColor: Colors.black.withValues(alpha: 0.7),
-                          colorText: Colors.white,
-                          margin: const EdgeInsets.all(16),
-                          duration: const Duration(seconds: 2),
-                        );
-                      },
-                      icon: const Icon(Icons.copy_rounded),
-                      label: const Text('Copiar senha'),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: () => Navigator.of(dialogCtx).pop(),
-                      icon: const Icon(Icons.lock_clock_rounded),
-                      label: const Text('Ir para login'),
-                      style: ElevatedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
       );
     },
   );

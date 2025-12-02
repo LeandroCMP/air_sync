@@ -57,14 +57,10 @@ class FinanceRepositoryImpl implements FinanceRepository {
   @override
   Future<FinanceDashboardModel> dashboard({
     String? month,
-    String? costCenterId,
   }) async {
     final params = <String, dynamic>{};
     if (month != null && month.isNotEmpty) {
       params['month'] = month;
-    }
-    if (costCenterId != null && costCenterId.isNotEmpty) {
-      params['costCenterId'] = costCenterId;
     }
     final res = await _api.dio
         .get(
@@ -80,13 +76,9 @@ class FinanceRepositoryImpl implements FinanceRepository {
   }
 
   @override
-  Future<FinanceAuditModel> audit({String? costCenterId}) async {
-    final params =
-        (costCenterId != null && costCenterId.isNotEmpty)
-            ? {'costCenterId': costCenterId}
-            : null;
+  Future<FinanceAuditModel> audit() async {
     final res = await _api.dio
-        .get('/v1/finance/audit', queryParameters: params)
+        .get('/v1/finance/audit')
         .timeout(const Duration(seconds: 12));
     final data = res.data;
     if (data is Map) {
@@ -98,12 +90,8 @@ class FinanceRepositoryImpl implements FinanceRepository {
   @override
   Future<FinanceForecastModel> forecast({
     int days = 30,
-    String? costCenterId,
   }) async {
     final params = <String, dynamic>{'days': days};
-    if (costCenterId != null && costCenterId.isNotEmpty) {
-      params['costCenterId'] = costCenterId;
-    }
     final res = await _api.dio
         .get('/v1/finance/forecast', queryParameters: params)
         .timeout(const Duration(seconds: 12));
@@ -213,12 +201,8 @@ class FinanceRepositoryImpl implements FinanceRepository {
   @override
   Future<FinanceAnomalyReport> anomalies({
     required String month,
-    String? costCenterId,
   }) async {
     final params = <String, dynamic>{'month': month};
-    if (costCenterId != null && costCenterId.isNotEmpty) {
-      params['costCenterId'] = costCenterId;
-    }
     final res = await _api.dio
         .post(
           '/v1/finance/insights/anomalies',

@@ -14,8 +14,10 @@ class SuppliersPage extends GetView<SuppliersController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.themeBg,
       appBar: AppBar(
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text(
           'Fornecedores',
@@ -530,18 +532,28 @@ class _SupplierSearchField extends StatelessWidget {
         controller: controller.searchCtrl,
         onChanged: controller.onSearchChanged,
         textInputAction: TextInputAction.search,
+        style: const TextStyle(color: Colors.white),
         decoration: InputDecoration(
           labelText: 'Buscar por nome, documento ou contato',
           labelStyle: const TextStyle(color: Colors.white70),
-          prefixIcon: const Icon(Icons.search),
-          suffixIcon:
-              controller.searchTerm.value.isEmpty
-                  ? null
-                  : IconButton(
-                    tooltip: 'Limpar busca',
-                    icon: const Icon(Icons.clear),
-                    onPressed: controller.clearSearch,
-                  ),
+          prefixIcon: const Icon(Icons.search, color: Colors.white70),
+          suffixIcon: controller.searchTerm.value.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: 'Limpar busca',
+                  icon: const Icon(Icons.clear, color: Colors.white70),
+                  onPressed: controller.clearSearch,
+                ),
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.08),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(14),
+            borderSide: BorderSide(color: context.themeGreen),
+          ),
         ),
       ),
     );

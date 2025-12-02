@@ -13,9 +13,8 @@ class InventoryServiceImpl implements InventoryService {
   @override
   Future<InventoryItemModel> registerItem({
     required String name,
-    required String sku,
+    String? sku,
     required double minQty,
-    String? barcode,
     String? unit,
     double? maxQty,
     String? supplierId,
@@ -28,7 +27,6 @@ class InventoryServiceImpl implements InventoryService {
     name: name,
     sku: sku,
     minQty: minQty,
-    barcode: barcode,
     unit: unit,
     maxQty: maxQty,
     supplierId: supplierId,

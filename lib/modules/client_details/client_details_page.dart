@@ -21,8 +21,10 @@ class ClientDetailsPage extends GetView<ClientDetailsController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.themeBg,
       appBar: AppBar(
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Obx(() {
           final client = controller.client.value;
@@ -185,7 +187,6 @@ List<_DetailSummaryInfo> _buildDetailSummaryEntries(
     0,
     (sum, list) => sum + list.length,
   );
-  final tags = client.tags.length;
 
   return [
     _DetailSummaryInfo(
@@ -205,12 +206,6 @@ List<_DetailSummaryInfo> _buildDetailSummaryEntries(
       value: equipments.toString(),
       color: Colors.orangeAccent,
       icon: Icons.build_outlined,
-    ),
-    _DetailSummaryInfo(
-      label: 'Etiquetas',
-      value: tags.toString(),
-      color: Colors.purpleAccent,
-      icon: Icons.sell_outlined,
     ),
   ];
 }
@@ -233,17 +228,6 @@ List<Widget> _buildDetailSections(
       ),
     ),
   ];
-
-  if (client.tags.isNotEmpty) {
-    sections.add(
-      SliverToBoxAdapter(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-          child: _TagsSection(tags: client.tags),
-        ),
-      ),
-    );
-  }
 
   final notes = (client.notes ?? '').trim();
   if (notes.isNotEmpty) {
@@ -1572,24 +1556,6 @@ Future<void> _showEquipmentHistorySheet(
   );
 }
 
-class _TagsSection extends StatelessWidget {
-  const _TagsSection({required this.tags});
-
-  final List<String> tags;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: context.themeGray,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      padding: const EdgeInsets.all(20),
-      child: _ChipGroup(title: 'Etiquetas', values: tags),
-    );
-  }
-}
-
 class _NotesSection extends StatelessWidget {
   const _NotesSection({required this.notes});
 
@@ -1632,7 +1598,6 @@ class _MetaSection extends StatelessWidget {
     final format = DateFormat('dd/MM/yyyy HH:mm');
     final createdAt = client.createdAt;
     final updatedAt = client.updatedAt;
-    final npsValue = client.nps;
     return Container(
       decoration: BoxDecoration(
         color: context.themeGray,
@@ -1664,10 +1629,6 @@ class _MetaSection extends StatelessWidget {
                 updatedAt != null
                     ? format.format(updatedAt.toLocal())
                     : '-',
-          ),
-          _InfoRow(
-            title: 'NPS',
-            value: npsValue != null ? npsValue.toStringAsFixed(1) : '-',
           ),
         ],
       ),

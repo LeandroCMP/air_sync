@@ -2,7 +2,6 @@ import 'package:air_sync/application/ui/input_formatters.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/models/collaborator_models.dart';
-import 'package:air_sync/models/cost_center_model.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
@@ -60,8 +59,6 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                             ),
                             const SizedBox(height: 12),
                             _TechnicianSelector(controller: controller),
-                            const SizedBox(height: 12),
-                            _CostCenterSelector(controller: controller),
                             const SizedBox(height: 12),
                             TextFormField(
                               controller: controller.notesCtrl,
@@ -649,78 +646,6 @@ class _TechnicianSelector extends StatelessWidget {
                       .toList(),
             ),
           ],
-        ],
-      );
-    });
-  }
-}
-
-class _CostCenterSelector extends StatelessWidget {
-  const _CostCenterSelector({required this.controller});
-
-  final OrderCreateController controller;
-
-  @override
-  Widget build(BuildContext context) {
-    return Obx(() {
-      final loading = controller.costCentersLoading.value;
-      final options = controller.costCenters.toList(growable: false);
-      final selectedId = controller.selectedCostCenterId.value;
-      CostCenterModel? selected;
-      for (final center in options) {
-        if (center.id == selectedId) {
-          selected = center;
-          break;
-        }
-      }
-
-      final helper =
-          loading
-              ? 'Carregando centros de custo...'
-              : options.isEmpty
-              ? 'Nenhum centro de custo ativo encontrado.'
-              : 'Opcional. Use para classificar o custo desta OS.';
-      final enabled = !loading && options.isNotEmpty;
-
-      return Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          _SelectorTile(
-            label: 'Centro de custo',
-            value: selected?.name,
-            placeholder:
-                loading ? 'Carregando...' : 'Selecionar centro de custo',
-            helperText: helper,
-            enabled: enabled,
-            onTap:
-                !enabled
-                    ? null
-                    : () async {
-                      final picked =
-                          await _SinglePickerModal.show<CostCenterModel>(
-                            context: context,
-                            title: 'Selecionar centro de custo',
-                            items: options,
-                            initialId: selectedId,
-                            id: (center) => center.id,
-                            titleBuilder: (center) => center.name,
-                            subtitleBuilder:
-                                (center) => (center.code ?? '').trim().isEmpty
-                                    ? center.id
-                                    : center.code!,
-                          );
-                      if (picked != null) {
-                        controller.setCostCenter(picked.id);
-                      }
-                    },
-            onClear:
-                selectedId == null ? null : () => controller.setCostCenter(null),
-          ),
-          if (loading)
-            const Padding(
-              padding: EdgeInsets.only(top: 8),
-              child: LinearProgressIndicator(minHeight: 2),
-            ),
         ],
       );
     });

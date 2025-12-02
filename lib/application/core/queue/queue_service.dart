@@ -66,76 +66,66 @@ class QueueService extends GetxService {
     final orders =
         Get.isRegistered<OrdersService>() ? Get.find<OrdersService>() : null;
     if (orders == null) return;
+
+    List<OrderMaterialInput> parseMaterials(List<dynamic> raw) {
+      return raw.whereType<Map>().map((e) {
+        String? normalize(dynamic value) {
+          if (value == null) return null;
+          final text = value is String ? value : value.toString();
+          final trimmed = text.trim();
+          return trimmed.isEmpty ? null : trimmed;
+        }
+
+        final normalizedName = normalize(e['itemName'] ?? e['name']);
+        final normalizedDescription = normalize(e['description']) ?? normalizedName;
+        final rawPrice = e['unitPrice'];
+        final parsedPrice =
+            rawPrice is num ? rawPrice.toDouble() : double.tryParse('$rawPrice');
+        final rawCost = e['unitCost'];
+        final parsedCost =
+            rawCost is num ? rawCost.toDouble() : double.tryParse('$rawCost');
+        return OrderMaterialInput(
+          itemId: (e['itemId'] ?? '').toString(),
+          qty: (e['qty'] ?? 0) as num,
+          itemName: normalizedName,
+          description: normalizedDescription,
+          unitPrice: parsedPrice,
+          unitCost: parsedCost,
+        );
+      }).toList();
+    }
+
     final toRemove = <QueueAction>[];
-    for (final action in pending) {
+    final snapshot = List<QueueAction>.from(pending);
+
+    for (final action in snapshot) {
       try {
         if (action.type == 'order.finish') {
           final id = action.data['orderId'] as String;
-          final materialsRaw = (action.data['materials'] as List?) ?? [];
-          final materials =
-              materialsRaw.whereType<Map>().map((e) {
-                String? normalize(dynamic value) {
-                  if (value == null) return null;
-                  final text = value is String ? value : value.toString();
-                  final trimmed = text.trim();
-                  return trimmed.isEmpty ? null : trimmed;
-                }
-
-                final normalizedName = normalize(e['itemName'] ?? e['name']);
-                final normalizedDescription =
-                    normalize(e['description']) ?? normalizedName;
-                final rawPrice = e['unitPrice'];
-                final parsedPrice =
-                    rawPrice is num
-                        ? rawPrice.toDouble()
-                        : double.tryParse('$rawPrice');
-                final rawCost = e['unitCost'];
-                final parsedCost =
-                    rawCost is num
-                        ? rawCost.toDouble()
-                        : double.tryParse('$rawCost');
-                return OrderMaterialInput(
-                  itemId: (e['itemId'] ?? '').toString(),
-                  qty: (e['qty'] ?? 0) as num,
-                  itemName: normalizedName,
-                  description: normalizedDescription,
-                  unitPrice: parsedPrice,
-                  unitCost: parsedCost,
-                );
-              }).toList();
+          final materials = parseMaterials((action.data['materials'] as List?) ?? []);
           final billingRaw = (action.data['billingItems'] as List?) ?? [];
-          final billingItems =
-              billingRaw
-                  .whereType<Map>()
-                  .map(
-                    (e) => OrderBillingItemInput(
-                      type: (e['type'] ?? 'service').toString(),
-                      name: (e['name'] ?? '').toString(),
-                      qty: (e['qty'] ?? 0) as num,
-                      unitPrice: (e['unitPrice'] ?? 0) as num,
-                    ),
-                  )
-                  .toList();
+          final billingItems = billingRaw.whereType<Map>().map(
+                (e) => OrderBillingItemInput(
+                  type: (e['type'] ?? 'service').toString(),
+                  name: (e['name'] ?? '').toString(),
+                  qty: (e['qty'] ?? 0) as num,
+                  unitPrice: (e['unitPrice'] ?? 0) as num,
+                ),
+              ).toList();
           final discount = (action.data['discount'] ?? 0) as num;
           final signatureValue = action.data['signatureBase64'] as String?;
           final notes = action.data['notes'] as String?;
           final paymentsRaw = (action.data['payments'] as List?) ?? [];
-          var payments =
-              paymentsRaw
-                  .whereType<Map>()
-                  .map(
-                    (e) => OrderPaymentInput(
-                      method: (e['method'] ?? 'PIX').toString(),
-                      amount: ((e['amount'] ?? 0) as num).toDouble(),
-                      installments:
-                          e['installments'] is num
-                              ? (e['installments'] as num).toInt()
-                              : null,
-                    ),
-                  )
-                  .toList();
-          final billingTotal =
-              billingItems.fold<double>(
+          var payments = paymentsRaw.whereType<Map>().map(
+                (e) => OrderPaymentInput(
+                  method: (e['method'] ?? 'PIX').toString(),
+                  amount: ((e['amount'] ?? 0) as num).toDouble(),
+                  installments: e['installments'] is num
+                      ? (e['installments'] as num).toInt()
+                      : null,
+                ),
+              ).toList();
+          final billingTotal = billingItems.fold<double>(
                 0,
                 (sum, item) =>
                     sum + (item.qty.toDouble() * item.unitPrice.toDouble()),
@@ -145,31 +135,74 @@ class QueueService extends GetxService {
           if (payments.isEmpty) {
             payments = [OrderPaymentInput(method: 'PIX', amount: totalDue)];
           }
-          await orders.finish(
-            orderId: id,
-            billingItems: billingItems,
-            discount: discount,
-            signatureBase64:
-                (signatureValue == null || signatureValue.isEmpty)
-                    ? null
-                    : signatureValue,
-            notes: notes,
-            payments: payments,
-          );
-          if (materials.isNotEmpty) {
-            await orders.deductMaterials(id, materials);
+
+          var finishOk = false;
+          try {
+            await orders.finish(
+              orderId: id,
+              billingItems: billingItems,
+              discount: discount,
+              signatureBase64:
+                  (signatureValue == null || signatureValue.isEmpty)
+                      ? null
+                      : signatureValue,
+              notes: notes,
+              payments: payments,
+            );
+            finishOk = true;
+          } catch (_) {
+            // mant?m na fila
           }
-          toRemove.add(action);
+
+          var deductOk = true;
+          if (finishOk && materials.isNotEmpty) {
+            try {
+              await orders.deductMaterials(id, materials);
+            } catch (_) {
+              deductOk = false;
+            }
+          }
+
+          if (finishOk) {
+            toRemove.add(action);
+            if (!deductOk) {
+              pending.add(
+                QueueAction(
+                  type: 'order.deduct',
+                  data: {
+                    'orderId': id,
+                    'materials':
+                        materials.map((e) => e.toJson(includeMetadata: true)).toList(),
+                  },
+                ),
+              );
+            }
+          }
+        } else if (action.type == 'order.deduct') {
+          final id = action.data['orderId'] as String;
+          final materials = parseMaterials((action.data['materials'] as List?) ?? []);
+          if (materials.isEmpty) {
+            toRemove.add(action);
+            continue;
+          }
+          try {
+            await orders.deductMaterials(id, materials);
+            toRemove.add(action);
+          } catch (_) {
+            // mant?m na fila se falhou
+          }
         }
       } catch (_) {
-        // mant??m na fila se falhou
+        // mant?m na fila se falhou
       }
     }
+
     if (toRemove.isNotEmpty) {
       pending.removeWhere((a) => toRemove.contains(a));
-      await _save();
     }
+    await _save();
   }
+
 
   Future<void> _save() async {
     final prefs = await SharedPreferences.getInstance();

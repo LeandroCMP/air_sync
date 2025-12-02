@@ -1,4 +1,5 @@
-﻿import 'package:air_sync/application/ui/loader/loader_mixin.dart';
+import 'dart:async';
+import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/fleet_vehicle_model.dart';
 import 'package:air_sync/services/fleet/fleet_service.dart';
@@ -19,6 +20,8 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
   final order = 'desc'.obs; // asc | desc
   final statusFilter = 'all'.obs; // all | recent | legacy | usage | model
   final insightsLoading = false.obs;
+  Timer? _searchDebounce;
+  Completer<void>? _searchCompleter;
 
   @override
   Future<void> onInit() async {
@@ -41,8 +44,16 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
   Future<void> setSearch(String v) async {
     final normalized = v.trim().toUpperCase();
     if (search.value == normalized) return;
-    search.value = normalized;
-    await load();
+    _searchDebounce?.cancel();
+    _searchCompleter?.complete();
+    final completer = Completer<void>();
+    _searchCompleter = completer;
+    _searchDebounce = Timer(const Duration(milliseconds: 400), () async {
+      search.value = normalized;
+      await load();
+      if (!completer.isCompleted) completer.complete();
+    });
+    return completer.future;
   }
 
   void clearSearch() {
@@ -251,6 +262,8 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
   @override
   void onClose() {
     searchController.dispose();
+    _searchDebounce?.cancel();
+    _searchCompleter?.complete();
     super.onClose();
   }
 }

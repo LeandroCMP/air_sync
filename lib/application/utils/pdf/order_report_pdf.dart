@@ -220,7 +220,6 @@ Future<Uint8List> buildOrderReportPdf({
         ['Documento', safe(client.docNumber)],
         ['Emails', client.emails.isEmpty ? '-' : client.emails.join(', ')],
         ['Telefones', client.phones.isEmpty ? '-' : client.phones.join(', ')],
-        if (client.tags.isNotEmpty) ['Tags', client.tags.join(', ')],
         if ((client.notes ?? '').trim().isNotEmpty)
           ['Notas', client.notes!.trim()],
         [

@@ -59,7 +59,26 @@ class ApiClient {
                 req.headers['Authorization'] = 'Bearer ${_tokens.accessToken}';
                 req.extra['__ret'] = true;
                 try {
-                  final response = await _dio.fetch(req);
+                  final response = await _dio.request<dynamic>(
+                    req.path,
+                    data: req.data,
+                    queryParameters: req.queryParameters,
+                    options: Options(
+                      method: req.method,
+                      headers: req.headers,
+                      contentType: req.contentType,
+                      responseType: req.responseType,
+                      followRedirects: req.followRedirects,
+                      validateStatus: req.validateStatus,
+                      receiveDataWhenStatusError: req.receiveDataWhenStatusError,
+                      sendTimeout: req.sendTimeout,
+                      receiveTimeout: req.receiveTimeout,
+                      extra: req.extra,
+                    ),
+                    cancelToken: req.cancelToken,
+                    onReceiveProgress: req.onReceiveProgress,
+                    onSendProgress: req.onSendProgress,
+                  );
                   return handler.resolve(response);
                 } catch (err) {
                   // fallthrough

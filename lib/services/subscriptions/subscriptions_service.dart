@@ -39,5 +39,7 @@ abstract class SubscriptionsService {
     DateTime? newDueDate,
   });
 
+  Future<List<SubscriptionInvoiceModel>> createCarnet({bool payUpfront = false});
+
   Future<void> runBillingNow();
 }

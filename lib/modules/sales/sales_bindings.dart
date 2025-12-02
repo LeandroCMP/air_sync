@@ -1,6 +1,5 @@
 import 'package:air_sync/modules/sales/sales_controller.dart';
 import 'package:air_sync/services/client/client_service.dart';
-import 'package:air_sync/services/cost_centers/cost_centers_service.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
 import 'package:air_sync/services/locations/locations_service_impl.dart';
@@ -19,7 +18,6 @@ class SalesBindings implements Bindings {
     Get.lazyPut<SalesController>(
       () => SalesController(
         service: Get.find<SalesService>(),
-        costCentersService: Get.find<CostCentersService>(),
         clientService: Get.find<ClientService>(),
         inventoryService: Get.find<InventoryService>(),
         locationsService: Get.find<LocationsService>(),

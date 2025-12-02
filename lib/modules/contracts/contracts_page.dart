@@ -15,13 +15,15 @@ class ContractsPage extends GetView<ContractsController> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: context.themeBg,
       appBar: AppBar(
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Contratos', style: TextStyle(color: Colors.white)),
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: context.themePrimary,
+        backgroundColor: context.themeGreen,
         onPressed: () => _openCreateDialog(context),
         child: const Icon(Icons.add, color: Colors.white),
       ),

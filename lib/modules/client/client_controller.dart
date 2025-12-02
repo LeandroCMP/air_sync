@@ -35,13 +35,9 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   final notesController = TextEditingController();
   final phoneInputController = TextEditingController();
   final emailInputController = TextEditingController();
-  final tagInputController = TextEditingController();
-  final npsController = TextEditingController();
 
   final phones = <String>[].obs;
   final emails = <String>[].obs;
-  final tags = <String>[].obs;
-  final Rxn<double> npsValue = Rxn<double>();
   final Rxn<ClientModel> editingClient = Rxn<ClientModel>();
   final deletingIds = <String>{}.obs;
 
@@ -87,8 +83,6 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     notesController.dispose();
     phoneInputController.dispose();
     emailInputController.dispose();
-    tagInputController.dispose();
-    npsController.dispose();
     super.onClose();
   }
 
@@ -190,12 +184,8 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     nameController.text = client.name.toUpperCase();
     docController.text = client.docNumber ?? '';
     notesController.text = client.notes ?? '';
-    npsController.text = client.nps?.toString() ?? '';
     phones.assignAll(client.phones);
     emails.assignAll(client.emails);
-    tags.assignAll(
-      client.tags.map((tag) => tag.toUpperCase()).toList(growable: false),
-    );
   }
 
   void cancelForm() {
@@ -233,18 +223,6 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     formKey.currentState?.validate();
   }
 
-  void addTag([String? value]) {
-    final input = (value ?? tagInputController.text).trim();
-    if (input.isEmpty) return;
-    final normalized = input.toUpperCase();
-    if (!tags.contains(normalized)) {
-      tags.add(normalized);
-    }
-    tagInputController.clear();
-  }
-
-  void removeTag(String value) => tags.remove(value);
-
   String? validatePhone(String? value) {
     final text = (value ?? '').trim();
     if (text.isEmpty) return null;
@@ -265,23 +243,11 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     return null;
   }
 
-  String? validateNps(String? value) {
-    final text = (value ?? '').trim();
-    if (text.isEmpty) return null;
-    final normalized = text.replaceAll(',', '.');
-    final parsed = double.tryParse(normalized);
-    if (parsed == null || parsed < 0 || parsed > 10) {
-      return 'Informe um valor entre 0 e 10';
-    }
-    return null;
-  }
-
   Future<bool> saveClient() async {
     final form = formKey.currentState;
     if (form == null) return false;
     if (!form.validate()) return false;
 
-    _updateNpsFromController();
     final draft = _buildClientFromForm();
 
     isLoading(true);
@@ -369,27 +335,14 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     final notes = notesController.text.trim();
     final doc = docController.text.trim();
     final name = _upperRequired(nameController.text);
-    final tagList = _upperList(tags);
     return ClientModel(
       id: editingClient.value?.id ?? '',
       name: name,
       docNumber: doc.isEmpty ? null : doc,
       phones: phones.toList(growable: false),
       emails: emails.toList(growable: false),
-      tags: tagList,
       notes: notes.isEmpty ? null : notes,
-      nps: npsValue.value,
     );
-  }
-
-  void _updateNpsFromController() {
-    final raw = npsController.text.trim();
-    if (raw.isEmpty) {
-      npsValue.value = null;
-      return;
-    }
-    final parsed = double.tryParse(raw.replaceAll(',', '.'));
-    npsValue.value = parsed;
   }
 
   void _resetForm() {
@@ -399,19 +352,10 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
     notesController.clear();
     phoneInputController.clear();
     emailInputController.clear();
-    tagInputController.clear();
-    npsController.clear();
     phones.clear();
     emails.clear();
-    tags.clear();
-    npsValue.value = null;
   }
 
   String _upperRequired(String value) => value.trim().toUpperCase();
 
-  List<String> _upperList(Iterable<String> values) =>
-      values
-          .map((value) => value.trim().toUpperCase())
-          .where((value) => value.isNotEmpty)
-          .toList(growable: false);
 }

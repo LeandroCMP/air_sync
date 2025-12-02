@@ -22,9 +22,11 @@ class FinanceReconciliationPage extends StatelessWidget {
         final scope = controller.scope.value;
 
         return Scaffold(
+          backgroundColor: context.themeBg,
           appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
             title: const Text('Reconciliação'),
-            backgroundColor: context.themeSurface,
           ),
           body: RefreshIndicator(
             color: context.themePrimary,

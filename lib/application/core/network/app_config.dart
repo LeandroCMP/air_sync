@@ -9,8 +9,7 @@ class AppConfig {
   String _tenantId = '';
   String _stripePublishableKey = const String.fromEnvironment(
     'STRIPE_PUBLISHABLE_KEY',
-    defaultValue:
-        'pk_test_51SV1zVJm3CNX7D18gGlAtEYKq35SFFVvd6JIr2QtwyoqY5G13dLkngi4eD2Z5Jrvl8ahpcu64Y0otP29Z4SeUBPU00b7nwD8cu',
+    defaultValue: '',
   );
 
   String get baseUrl => _baseUrl;

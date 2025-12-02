@@ -1,6 +1,8 @@
 ﻿import 'package:air_sync/application/auth/auth_service_application.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
 import 'package:air_sync/application/ui/widgets/ai_loading_overlay.dart';
+import 'dart:ui';
+
 import 'package:air_sync/application/utils/formatters/license_plate_input_formatter.dart';
 import 'package:air_sync/application/utils/formatters/money_formatter.dart';
 import 'package:air_sync/application/utils/formatters/upper_case_input_formatter.dart';
@@ -21,8 +23,10 @@ class FleetPage extends GetView<FleetController> {
   Widget build(BuildContext context) {
     final auth = Get.find<AuthServiceApplication>();
     return Scaffold(
+      extendBodyBehindAppBar: true,
       appBar: AppBar(
-        backgroundColor: context.themeDark,
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
         title: const Text('Frota', style: TextStyle(color: Colors.white)),
         actions: [
@@ -48,10 +52,13 @@ class FleetPage extends GetView<FleetController> {
           }),
         ],
       ),
-      floatingActionButton: FloatingActionButton(
+      floatingActionButton: FloatingActionButton.extended(
         backgroundColor: context.themeGreen,
+        foregroundColor: Colors.white,
+        elevation: 6,
         onPressed: () => _openVehicleForm(context),
-        child: const Icon(Icons.add, color: Colors.white),
+        icon: const Icon(Icons.add),
+        label: const Text('Adicionar veículo'),
       ),
       body: SafeArea(
         child: Obx(() {
@@ -100,6 +107,16 @@ class FleetPage extends GetView<FleetController> {
                               entries: summaryEntries,
                               selectedKey: filter,
                               onSelect: controller.setStatusFilter,
+                            ),
+                          ),
+                        ),
+                      if (summaryEntries.isNotEmpty)
+                        const SliverToBoxAdapter(
+                          child: Padding(
+                            padding: EdgeInsets.fromLTRB(16, 0, 16, 12),
+                            child: Text(
+                              'Filtros rápidos: Recentes (≤5 anos), Legado (>8 anos), Alto uso (≥100k km) e Modelo preenchido.',
+                              style: TextStyle(color: Colors.white60, fontSize: 12),
                             ),
                           ),
                         ),
@@ -265,168 +282,102 @@ class FleetPage extends GetView<FleetController> {
     );
   }
 
-  void _openCheckDialog(BuildContext context, FleetVehicleModel vehicle) {
-    final odoCtrl = TextEditingController(text: vehicle.odometer.toString());
-    final notesCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    final fuelLevel = 50.obs;
+void _openCheckDialog(BuildContext context, FleetVehicleModel vehicle) {
+  final odoCtrl = TextEditingController(text: vehicle.odometer.toString());
+  final notesCtrl = TextEditingController();
+  final formKey = GlobalKey<FormState>();
+  final fuelLevel = 50.obs;
 
-    showModalBottomSheet(
-      useRootNavigator: true,
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder:
-          (sheetCtx) => Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 30,
-              top: 30,
+  showModalBottomSheet(
+    useRootNavigator: true,
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetCtx) => _FleetModalShell(
+      title: 'Registrar check',
+      child: Form(
+        key: formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            TextFormField(
+              controller: odoCtrl,
+              keyboardType: TextInputType.number,
+              inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+              validator: (v) => FormValidators.validateNumber(
+                v,
+                fieldName: 'Odômetro',
+                positive: true,
+              ),
+              decoration: const InputDecoration(labelText: 'Odômetro'),
             ),
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+            const SizedBox(height: 10),
+            Obx(
+              () => Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  const Text(
-                    'Registrar check',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
+                  Text(
+                    'Nível de combustível',
+                    style: TextStyle(color: Colors.white.withValues(alpha: 0.8)),
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: odoCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator:
-                        (v) => FormValidators.validateNumber(
-                          v,
-                          fieldName: 'Odômetro',
-                          positive: true,
-                        ),
+                  Text(
+                    '${fuelLevel.value}%',
                     style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Odômetro',
-                      labelStyle: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Obx(
-                    () => Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text(
-                          'Nível de combustível',
-                          style: TextStyle(color: Colors.white70),
-                        ),
-                        Text(
-                          '${fuelLevel.value}%',
-                          style: const TextStyle(color: Colors.white),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Obx(
-                    () => Slider(
-                      value: fuelLevel.value.toDouble(),
-                      min: 0,
-                      max: 100,
-                      divisions: 100,
-                      label: '${fuelLevel.value}%',
-                      onChanged: (value) => fuelLevel.value = value.round(),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  TextFormField(
-                    controller: notesCtrl,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Observações (opcional)',
-                      labelStyle: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 45,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: context.themeGreen,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(25),
-                              ),
-                            ),
-                            onPressed: () async {
-                              if (!formKey.currentState!.validate()) return;
-                              final odo =
-                                  int.tryParse(odoCtrl.text.trim()) ?? 0;
-                              if (odo < vehicle.odometer) {
-                                Get.snackbar(
-                                  'Frota',
-                                  'Odômetro não pode regredir',
-                                );
-                                return;
-                              }
-                              await controller.doCheck(
-                                vehicle,
-                                odometer: odo,
-                                fuelLevel: fuelLevel.value,
-                                notes:
-                                    notesCtrl.text.trim().isEmpty
-                                        ? null
-                                        : notesCtrl.text.trim(),
-                              );
-                              if (sheetCtx.mounted) {
-                                Navigator.of(
-                                  sheetCtx,
-                                  rootNavigator: true,
-                                ).pop();
-                              }
-                            },
-                            child: Text(
-                              'Salvar',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: context.themeGray,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        height: 45,
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.redAccent),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                          ),
-                          onPressed: () => Navigator.of(sheetCtx).pop(),
-                          child: const Text(
-                            'Cancelar',
-                            style: TextStyle(color: Colors.redAccent),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
             ),
-          ),
-    );
-  }
+            Obx(
+              () => Slider(
+                value: fuelLevel.value.toDouble(),
+                min: 0,
+                max: 100,
+                divisions: 100,
+                label: '${fuelLevel.value}%',
+                onChanged: (value) => fuelLevel.value = value.round(),
+              ),
+            ),
+            const SizedBox(height: 4),
+            TextFormField(
+              controller: notesCtrl,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Observações (opcional)',
+              ),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: () async {
+                  if (!formKey.currentState!.validate()) return;
+                  final odo = int.tryParse(odoCtrl.text.trim()) ?? 0;
+                  if (odo < vehicle.odometer) {
+                    Get.snackbar('Frota', 'Odômetro não pode regredir');
+                    return;
+                  }
+                  await controller.doCheck(
+                    vehicle,
+                    odometer: odo,
+                    fuelLevel: fuelLevel.value,
+                    notes: notesCtrl.text.trim().isEmpty
+                        ? null
+                        : notesCtrl.text.trim(),
+                  );
+                  if (sheetCtx.mounted) {
+                    Navigator.of(sheetCtx, rootNavigator: true).pop();
+                  }
+                },
+                icon: const Icon(Icons.fact_check_outlined),
+                label: const Text('Salvar'),
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
 
   void _openFuelDialog(BuildContext context, FleetVehicleModel vehicle) {
     final odoCtrl = TextEditingController(text: vehicle.odometer.toString());
@@ -440,251 +391,178 @@ class FleetPage extends GetView<FleetController> {
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder:
-          (sheetCtx) => Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 30,
-              top: 30,
-            ),
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => _FleetModalShell(
+        title: 'Registrar abastecimento',
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Row(
                 children: [
-                  const Text(
-                    'Registrar abastecimento',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: litersCtrl,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(
-                              RegExp(r'[0-9.,]'),
-                            ),
-                          ],
-                          validator:
-                              (value) => FormValidators.validateNumber(
-                                value,
-                                fieldName: 'Litros',
-                                positive: true,
-                              ),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Litros',
-                            labelStyle: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: priceCtrl,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                          inputFormatters: const [MoneyInputFormatter()],
-                          validator: (value) {
-                            final parsed = parseCurrencyPtBr(value);
-                            if (parsed == null || parsed <= 0) {
-                              return 'Informe um valor válido';
-                            }
-                            return null;
-                          },
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Valor total',
-                            labelStyle: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 10),
-                  Obx(
-                    () => DropdownButtonFormField<String>(
-                      value: fuelType.value,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Tipo de combustível',
-                        labelStyle: TextStyle(color: Colors.white),
-                      ),
-                      dropdownColor: sheetCtx.themeDark,
-                      items: [
-                        DropdownMenuItem(
-                          value: 'gasoline',
-                          child: Text('Gasolina'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'ethanol',
-                          child: Text('Etanol'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'diesel',
-                          child: Text('Diesel'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'gnv',
-                          child: Text('GNV'),
-                        ),
-                        DropdownMenuItem(
-                          value: 'electric',
-                          child: Text('Elétrico'),
+                  Expanded(
+                    child: TextFormField(
+                      controller: litersCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(
+                          RegExp(r'[0-9.,]'),
                         ),
                       ],
-                      onChanged:
-                          (value) => fuelType.value = value ?? 'gasoline',
-                      validator:
-                          (value) =>
-                              (value == null || value.isEmpty)
-                                  ? 'Selecione o tipo de combustível'
-                                  : null,
+                      validator: (value) => FormValidators.validateNumber(
+                        value,
+                        fieldName: 'Litros',
+                        positive: true,
+                      ),
+                      decoration: const InputDecoration(labelText: 'Litros'),
                     ),
                   ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: odoCtrl,
-                    keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                    validator:
-                        (value) => FormValidators.validateNumber(
-                          value,
-                          fieldName: 'Odômetro',
-                          positive: true,
-                        ),
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Odômetro',
-                      labelStyle: TextStyle(color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: priceCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: const [MoneyInputFormatter()],
+                      validator: (value) {
+                        final parsed = parseCurrencyPtBr(value);
+                        if (parsed == null || parsed <= 0) {
+                          return 'Informe um valor válido';
+                        }
+                        return null;
+                      },
+                      decoration: const InputDecoration(labelText: 'Valor total'),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Obx(
-                          () => SizedBox(
-                            height: 45,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: sheetCtx.themeGreen,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(25),
-                                ),
-                              ),
-                              onPressed:
-                                  isSaving.value
-                                      ? null
-                                      : () async {
-                                        if (!formKey.currentState!.validate()) {
-                                          return;
-                                        }
-                                        final liters =
-                                            double.tryParse(
-                                              litersCtrl.text.trim().replaceAll(
-                                                ',',
-                                                '.',
-                                              ),
-                                            ) ??
-                                            0;
-                                        final price =
-                                            parseCurrencyPtBr(priceCtrl.text) ??
-                                            0;
-                                        final odo =
-                                            int.tryParse(odoCtrl.text.trim()) ??
-                                            0;
-                                        if (liters <= 0 || price <= 0) return;
-                                        if (odo < vehicle.odometer) {
-                                          Get.snackbar(
-                                            'Frota',
-                                            'Odômetro não pode regredir',
-                                          );
-                                          return;
-                                        }
-                                        isSaving.value = true;
-                                        try {
-                                          await controller.doFuel(
-                                            vehicle,
-                                            liters: liters,
-                                            price: price,
-                                            fuelType: fuelType.value,
-                                            odometer: odo,
-                                          );
-                                          if (sheetCtx.mounted) {
-                                            Navigator.of(
-                                              sheetCtx,
-                                              rootNavigator: true,
-                                            ).pop();
-                                          }
-                                        } finally {
-                                          isSaving.value = false;
-                                        }
-                                      },
-                              child:
-                                  isSaving.value
-                                      ? SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                Colors.white,
-                                              ),
-                                        ),
-                                      )
-                                      : Text(
-                                        'Salvar',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: sheetCtx.themeGray,
-                                        ),
-                                      ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        height: 45,
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.redAccent),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                          ),
-                          onPressed: () => Navigator.of(sheetCtx).pop(),
-                          child: const Text(
-                            'Cancelar',
-                            style: TextStyle(color: Colors.redAccent),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 12),
+              Obx(
+                () => DropdownButtonFormField<String>(
+                  value: fuelType.value,
+                  isExpanded: true,
+                  decoration: const InputDecoration(
+                    labelText: 'Tipo de combustível',
+                  ),
+                  dropdownColor: sheetCtx.themeSurface,
+                  items: const [
+                    DropdownMenuItem(
+                      value: 'gasoline',
+                      child: Text('Gasolina'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'ethanol',
+                      child: Text('Etanol'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'diesel',
+                      child: Text('Diesel'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'gnv',
+                      child: Text('GNV'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'electric',
+                      child: Text('Elétrico'),
+                    ),
+                  ],
+                  onChanged: (value) => fuelType.value = value ?? 'gasoline',
+                  validator: (value) =>
+                      (value == null || value.isEmpty)
+                          ? 'Selecione o tipo de combustível'
+                          : null,
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: odoCtrl,
+                keyboardType: TextInputType.number,
+                inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                validator: (value) => FormValidators.validateNumber(
+                  value,
+                  fieldName: 'Odômetro',
+                  positive: true,
+                ),
+                decoration: const InputDecoration(labelText: 'Odômetro'),
+              ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Obx(
+                      () => ElevatedButton.icon(
+                        onPressed: isSaving.value
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
+                                final liters =
+                                    double.tryParse(
+                                      litersCtrl.text.trim().replaceAll(',', '.'),
+                                    ) ??
+                                    0;
+                                final price =
+                                    parseCurrencyPtBr(priceCtrl.text) ?? 0;
+                                final odo =
+                                    int.tryParse(odoCtrl.text.trim()) ?? 0;
+                                if (liters <= 0 || price <= 0) return;
+                                if (odo < vehicle.odometer) {
+                                  Get.snackbar(
+                                    'Frota',
+                                    'Odômetro não pode regredir',
+                                  );
+                                  return;
+                                }
+                                isSaving.value = true;
+                                try {
+                                  await controller.doFuel(
+                                    vehicle,
+                                    liters: liters,
+                                    price: price,
+                                    fuelType: fuelType.value,
+                                    odometer: odo,
+                                  );
+                                  if (sheetCtx.mounted) {
+                                    Navigator.of(
+                                      sheetCtx,
+                                      rootNavigator: true,
+                                    ).pop();
+                                  }
+                                } finally {
+                                  isSaving.value = false;
+                                }
+                              },
+                        icon:
+                            isSaving.value
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(Icons.local_gas_station_outlined),
+                        label: Text(isSaving.value ? 'Salvando...' : 'Salvar'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.of(sheetCtx, rootNavigator: true).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                ],
+              ),
+            ],
           ),
+        ),
+      ),
     ).whenComplete(() {
       odoCtrl.dispose();
       litersCtrl.dispose();
@@ -703,199 +581,135 @@ class FleetPage extends GetView<FleetController> {
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder:
-          (sheetCtx) => Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 30,
-              top: 30,
-            ),
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) => _FleetModalShell(
+        title: 'Registrar manutenção',
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: descCtrl,
+                validator: (value) => FormValidators.validateNotEmpty(
+                  value,
+                  fieldName: 'Descrição',
+                ),
+                decoration: const InputDecoration(labelText: 'Descrição'),
+              ),
+              const SizedBox(height: 12),
+              Row(
                 children: [
-                  const Text(
-                    'Registrar manutenção',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
-                      fontSize: 18,
+                  Expanded(
+                    child: TextFormField(
+                      controller: costCtrl,
+                      keyboardType:
+                          const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: const [MoneyInputFormatter()],
+                      validator: (value) {
+                        if (value == null || value.trim().isEmpty) {
+                          return null;
+                        }
+                        final parsed = parseCurrencyPtBr(value);
+                        if (parsed == null || parsed < 0) {
+                          return 'Informe um custo válido';
+                        }
+                        return null;
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Custo (opcional)',
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: descCtrl,
-                          validator:
-                              (value) => FormValidators.validateNotEmpty(
-                                value,
-                                fieldName: 'Descrição',
-                              ),
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Descrição',
-                      labelStyle: TextStyle(color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: odoCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                      validator: (value) => FormValidators.validateNumber(
+                        value,
+                        fieldName: 'Odômetro',
+                        positive: true,
+                      ),
+                      decoration: const InputDecoration(labelText: 'Odômetro'),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: costCtrl,
-                          keyboardType:
-                              const TextInputType.numberWithOptions(
-                                decimal: true,
-                              ),
-                          inputFormatters: const [MoneyInputFormatter()],
-                          validator: (value) {
-                            if (value == null || value.trim().isEmpty) {
-                              return null;
-                            }
-                            final parsed = parseCurrencyPtBr(value);
-                            if (parsed == null || parsed < 0) {
-                              return 'Informe um custo válido';
-                            }
-                            return null;
-                          },
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Custo (opcional)',
-                            labelStyle: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: odoCtrl,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          validator:
-                              (value) => FormValidators.validateNumber(
-                                value,
-                                fieldName: 'Odômetro',
-                                positive: true,
-                              ),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Odômetro',
-                            labelStyle: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Obx(
-                          () => SizedBox(
-                            height: 45,
-                            child: ElevatedButton(
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: sheetCtx.themeGreen,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(25),
-                                ),
-                              ),
-                              onPressed:
-                                  isSaving.value
-                                      ? null
-                                      : () async {
-                                        if (!formKey.currentState!.validate()) {
-                                          return;
-                                        }
-                                        final desc = descCtrl.text.trim();
-                                        final cost =
-                                            costCtrl.text.trim().isEmpty
-                                                ? null
-                                                : parseCurrencyPtBr(
-                                                  costCtrl.text,
-                                                );
-                                        final odo =
-                                            int.tryParse(odoCtrl.text.trim()) ??
-                                            0;
-                                        if (odo < vehicle.odometer) {
-                                          Get.snackbar(
-                                            'Frota',
-                                            'Odômetro não pode regredir',
-                                          );
-                                          return;
-                                        }
-                                        isSaving.value = true;
-                                        try {
-                                          await controller.doMaintenance(
-                                            vehicle,
-                                            description: desc,
-                                            cost: cost,
-                                            odometer: odo,
-                                          );
-                                          if (sheetCtx.mounted) {
-                                            Navigator.of(
-                                              sheetCtx,
-                                              rootNavigator: true,
-                                            ).pop();
-                                          }
-                                        } finally {
-                                          isSaving.value = false;
-                                        }
-                                      },
-                              child:
-                                  isSaving.value
-                                      ? SizedBox(
-                                        width: 18,
-                                        height: 18,
-                                        child: CircularProgressIndicator(
-                                          strokeWidth: 2,
-                                          valueColor:
-                                              AlwaysStoppedAnimation<Color>(
-                                                Colors.white,
-                                              ),
-                                        ),
-                                      )
-                                      : Text(
-                                        'Salvar',
-                                        style: TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          color: sheetCtx.themeGray,
-                                        ),
-                                      ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        height: 45,
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.redAccent),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                          ),
-                          onPressed: () => Navigator.of(sheetCtx).pop(),
-                          child: const Text(
-                            'Cancelar',
-                            style: TextStyle(color: Colors.redAccent),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Obx(
+                      () => ElevatedButton.icon(
+                        onPressed: isSaving.value
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
+                                final desc = descCtrl.text.trim();
+                                final cost =
+                                    costCtrl.text.trim().isEmpty
+                                        ? null
+                                        : parseCurrencyPtBr(
+                                          costCtrl.text.trim(),
+                                        );
+                                final odo =
+                                    int.tryParse(odoCtrl.text.trim()) ?? 0;
+                                if (odo < vehicle.odometer) {
+                                  Get.snackbar(
+                                    'Frota',
+                                    'Odômetro não pode regredir',
+                                  );
+                                  return;
+                                }
+                                isSaving.value = true;
+                                try {
+                                  await controller.doMaintenance(
+                                    vehicle,
+                                    description: desc,
+                                    cost: cost,
+                                    odometer: odo,
+                                  );
+                                  if (sheetCtx.mounted) {
+                                    Navigator.of(
+                                      sheetCtx,
+                                      rootNavigator: true,
+                                    ).pop();
+                                  }
+                                } finally {
+                                  isSaving.value = false;
+                                }
+                              },
+                        icon:
+                            isSaving.value
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(Icons.build_outlined),
+                        label: Text(isSaving.value ? 'Salvando...' : 'Salvar'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.of(sheetCtx, rootNavigator: true).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                ],
+              ),
+            ],
           ),
+        ),
+      ),
     ).whenComplete(() {
       descCtrl.dispose();
       costCtrl.dispose();
@@ -903,7 +717,7 @@ class FleetPage extends GetView<FleetController> {
     });
   }
 
-  void _openVehicleForm(BuildContext context, {dynamic vehicle}) {
+  Future<void> _openVehicleForm(BuildContext context, {dynamic vehicle}) async {
     final isEdit = vehicle != null;
     final plateCtrl = TextEditingController(
       text: isEdit ? vehicle.plate.toString().toUpperCase() : '',
@@ -918,193 +732,166 @@ class FleetPage extends GetView<FleetController> {
       text: isEdit ? vehicle.odometer.toString() : '0',
     );
     final formKey = GlobalKey<FormState>();
+    final isSaving = false.obs;
 
-    showModalBottomSheet(
+    await showModalBottomSheet(
       useRootNavigator: true,
       context: context,
       isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
+      backgroundColor: Colors.transparent,
       isDismissible: false,
-      builder:
-          (_) => Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 30,
-              top: 30,
-            ),
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
+      builder: (sheetCtx) => _FleetModalShell(
+        title: isEdit ? 'Editar veículo' : 'Novo veículo',
+        child: Form(
+          key: formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: plateCtrl,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: const [LicensePlateInputFormatter()],
+                validator: (v) => FormValidators.validateNotEmpty(
+                  v,
+                  fieldName: 'Placa',
+                ),
+                decoration: const InputDecoration(labelText: 'Placa'),
+              ),
+              const SizedBox(height: 12),
+              TextFormField(
+                controller: modelCtrl,
+                textCapitalization: TextCapitalization.characters,
+                inputFormatters: const [UpperCaseTextFormatter()],
+                decoration: const InputDecoration(
+                  labelText: 'Modelo (opcional)',
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
                 children: [
-                  Text(
-                    isEdit ? 'Editar veículo' : 'Novo veículo',
-                    style: const TextStyle(
-                      fontSize: 20,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                  Expanded(
+                    child: TextFormField(
+                      controller: yearCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.digitsOnly,
+                      ],
+                      validator: (v) => FormValidators.validateOptionalNumber(
+                        v,
+                        fieldName: 'Ano',
+                        positive: true,
+                      ),
+                      decoration: const InputDecoration(
+                        labelText: 'Ano (opcional)',
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: plateCtrl,
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: const [LicensePlateInputFormatter()],
-                    validator:
-                        (v) => FormValidators.validateNotEmpty(
-                          v,
-                          fieldName: 'Placa',
-                        ),
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Placa',
-                      labelStyle: TextStyle(color: Colors.white),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextFormField(
+                      controller: odoCtrl,
+                      keyboardType: TextInputType.number,
+                      inputFormatters: [
+                        FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
+                      ],
+                      validator: (v) => FormValidators.validateNumber(
+                        v,
+                        fieldName: 'Odômetro',
+                        positive: true,
+                      ),
+                      decoration: const InputDecoration(labelText: 'Odômetro'),
                     ),
-                  ),
-                  const SizedBox(height: 10),
-                  TextFormField(
-                    controller: modelCtrl,
-                    textCapitalization: TextCapitalization.characters,
-                    inputFormatters: const [UpperCaseTextFormatter()],
-                    style: const TextStyle(color: Colors.white),
-                    decoration: const InputDecoration(
-                      labelText: 'Modelo (opcional)',
-                      labelStyle: TextStyle(color: Colors.white),
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          controller: yearCtrl,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.digitsOnly,
-                          ],
-                          validator:
-                              (v) => FormValidators.validateOptionalNumber(
-                                v,
-                                fieldName: 'Ano',
-                                positive: true,
-                              ),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Ano (opcional)',
-                            labelStyle: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: TextFormField(
-                          controller: odoCtrl,
-                          keyboardType: TextInputType.number,
-                          inputFormatters: [
-                            FilteringTextInputFormatter.allow(RegExp(r'[0-9]')),
-                          ],
-                          validator:
-                              (v) => FormValidators.validateNumber(
-                                v,
-                                fieldName: 'Odômetro',
-                                positive: true,
-                              ),
-                          style: const TextStyle(color: Colors.white),
-                          decoration: const InputDecoration(
-                            labelText: 'Odômetro',
-                            labelStyle: TextStyle(color: Colors.white),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: SizedBox(
-                          height: 45,
-                          child: ElevatedButton(
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: context.themeGreen,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(25),
-                              ),
-                            ),
-                            onPressed: () async {
-                              if (!formKey.currentState!.validate()) return;
-                              final normalizedPlate =
-                                  plateCtrl.text.trim().toUpperCase();
-                              plateCtrl.text = normalizedPlate;
-                              final odometer =
-                                  int.tryParse(odoCtrl.text.trim()) ?? 0;
-                              final year =
-                                  yearCtrl.text.trim().isEmpty
-                                      ? null
-                                      : int.tryParse(yearCtrl.text.trim());
-                              final modelText = modelCtrl.text.trim();
-                              final model =
-                                  modelText.isEmpty ? null : modelText.toUpperCase();
-                              final ctrl = Get.find<FleetController>();
-                              if (isEdit) {
-                                await ctrl.updateVehicle(
-                                  vehicle.id,
-                                  plate: normalizedPlate,
-                                  model: model,
-                                  year: year,
-                                  odometer: odometer,
-                                );
-                              } else {
-                                await ctrl.createVehicle(
-                                  plate: normalizedPlate,
-                                  model: model,
-                                  year: year,
-                                  odometer: odometer,
-                                );
-                              }
-                              if (context.mounted) {
-                                Navigator.of(context, rootNavigator: true).pop();
-                              }
-                            },
-                            child: Text(
-                              'Salvar',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: context.themeGray,
-                                fontSize: 18,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      SizedBox(
-                        height: 45,
-                        child: OutlinedButton(
-                          style: OutlinedButton.styleFrom(
-                            side: const BorderSide(color: Colors.redAccent),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(25),
-                            ),
-                          ),
-                          onPressed: () => Navigator.of(context).pop(),
-                          child: const Text(
-                            'Cancelar',
-                            style: TextStyle(color: Colors.redAccent),
-                          ),
-                        ),
-                      ),
-                    ],
                   ),
                 ],
               ),
-            ),
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  Expanded(
+                    child: Obx(
+                      () => ElevatedButton.icon(
+                        onPressed: isSaving.value
+                            ? null
+                            : () async {
+                                if (!formKey.currentState!.validate()) return;
+                                final normalizedPlate =
+                                    plateCtrl.text.trim().toUpperCase();
+                                plateCtrl.text = normalizedPlate;
+                                final odometer =
+                                    int.tryParse(odoCtrl.text.trim()) ?? 0;
+                                final year =
+                                    yearCtrl.text.trim().isEmpty
+                                        ? null
+                                        : int.tryParse(yearCtrl.text.trim());
+                                final modelText = modelCtrl.text.trim();
+                                final model =
+                                    modelText.isEmpty ? null : modelText.toUpperCase();
+                                final ctrl = Get.find<FleetController>();
+                                isSaving.value = true;
+                                try {
+                                  if (isEdit) {
+                                    await ctrl.updateVehicle(
+                                      vehicle.id,
+                                      plate: normalizedPlate,
+                                      model: model,
+                                      year: year,
+                                      odometer: odometer,
+                                    );
+                                  } else {
+                                    await ctrl.createVehicle(
+                                      plate: normalizedPlate,
+                                      model: model,
+                                      year: year,
+                                      odometer: odometer,
+                                    );
+                                  }
+                                  if (sheetCtx.mounted) {
+                                    Navigator.of(
+                                      sheetCtx,
+                                      rootNavigator: true,
+                                    ).pop();
+                                  }
+                                } finally {
+                                  isSaving.value = false;
+                                }
+                              },
+                        icon:
+                            isSaving.value
+                                ? const SizedBox(
+                                    width: 18,
+                                    height: 18,
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2,
+                                      valueColor: AlwaysStoppedAnimation<Color>(
+                                        Colors.white,
+                                      ),
+                                    ),
+                                  )
+                                : const Icon(Icons.save_outlined),
+                        label: Text(isSaving.value ? 'Salvando...' : 'Salvar'),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  TextButton(
+                    onPressed: () =>
+                        Navigator.of(sheetCtx, rootNavigator: true).pop(),
+                    child: const Text('Cancelar'),
+                  ),
+                ],
+              ),
+            ],
           ),
+        ),
+      ),
     );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      plateCtrl.dispose();
+      modelCtrl.dispose();
+      yearCtrl.dispose();
+      odoCtrl.dispose();
+    });
   }
 
   void _openHistory(BuildContext context, FleetVehicleModel vehicle) {
@@ -1131,75 +918,66 @@ Future<void> _showRecommendations(
   final recs = await controller.fetchRecommendations();
   hideOverlay();
   if (recs.isEmpty || !context.mounted) return;
+  final maxHeight = MediaQuery.of(context).size.height * 0.7;
   showModalBottomSheet(
     context: context,
-    backgroundColor: context.themeDark,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-    ),
-    builder: (_) => Padding(
-      padding: const EdgeInsets.all(20),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (sheetCtx) => _FleetModalShell(
+      title: 'Recomendações inteligentes',
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxHeight: maxHeight),
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Expanded(
-                child: Text(
-                  'Recomendações inteligentes',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 18,
+              const Text(
+                'Aproveite as ações sugeridas para manter a saúde da frota.',
+                style: TextStyle(color: Colors.white70),
+              ),
+              const SizedBox(height: 12),
+              ...recs.map(
+                (rec) => Container(
+                  margin: const EdgeInsets.symmetric(vertical: 6),
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    color: Colors.white10,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        rec.title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if ((rec.priority ?? '').isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 4),
+                          child: Chip(
+                            label: Text(rec.priority!.toUpperCase()),
+                            backgroundColor:
+                                Colors.orange.withValues(alpha: 0.2),
+                            labelStyle:
+                                const TextStyle(color: Colors.orangeAccent),
+                          ),
+                        ),
+                      const SizedBox(height: 6),
+                      Text(
+                        rec.description,
+                        style: const TextStyle(color: Colors.white70),
+                      ),
+                    ],
                   ),
                 ),
               ),
-              IconButton(
-                onPressed: () => Navigator.of(context).pop(),
-                icon: const Icon(Icons.close, color: Colors.white70),
-              ),
             ],
           ),
-          const SizedBox(height: 12),
-          ...recs.map(
-            (rec) => Container(
-              margin: const EdgeInsets.symmetric(vertical: 6),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white10,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    rec.title,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                  if ((rec.priority ?? '').isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(top: 4),
-                      child: Chip(
-                        label: Text(rec.priority!.toUpperCase()),
-                        backgroundColor:
-                            Colors.orange.withValues(alpha: 0.2),
-                        labelStyle: const TextStyle(color: Colors.orangeAccent),
-                      ),
-                    ),
-                  const SizedBox(height: 6),
-                  Text(
-                    rec.description,
-                    style: const TextStyle(color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+        ),
       ),
     ),
   );
@@ -1216,30 +994,13 @@ Future<void> _openFleetChat(
   await showModalBottomSheet(
     context: context,
     isScrollControlled: true,
-    backgroundColor: context.themeDark,
-    shape: const RoundedRectangleBorder(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-    ),
+    backgroundColor: Colors.transparent,
     builder: (sheetCtx) => StatefulBuilder(
-      builder: (ctx, setState) => Padding(
-        padding: EdgeInsets.only(
-          left: 20,
-          right: 20,
-          top: 20,
-          bottom: MediaQuery.of(ctx).viewInsets.bottom + 24,
-        ),
+      builder: (ctx, setState) => _FleetModalShell(
+        title: 'Pergunte à IA sobre a frota',
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'Pergunte à IA sobre a frota',
-              style: TextStyle(
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-                fontSize: 18,
-              ),
-            ),
-            const SizedBox(height: 12),
             TextField(
               controller: questionCtrl,
               maxLines: 3,
@@ -1262,19 +1023,29 @@ Future<void> _openFleetChat(
                           message: 'Perguntando para a IA da frota...',
                         );
                         try {
-                          final response =
-                              await controller.askAssistant(questionCtrl.text.trim());
+                          final response = await controller.askAssistant(
+                            questionCtrl.text.trim(),
+                          );
                           if (ctx.mounted) {
                             setState(() {
-                              sending = false;
                               answer = response?.answer ?? '';
                             });
                           }
                         } finally {
                           hideOverlay();
+                          if (ctx.mounted) {
+                            setState(() => sending = false);
+                          }
                         }
                       },
-                icon: const Icon(Icons.chat),
+                icon:
+                    sending
+                        ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        )
+                        : const Icon(Icons.chat_bubble_outline),
                 label: Text(sending ? 'Consultando...' : 'Enviar'),
               ),
             ),
@@ -1298,6 +1069,8 @@ Future<void> _openFleetChat(
       ),
     ),
   );
+
+  questionCtrl.dispose();
 }
 
 List<_FleetSummaryInfo> _buildFleetSummaryEntries(
@@ -1747,6 +1520,68 @@ class _InfoChip extends StatelessWidget {
             style: const TextStyle(color: Colors.white70, fontSize: 12),
           ),
         ],
+      ),
+    );
+  }
+}
+
+class _FleetModalShell extends StatelessWidget {
+  const _FleetModalShell({required this.title, required this.child});
+
+  final String title;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final bottom = MediaQuery.of(context).viewInsets.bottom;
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+        gradient: LinearGradient(
+          colors: [
+            context.themeSurface,
+            context.themeSurface.withValues(alpha: 0.94),
+          ],
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+        ),
+        border: Border.all(color: context.themeBorder),
+        boxShadow: context.shadowCard,
+      ),
+      child: ClipRRect(
+        borderRadius: const BorderRadius.vertical(top: Radius.circular(26)),
+        child: BackdropFilter(
+          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(20, 22, 20, bottom + 22),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        title,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.w700,
+                          fontSize: 18,
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      icon: const Icon(Icons.close_rounded, color: Colors.white70),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 10),
+                child,
+              ],
+            ),
+          ),
+        ),
       ),
     );
   }

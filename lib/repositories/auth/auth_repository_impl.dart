@@ -1,14 +1,17 @@
 import 'package:air_sync/application/core/errors/auth_failure.dart';
 import 'package:air_sync/application/core/network/api_client.dart';
+import 'package:air_sync/application/core/network/app_config.dart';
 import 'package:air_sync/application/core/network/token_storage.dart';
 import 'package:air_sync/models/user_model.dart';
 import 'package:air_sync/repositories/auth/auth_repository.dart';
 import 'package:dio/dio.dart';
+import 'dart:async';
 import 'package:get/get.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
   final ApiClient _api = Get.find<ApiClient>();
   final TokenStorage _tokens = Get.find<TokenStorage>();
+  final AppConfig _config = Get.find<AppConfig>();
 
   UserModel _mapUser(
     Map<String, dynamic> userData, {
@@ -58,12 +61,14 @@ class AuthRepositoryImpl implements AuthRepository {
       final refresh = (data['refreshToken'] ?? '') as String;
       final jti = data['jti'] as String?;
       await _tokens.save(access: access, refresh: refresh, jti: jti);
+      _updateTenantId(data);
 
       final userData =
           Map<String, dynamic>.from(
             (data['user'] ?? data['account'] ?? <String, dynamic>{})
                 as Map,
           );
+      _updateTenantId(userData);
       userData['email'] ??= email;
       return _mapUser(userData, fallbackEmail: email);
     } on AuthFailure {
@@ -89,6 +94,7 @@ class AuthRepositoryImpl implements AuthRepository {
   Future<UserModel> me() async {
     final res = await _api.dio.get('/v1/auth/me');
     final data = Map<String, dynamic>.from((res.data ?? {}) as Map);
+    _updateTenantId(data);
     return _mapUser(data);
   }
 
@@ -171,6 +177,29 @@ class AuthRepositoryImpl implements AuthRepository {
       // Ignora erro de logout remoto
     } finally {
       await _tokens.clear();
+    }
+  }
+
+  void _updateTenantId(Map<dynamic, dynamic> source) {
+    String? resolve(dynamic value) {
+      if (value == null) return null;
+      if (value is String && value.trim().isNotEmpty) return value;
+      if (value is Map) {
+        final map = Map<String, dynamic>.from(value);
+        final nested = map['id'] ?? map['_id'] ?? map['tenantId'];
+        if (nested is String && nested.trim().isNotEmpty) return nested;
+      }
+      return null;
+    }
+
+    final candidate = resolve(source['tenantId']) ??
+        resolve(source['tenant_id']) ??
+        resolve(source['tenant']) ??
+        resolve(source['account']?['tenant']) ??
+        resolve(source['user']?['tenant']);
+
+    if (candidate != null && candidate != _config.tenantId) {
+      unawaited(_config.setTenantId(candidate));
     }
   }
 }

@@ -11,7 +11,6 @@ import 'package:air_sync/modules/suppliers/suppliers_module.dart';
 import 'package:air_sync/modules/purchases/purchases_module.dart';
 import 'package:air_sync/modules/contracts/contracts_module.dart';
 import 'package:air_sync/modules/fleet/fleet_module.dart';
-import 'package:air_sync/modules/timeline/timeline_module.dart';
 import 'package:air_sync/modules/users/users_module.dart';
 import 'package:air_sync/modules/login/login_module.dart';
 import 'package:air_sync/modules/splash/splash_module.dart';
@@ -66,6 +65,23 @@ class MyApp extends StatelessWidget {
         GlobalWidgetsLocalizations.delegate,
         GlobalCupertinoLocalizations.delegate,
       ],
+      builder: (context, child) {
+        final media = MediaQuery.of(context);
+        final basePadding = media.padding;
+        const extraBottom = 16.0; // espaçamento padrão para evitar conteúdos colados
+        return MediaQuery(
+          data: media.copyWith(
+            padding: basePadding.copyWith(bottom: basePadding.bottom + extraBottom),
+          ),
+          child: SafeArea(
+            top: false,
+            left: false,
+            right: false,
+            bottom: true,
+            child: child ?? const SizedBox.shrink(),
+          ),
+        );
+      },
       initialBinding: ApplicationBindings(appConfig: appConfig),
       getPages: [
         ...SplashModule().routers,
@@ -80,7 +96,6 @@ class MyApp extends StatelessWidget {
         ...PurchasesModule().routers,
         ...ContractsModule().routers,
         ...FleetModule().routers,
-        ...TimelineModule().routers,
         ...CostCentersModule().routers,
         ...SalesModule().routers,
         ...SubscriptionsModule().routers,

@@ -25,7 +25,6 @@ abstract class OrdersRepository {
     List<OrderMaterialInput> materials = const [],
     List<OrderBillingItemInput> billingItems = const [],
     num billingDiscount = 0,
-    String? costCenterId,
   });
 
   Future<OrderModel> update({
@@ -40,7 +39,6 @@ abstract class OrdersRepository {
     String? clientId,
     String? locationId,
     String? equipmentId,
-    String? costCenterId,
   });
 
   Future<OrderModel> start(String orderId);

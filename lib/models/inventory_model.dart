@@ -305,12 +305,11 @@ class InventoryItemModel {
   final String id;
   final String userId;
   final String description; // nome
-  final String sku;
+  final String sku; // opcional: pode vir vazio (backend gera)
   final String unit; // 'UN'|'KG'|'L'|...
   final double quantity; // saldo consolidado (onHand)
   final double minQuantity; // obrigatório >= 0
   final bool active;
-  final String? barcode;
   final double? maxQuantity;
   final String? supplierId;
   final double? avgCost;
@@ -343,7 +342,6 @@ class InventoryItemModel {
     required this.quantity,
     required this.minQuantity,
     required this.active,
-    this.barcode,
     this.maxQuantity,
     this.supplierId,
     this.avgCost,
@@ -368,12 +366,11 @@ class InventoryItemModel {
       '_id': id,
       'userId': userId,
       'name': description,
-      'sku': sku,
+      if (sku.trim().isNotEmpty) 'sku': sku,
       'unit': unit.toUpperCase(),
       'onHand': quantity,
       'minQuantity': minQuantity,
       'active': active,
-      if (barcode != null && barcode!.isNotEmpty) 'barcode': barcode,
       if (maxQuantity != null) 'maxQty': maxQuantity,
       if (supplierId != null && supplierId!.isNotEmpty)
         'supplierId': supplierId,
@@ -405,7 +402,6 @@ class InventoryItemModel {
         map['onHand'] ?? map['quantity'] ?? map['qty'] ?? map['stock'] ?? 0;
     final minQ = map['minQuantity'] ?? map['minQty'] ?? 0;
     final unitRaw = (map['unit'] ?? map['uom'] ?? '').toString();
-    final barcodeRaw = map['barcode'] ?? map['barCode'];
     final supplierIdRaw = map['supplierId'];
     final maxQtyRaw = map['maxQty'] ?? map['maxQuantity'];
     final avgCostRaw = map['avgCost'] ?? map['averageCost'];
@@ -496,7 +492,6 @@ class InventoryItemModel {
               ? (map['active'] as bool)
               : (((map['active'] ?? 'true').toString().toLowerCase()) !=
                   'false'),
-      barcode: _normalizeString(barcodeRaw),
       maxQuantity: _parseNullableDouble(maxQtyRaw),
       supplierId: _normalizeString(supplierIdRaw),
       avgCost: _parseNullableDouble(avgCostRaw),
@@ -529,7 +524,6 @@ class InventoryItemModel {
     double? quantity,
     double? minQuantity,
     bool? active,
-    String? barcode,
     double? maxQuantity,
     String? supplierId,
     double? avgCost,
@@ -557,7 +551,6 @@ class InventoryItemModel {
       quantity: quantity ?? this.quantity,
       minQuantity: minQuantity ?? this.minQuantity,
       active: active ?? this.active,
-      barcode: barcode ?? this.barcode,
       maxQuantity: maxQuantity ?? this.maxQuantity,
       supplierId: supplierId ?? this.supplierId,
       avgCost: avgCost ?? this.avgCost,

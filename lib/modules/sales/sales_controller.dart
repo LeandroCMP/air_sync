@@ -3,14 +3,12 @@
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/client_model.dart';
-import 'package:air_sync/models/cost_center_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
 import 'package:air_sync/models/sale_model.dart';
 import 'package:air_sync/modules/orders/order_detail_bindings.dart';
 import 'package:air_sync/modules/orders/order_detail_page.dart';
 import 'package:air_sync/services/client/client_service.dart';
-import 'package:air_sync/services/cost_centers/cost_centers_service.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
 import 'package:air_sync/services/sales/sales_service.dart';
@@ -20,18 +18,15 @@ import 'package:get/get.dart';
 class SalesController extends GetxController with LoaderMixin, MessagesMixin {
   SalesController({
     required SalesService service,
-    required CostCentersService costCentersService,
     required ClientService clientService,
     required InventoryService inventoryService,
     required LocationsService locationsService,
   })  : _service = service,
-        _costCentersService = costCentersService,
         _clientService = clientService,
         _inventoryService = inventoryService,
         _locationsService = locationsService;
 
   final SalesService _service;
-  final CostCentersService _costCentersService;
   final ClientService _clientService;
   final InventoryService _inventoryService;
   final LocationsService _locationsService;
@@ -42,8 +37,6 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
   final statusFilter = 'all'.obs;
   final searchCtrl = TextEditingController();
   final RxString searchTerm = ''.obs;
-  final RxList<CostCenterModel> costCenters = <CostCenterModel>[].obs;
-  final RxBool costCentersLoading = false.obs;
   Timer? _searchDebounce;
 
   List<SaleModel> get filteredSales {
@@ -71,7 +64,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
   }
 
   Future<void> _init() async {
-    await Future.wait([load(), _loadCostCenters()]);
+    await load();
   }
 
   Future<void> load({bool refresh = false}) async {
@@ -105,16 +98,6 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
     });
   }
 
-  Future<void> _loadCostCenters() async {
-    try {
-      costCentersLoading(true);
-      final result = await _costCentersService.list(includeInactive: false);
-      costCenters.assignAll(result);
-    } finally {
-      costCentersLoading(false);
-    }
-  }
-
   Future<void> createSale({
     required String clientId,
     required String locationId,
@@ -122,7 +105,6 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
     double? discount,
     String? notes,
     Map<String, dynamic>? moveRequest,
-    String? costCenterId,
     bool autoCreateOrder = false,
   }) async {
     if (items.isEmpty) {
@@ -143,7 +125,6 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
         discount: discount,
         notes: notes,
         moveRequest: moveRequest,
-        costCenterId: costCenterId,
         autoCreateOrder: autoCreateOrder,
       );
       _replaceSale(sale);
@@ -173,7 +154,6 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
     double? discount,
     String? notes,
     Map<String, dynamic>? moveRequest,
-    String? costCenterId,
     bool? autoCreateOrder,
   }) async {
     isLoading(true);
@@ -186,7 +166,6 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
         discount: discount,
         notes: notes,
         moveRequest: moveRequest,
-        costCenterId: costCenterId,
         autoCreateOrder: autoCreateOrder,
       );
       _replaceSale(sale);

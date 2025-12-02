@@ -6,14 +6,12 @@ class CreateOrderPurchaseItemDto {
     required this.qty,
     this.unitCost,
     this.description,
-    this.costCenterId,
   });
 
   final String itemId;
   final double qty;
   final double? unitCost;
   final String? description;
-  final String? costCenterId;
 
   Map<String, dynamic> toMap() => <String, dynamic>{
         'itemId': itemId,
@@ -21,8 +19,6 @@ class CreateOrderPurchaseItemDto {
         if (unitCost != null) 'unitCost': unitCost,
         if (description != null && description!.trim().isNotEmpty)
           'description': description!.trim(),
-        if (costCenterId != null && costCenterId!.trim().isNotEmpty)
-          'costCenterId': costCenterId!.trim(),
       };
 
   PurchaseItemModel toPurchaseItem({required String orderId}) {
@@ -32,7 +28,6 @@ class CreateOrderPurchaseItemDto {
       unitCost: unitCost ?? 0,
       description: description,
       orderId: orderId,
-      costCenterId: costCenterId,
     );
   }
 }

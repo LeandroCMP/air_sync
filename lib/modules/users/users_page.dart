@@ -51,59 +51,33 @@ class UsersPage extends GetView<UsersController> {
     final canCreate = controller.canManageCollaborators;
 
     return Scaffold(
-
+      backgroundColor: context.themeBg,
       appBar: AppBar(
-
-        backgroundColor: context.themeDark,
-
+        backgroundColor: Colors.transparent,
+        elevation: 0,
         iconTheme: const IconThemeData(color: Colors.white),
-
         title: const Text(
-
           'Colaboradores',
-
           style: TextStyle(color: Colors.white),
-
         ),
-
       ),
-
-      floatingActionButton:
-
-          canCreate
-
-              ? FloatingActionButton.extended(
-
-                backgroundColor: context.themeGreen,
-
-                icon: const Icon(Icons.person_add_alt_1, color: Colors.white),
-
-                label: const Text(
-
-                  'Novo colaborador',
-
-                  style: TextStyle(color: Colors.white),
-
-                ),
-
-                onPressed: () => _openCollaboratorForm(context, controller),
-
-              )
-
-              : null,
-
+      floatingActionButton: canCreate
+          ? FloatingActionButton.extended(
+              backgroundColor: context.themeGreen,
+              icon: const Icon(Icons.person_add_alt_1, color: Colors.white),
+              label: const Text(
+                'Novo colaborador',
+                style: TextStyle(color: Colors.white),
+              ),
+              onPressed: () => _openCollaboratorForm(context, controller),
+            )
+          : null,
       body: SafeArea(
-
         child: _CollaboratorContent(
-
           controller: controller,
-
           canCreate: canCreate,
-
         ),
-
       ),
-
     );
 
   }
@@ -1270,7 +1244,7 @@ class _CollaboratorCard extends StatelessWidget {
 
                 radius: 26,
 
-                backgroundColor: context.themePrimary.withValues(alpha: 0.2),
+                backgroundColor: context.themeGreen.withValues(alpha: 0.2),
 
                 child: Text(
 

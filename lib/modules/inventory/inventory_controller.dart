@@ -38,7 +38,6 @@ class InventoryController extends GetxController
   Timer? _searchDebounce;
 
   // Campos opcionais dedicados
-  final barcodeController = TextEditingController(); // barcode
   final maxQtyController = TextEditingController(); // maxQty
   final supplierIdController = TextEditingController(); // supplierId
   final costController = TextEditingController(); // avgCost
@@ -99,9 +98,11 @@ class InventoryController extends GetxController
     final sku = skuController.text.trim();
     final unit =
         unitController.text.trim().isEmpty ? 'un' : unitController.text.trim();
-    final minQty = double.tryParse(
+    final minQtyParsed = double.tryParse(
       minStockController.text.replaceAll(',', '.'),
     );
+    final minQty =
+        (minQtyParsed == null || minQtyParsed < 0) ? 0.0 : minQtyParsed.toDouble();
 
     if (name.isEmpty) {
       message(
@@ -109,24 +110,10 @@ class InventoryController extends GetxController
       );
       return;
     }
-    if (sku.isEmpty) {
-      message(MessageModel.error(title: 'Erro!', message: 'Informe o SKU'));
-      return;
-    }
-    if (minQty == null || minQty < 0) {
-      message(
-        MessageModel.error(title: 'Erro!', message: 'Informe o estoque mínimo'),
-      );
-      return;
-    }
 
     isLoading.value = true;
     MessageModel? belowMinimumAlert;
     try {
-      final barcode =
-          barcodeController.text.trim().isEmpty
-              ? null
-              : barcodeController.text.trim();
       final maxQty = double.tryParse(
         maxQtyController.text.replaceAll(',', '.'),
       );
@@ -143,7 +130,6 @@ class InventoryController extends GetxController
         name: name,
         sku: sku,
         minQty: minQty,
-        barcode: barcode,
         unit: unit,
         maxQty: maxQty,
         supplierId: supplierId,
@@ -228,10 +214,6 @@ class InventoryController extends GetxController
         (updated.minQuantity - original.minQuantity).abs() > 0.0001;
     final activeChanged = updated.active != original.active;
 
-    final barcodeNew = normalizeOptional(updated.barcode);
-    final barcodeOld = normalizeOptional(original.barcode);
-    final barcodeChanged = barcodeNew != null && barcodeNew != barcodeOld;
-
     final supplierNew = normalizeOptional(updated.supplierId);
     final supplierOld = normalizeOptional(original.supplierId);
     final supplierChanged = supplierNew != null && supplierNew != supplierOld;
@@ -251,7 +233,6 @@ class InventoryController extends GetxController
     if (unitChanged) changes['unit'] = trimmedUnit.toLowerCase();
     if (minChanged) changes['minQty'] = updated.minQuantity;
     if (activeChanged) changes['active'] = updated.active;
-    if (barcodeChanged) changes['barcode'] = barcodeNew;
     if (supplierChanged) changes['supplierId'] = supplierNew;
     if (maxChanged) changes['maxQty'] = updated.maxQuantity;
     if (avgCostChanged) changes['avgCost'] = updated.avgCost;
@@ -386,7 +367,7 @@ class InventoryController extends GetxController
       final cleaned =
           error.message.replaceFirst(RegExp(r'^\[[A-Z_]+\]\s*'), '').trim();
       if (cleaned.toLowerCase() == 'erro de validação') {
-        return '$cleaned. Confira SKU, unidade e quantidade mínima.';
+        return '$cleaned. Confira unidade e quantidade mínima.';
       }
       return cleaned.isEmpty ? fallback : cleaned;
     }
@@ -399,7 +380,6 @@ class InventoryController extends GetxController
     unitController.clear();
     minStockController.clear();
     quantityController.clear();
-    barcodeController.clear();
     maxQtyController.clear();
     supplierIdController.clear();
     costController.clear();
@@ -413,7 +393,6 @@ class InventoryController extends GetxController
     unitController.dispose();
     minStockController.dispose();
     quantityController.dispose();
-    barcodeController.dispose();
     maxQtyController.dispose();
     supplierIdController.dispose();
     costController.dispose();

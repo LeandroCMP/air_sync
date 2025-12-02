@@ -1,6 +1,5 @@
 ﻿import 'package:air_sync/application/ui/theme_extensions.dart';
 
-import 'package:air_sync/models/cost_center_model.dart';
 
 import 'package:air_sync/models/finance_audit_model.dart';
 
@@ -28,7 +27,6 @@ import 'package:air_sync/modules/orders/order_detail_page.dart';
 
 import 'package:air_sync/services/finance/finance_service.dart';
 
-import 'package:air_sync/services/cost_centers/cost_centers_service.dart';
 
 import 'package:flutter/material.dart';
 
@@ -100,12 +98,6 @@ class FinanceController extends GetxController {
 
   final RxInt forecastDays = 30.obs;
 
-  final RxList<CostCenterModel> costCenters = <CostCenterModel>[].obs;
-
-  final RxnString selectedCostCenterId = RxnString();
-
-  final RxBool costCentersLoading = false.obs;
-
   final RxBool allocationRunning = false.obs;
 
   final Rxn<FinanceAnomalyReport> anomalies = Rxn<FinanceAnomalyReport>();
@@ -121,8 +113,6 @@ class FinanceController extends GetxController {
   void onReady() {
 
     super.onReady();
-
-    _loadCostCenters();
 
     load();
 
@@ -147,8 +137,6 @@ class FinanceController extends GetxController {
       final data = await _service.dashboard(
 
         month: monthParam,
-
-        costCenterId: selectedCostCenterId.value,
 
       );
 
@@ -292,11 +280,7 @@ class FinanceController extends GetxController {
 
     try {
 
-      audit.value = await _service.audit(
-
-        costCenterId: selectedCostCenterId.value,
-
-      );
+      audit.value = await _service.audit();
 
     } finally {
 
@@ -319,8 +303,6 @@ class FinanceController extends GetxController {
       forecast.value = await _service.forecast(
 
         days: effectiveDays,
-
-        costCenterId: selectedCostCenterId.value,
 
       );
 
@@ -347,8 +329,6 @@ class FinanceController extends GetxController {
       anomalies.value = await _service.anomalies(
 
         month: monthParam,
-
-        costCenterId: selectedCostCenterId.value,
 
       );
 
@@ -383,40 +363,6 @@ class FinanceController extends GetxController {
     if (auditFilter.value == value) return;
 
     auditFilter.value = value;
-
-  }
-
-
-
-  Future<void> setCostCenter(String? id) async {
-
-    final normalized = (id ?? '').trim();
-
-    final value = normalized.isEmpty ? null : normalized;
-
-    if (selectedCostCenterId.value == value) return;
-
-    selectedCostCenterId.value = value;
-
-    await refresh();
-
-  }
-
-
-
-  String get costCenterLabel {
-
-    final id = selectedCostCenterId.value;
-
-    if (id == null || id.isEmpty) return 'Todos os centros';
-
-    for (final center in costCenters) {
-
-      if (center.id == id) return center.name;
-
-    }
-
-    return 'Centro selecionado';
 
   }
 
@@ -577,55 +523,6 @@ class FinanceController extends GetxController {
   bool _isSameMonth(DateTime a, DateTime b) =>
 
       a.year == b.year && a.month == b.month;
-
-
-
-  Future<void> _loadCostCenters() async {
-
-    if (!Get.isRegistered<CostCentersService>()) return;
-
-    costCentersLoading.value = true;
-
-    try {
-
-      final service = Get.find<CostCentersService>();
-
-      final result = await service.list(includeInactive: false);
-
-      final active = result.where((center) => center.active).toList()
-
-        ..sort(
-
-          (a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()),
-
-        );
-
-      costCenters.assignAll(active);
-
-      final selected = selectedCostCenterId.value;
-
-      if (selected != null &&
-
-          active.every((center) => center.id != selected)) {
-
-        selectedCostCenterId.value = null;
-
-      }
-
-    } catch (_) {
-
-      costCenters.clear();
-
-    } finally {
-
-      costCentersLoading.value = false;
-
-    }
-
-  }
-
-
-
   BuildContext _resolvePickerContext(BuildContext context) {
 
     if (_hasMaterialLocalizations(context)) {
@@ -710,7 +607,7 @@ class FinancePage extends StatelessWidget {
 
             elevation: 0,
 
-            backgroundColor: context.themeSurfaceAlt,
+            backgroundColor: Colors.transparent,
 
             actions: [
 
@@ -1778,209 +1675,9 @@ class _FilterRow extends StatelessWidget {
 
         ),
 
-        const SizedBox(height: 12),
-
-        _CostCenterPicker(controller: controller),
-
       ],
 
     );
-
-  }
-
-}
-
-
-
-class _CostCenterPicker extends StatelessWidget {
-
-  final FinanceController controller;
-
-
-
-  const _CostCenterPicker({required this.controller});
-
-
-
-  @override
-
-  Widget build(BuildContext context) {
-
-    return Obx(() {
-
-      final loading = controller.costCentersLoading.value;
-
-      final centers = controller.costCenters.toList(growable: false);
-
-      final hasCenters = centers.isNotEmpty;
-
-      final label = controller.costCenterLabel;
-
-      final hasFilter =
-
-          (controller.selectedCostCenterId.value ?? '').trim().isNotEmpty;
-
-      return OutlinedButton.icon(
-
-        icon: loading
-
-            ? const SizedBox(
-
-              width: 16,
-
-              height: 16,
-
-              child: CircularProgressIndicator(strokeWidth: 2),
-
-            )
-
-            : const Icon(Icons.account_tree_outlined),
-
-        label: Text(
-
-          label,
-
-          overflow: TextOverflow.ellipsis,
-
-        ),
-
-        onPressed:
-
-            loading || (!hasCenters && !hasFilter)
-
-                ? null
-
-                : () => _showPicker(context, centers),
-
-        onLongPress: hasFilter ? () => controller.setCostCenter(null) : null,
-
-      );
-
-    });
-
-  }
-
-
-
-  Future<void> _showPicker(
-
-    BuildContext context,
-
-    List<CostCenterModel> centers,
-
-  ) async {
-
-    final selected = controller.selectedCostCenterId.value ?? '';
-
-    final result = await showModalBottomSheet<String?>(
-
-      context: context,
-
-      backgroundColor: context.themeSurface,
-
-      shape: const RoundedRectangleBorder(
-
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-
-      ),
-
-      builder: (ctx) {
-
-        return SafeArea(
-
-          child: Column(
-
-            mainAxisSize: MainAxisSize.min,
-
-            children: [
-
-              const Padding(
-
-                padding: EdgeInsets.all(16),
-
-                child: Text(
-
-                  'Filtrar por centro de custo',
-
-                  style: TextStyle(
-
-                    color: Colors.white,
-
-                    fontWeight: FontWeight.w600,
-
-                  ),
-
-                ),
-
-              ),
-
-              RadioListTile<String>(
-
-                value: '',
-
-                groupValue: selected,
-
-                onChanged: (_) => Navigator.of(ctx).pop(''),
-
-                title: const Text('Todos os centros'),
-
-              ),
-
-              const Divider(height: 1),
-
-              Flexible(
-
-                child: ListView.builder(
-
-                  shrinkWrap: true,
-
-                  itemCount: centers.length,
-
-                  itemBuilder: (ctx, index) {
-
-                    final center = centers[index];
-
-                    return RadioListTile<String>(
-
-                      value: center.id,
-
-                      groupValue: selected,
-
-                      onChanged: (_) => Navigator.of(ctx).pop(center.id),
-
-                      title: Text(center.name),
-
-                    );
-
-                  },
-
-                ),
-
-              ),
-
-              const SizedBox(height: 12),
-
-            ],
-
-          ),
-
-        );
-
-      },
-
-    );
-
-    if (result == null) return;
-
-    if (result.isEmpty) {
-
-      await controller.setCostCenter(null);
-
-    } else {
-
-      await controller.setCostCenter(result);
-
-    }
 
   }
 
@@ -3874,11 +3571,15 @@ class FinanceAuditPage extends StatelessWidget {
 
     return Scaffold(
 
+      backgroundColor: context.themeBg,
+
       appBar: AppBar(
 
         title: const Text('Auditoria financeira'),
 
-        backgroundColor: context.themeSurface,
+        backgroundColor: Colors.transparent,
+
+        elevation: 0,
 
       ),
 
@@ -3928,11 +3629,15 @@ class FinanceForecastPage extends StatelessWidget {
 
     return Scaffold(
 
+      backgroundColor: context.themeBg,
+
       appBar: AppBar(
 
         title: const Text('Previsão de fluxo'),
 
-        backgroundColor: context.themeSurface,
+        backgroundColor: Colors.transparent,
+
+        elevation: 0,
 
       ),
 

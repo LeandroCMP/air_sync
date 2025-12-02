@@ -35,9 +35,7 @@ class ClientModel {
   final String? docNumber;
   final List<String> phones;
   final List<String> emails;
-  final List<String> tags;
   final String? notes;
-  final double? nps;
   final String? tenantId;
   final DateTime? createdAt;
   final DateTime? updatedAt;
@@ -49,9 +47,7 @@ class ClientModel {
     this.docNumber,
     this.phones = const [],
     this.emails = const [],
-    this.tags = const [],
     this.notes,
-    this.nps,
     this.tenantId,
     this.createdAt,
     this.updatedAt,
@@ -71,9 +67,7 @@ class ClientModel {
         'docNumber': docNumber!.trim(),
       if (phones.isNotEmpty) 'phones': phones,
       if (emails.isNotEmpty) 'emails': emails,
-      if (tags.isNotEmpty) 'tags': tags,
       if (notes != null && notes!.trim().isNotEmpty) 'notes': notes!.trim(),
-      if (nps != null) 'nps': nps,
     };
   }
 
@@ -102,9 +96,7 @@ class ClientModel {
     setField('docNumber', docNumber, original?.docNumber);
     setField('phones', phones, original?.phones);
     setField('emails', emails, original?.emails);
-    setField('tags', tags, original?.tags);
     setField('notes', notes, original?.notes);
-    setField('nps', nps, original?.nps);
 
     return payload;
   }
@@ -124,9 +116,7 @@ class ClientModel {
     String? docNumber,
     List<String>? phones,
     List<String>? emails,
-    List<String>? tags,
     String? notes,
-    double? nps,
     String? tenantId,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -138,9 +128,7 @@ class ClientModel {
       docNumber: docNumber ?? this.docNumber,
       phones: phones ?? this.phones,
       emails: emails ?? this.emails,
-      tags: tags ?? this.tags,
       notes: notes ?? this.notes,
-      nps: nps ?? this.nps,
       tenantId: tenantId ?? this.tenantId,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -160,9 +148,7 @@ class ClientModel {
       docNumber: data['docNumber']?.toString() ?? data['document']?.toString(),
       phones: _asStringList(data['phones']),
       emails: _asStringList(data['emails']),
-      tags: _asStringList(data['tags']),
       notes: data['notes']?.toString(),
-      nps: data['nps'] is num ? (data['nps'] as num).toDouble() : null,
       tenantId: data['tenantId']?.toString(),
       createdAt: _parseDate(data['createdAt'] ?? meta?['createdAt']),
       updatedAt: _parseDate(data['updatedAt'] ?? meta?['updatedAt']),

@@ -4,28 +4,30 @@ class PurchaseItemModel {
   final double unitCost;
   final String? description;
   final String? orderId;
-  final String? costCenterId;
 
-  PurchaseItemModel({
+  const PurchaseItemModel({
     required this.itemId,
     required this.qty,
     required this.unitCost,
     this.description,
     this.orderId,
-    this.costCenterId,
   });
 
-  factory PurchaseItemModel.fromMap(Map<String, dynamic> m) =>
-      PurchaseItemModel(
-        itemId: (m['itemId'] ?? '').toString(),
-        qty: (m['qty'] as num).toDouble(),
-        unitCost: (m['unitCost'] as num).toDouble(),
-        description:
-            (m['description'] ?? m['name'] ?? m['itemName'])?.toString(),
-        orderId: (m['orderId'] ?? m['osId'] ?? m['order_id'])?.toString(),
-        costCenterId:
-            (m['costCenterId'] ?? m['cost_center_id'])?.toString(),
-      );
+  factory PurchaseItemModel.fromMap(Map<String, dynamic> map) {
+    double asDouble(dynamic value) {
+      if (value is num) return value.toDouble();
+      return double.tryParse(value?.toString() ?? '') ?? 0;
+    }
+
+    return PurchaseItemModel(
+      itemId: (map['itemId'] ?? '').toString(),
+      qty: asDouble(map['qty']),
+      unitCost: asDouble(map['unitCost']),
+      description:
+          (map['description'] ?? map['name'] ?? map['itemName'])?.toString(),
+      orderId: (map['orderId'] ?? map['osId'] ?? map['order_id'])?.toString(),
+    );
+  }
 
   PurchaseItemModel copyWith({
     String? itemId,
@@ -33,15 +35,15 @@ class PurchaseItemModel {
     double? unitCost,
     String? description,
     String? orderId,
-    String? costCenterId,
-  }) => PurchaseItemModel(
-    itemId: itemId ?? this.itemId,
-    qty: qty ?? this.qty,
-    unitCost: unitCost ?? this.unitCost,
-    description: description ?? this.description,
-    orderId: orderId ?? this.orderId,
-    costCenterId: costCenterId ?? this.costCenterId,
-  );
+  }) {
+    return PurchaseItemModel(
+      itemId: itemId ?? this.itemId,
+      qty: qty ?? this.qty,
+      unitCost: unitCost ?? this.unitCost,
+      description: description ?? this.description,
+      orderId: orderId ?? this.orderId,
+    );
+  }
 }
 
 class PurchaseAlertModel {
@@ -121,11 +123,10 @@ class PurchaseModel {
   final String? notes;
   final List<PurchaseAlertModel> alerts;
   final List<PurchaseClassificationModel> classifications;
-  final String? costCenterId;
-  final String? costCenterName;
   final List<PurchaseHistoryEntry> history;
   final String? lastNotification;
-  PurchaseModel({
+
+  const PurchaseModel({
     required this.id,
     required this.supplierId,
     required this.status,
@@ -135,31 +136,31 @@ class PurchaseModel {
     this.freight,
     this.createdAt,
     this.receivedAt,
-    this.notes,
     this.paymentDueDate,
+    this.notes,
     this.alerts = const [],
     this.classifications = const [],
-    this.costCenterId,
-    this.costCenterName,
     this.history = const [],
     this.lastNotification,
   });
 
   factory PurchaseModel.fromMap(Map<String, dynamic> map) {
-    final id = (map['id'] ?? map['_id'] ?? '').toString();
-    final totals = (map['totals'] as Map?) ?? {};
-    final costCenterMap = map['costCenter'] as Map?;
-    String? extractString(dynamic source) => source?.toString();
-    String? resolveCostCenterName() {
-      final fromMap =
-          extractString(map['costCenterName'] ?? map['costCenterLabel']);
-      if ((fromMap ?? '').isNotEmpty) return fromMap;
-      if (costCenterMap != null) {
-        return extractString(costCenterMap['name'] ?? costCenterMap['label']);
-      }
-      return null;
+    double parseNum(dynamic value) {
+      if (value == null) return 0;
+      if (value is num) return value.toDouble();
+      return double.tryParse(value.toString()) ?? 0;
     }
 
+    DateTime? parseDate(dynamic value) {
+      if (value == null) return null;
+      if (value is DateTime) return value;
+      final text = value.toString();
+      if (text.isEmpty) return null;
+      return DateTime.tryParse(text);
+    }
+
+    final id = (map['id'] ?? map['_id'] ?? '').toString();
+    final totals = (map['totals'] as Map?) ?? {};
     final historyRaw =
         ((map['history'] ?? map['timeline'] ?? map['events']) as List?) ?? [];
 
@@ -167,70 +168,48 @@ class PurchaseModel {
       id: id,
       supplierId: (map['supplierId'] ?? '').toString(),
       status: (map['status'] ?? '').toString(),
-      items:
-          ((map['items'] as List?) ?? [])
-              .map(
-                (e) => PurchaseItemModel.fromMap(Map<String, dynamic>.from(e)),
-              )
-              .toList(),
-      total:
-          (totals['total'] ?? 0) is num
-              ? (totals['total'] as num).toDouble()
-              : 0,
-      subtotal:
-          (totals['subtotal'] ?? 0) is num
-              ? (totals['subtotal'] as num).toDouble()
-              : null,
-      freight:
-          (totals['freight'] ?? totals['frete'] ?? 0) is num
-              ? ((totals['freight'] ?? totals['frete']) as num).toDouble()
-              : null,
-      createdAt:
-          map['createdAt'] != null
-              ? DateTime.tryParse(map['createdAt'].toString())
-              : null,
-      receivedAt:
-          map['receivedAt'] != null
-              ? DateTime.tryParse(map['receivedAt'].toString())
-              : null,
-      paymentDueDate:
-          map['paymentDueDate'] != null
-              ? DateTime.tryParse(map['paymentDueDate'].toString())
-              : null,
+      items: ((map['items'] as List?) ?? [])
+          .whereType<Map>()
+          .map(
+            (e) => PurchaseItemModel.fromMap(Map<String, dynamic>.from(e)),
+          )
+          .toList(),
+      total: parseNum(totals['total'] ?? map['total']),
+      subtotal: totals['subtotal'] is num
+          ? (totals['subtotal'] as num).toDouble()
+          : null,
+      freight: (totals['freight'] ?? totals['frete']) is num
+          ? ((totals['freight'] ?? totals['frete']) as num).toDouble()
+          : null,
+      createdAt: parseDate(map['createdAt']),
+      receivedAt: parseDate(map['receivedAt']),
+      paymentDueDate: parseDate(map['paymentDueDate']),
       notes: map['notes']?.toString(),
-      alerts:
-          ((map['alerts'] as List?) ?? [])
-              .whereType<Map>()
-              .map(
-                (e) => PurchaseAlertModel.fromMap(Map<String, dynamic>.from(e)),
-              )
-              .toList(),
-      classifications:
-          ((map['classifications'] ??
-                      map['categories'] ??
-                      map['categoryTotals']) as List? ??
-                  [])
-              .whereType<Map>()
-              .map(
-                (e) => PurchaseClassificationModel.fromMap(
-                  Map<String, dynamic>.from(e),
-                ),
-              )
-              .toList(),
-      costCenterId:
-          extractString(
-            map['costCenterId'] ?? map['cost_center_id'] ?? costCenterMap?['id'],
-          ),
-      costCenterName: resolveCostCenterName(),
-      history:
-          historyRaw
-              .whereType<Map>()
-              .map(
-                (entry) => PurchaseHistoryEntry.fromMap(
-                  Map<String, dynamic>.from(entry),
-                ),
-              )
-              .toList(),
+      alerts: ((map['alerts'] as List?) ?? [])
+          .whereType<Map>()
+          .map(
+            (e) => PurchaseAlertModel.fromMap(Map<String, dynamic>.from(e)),
+          )
+          .toList(),
+      classifications: ((map['classifications'] ??
+                  map['categories'] ??
+                  map['categoryTotals']) as List? ??
+              [])
+          .whereType<Map>()
+          .map(
+            (e) => PurchaseClassificationModel.fromMap(
+              Map<String, dynamic>.from(e),
+            ),
+          )
+          .toList(),
+      history: historyRaw
+          .whereType<Map>()
+          .map(
+            (entry) => PurchaseHistoryEntry.fromMap(
+              Map<String, dynamic>.from(entry),
+            ),
+          )
+          .toList(),
       lastNotification:
           (map['notification'] ?? map['message'] ?? map['lastNotification'])
               ?.toString(),
@@ -251,8 +230,6 @@ class PurchaseModel {
     String? notes,
     List<PurchaseAlertModel>? alerts,
     List<PurchaseClassificationModel>? classifications,
-    String? costCenterId,
-    String? costCenterName,
     List<PurchaseHistoryEntry>? history,
     String? lastNotification,
   }) {
@@ -270,8 +247,6 @@ class PurchaseModel {
       notes: notes ?? this.notes,
       alerts: alerts ?? this.alerts,
       classifications: classifications ?? this.classifications,
-      costCenterId: costCenterId ?? this.costCenterId,
-      costCenterName: costCenterName ?? this.costCenterName,
       history: history ?? this.history,
       lastNotification: lastNotification ?? this.lastNotification,
     );
@@ -310,19 +285,14 @@ class PurchaseHistoryEntry {
     return PurchaseHistoryEntry(
       status: (map['status'] ?? map['state'] ?? '').toString(),
       userId: (map['userId'] ?? map['updatedBy'] ?? map['actorId'])?.toString(),
-      userName:
-          (map['userName'] ??
+      userName: (map['userName'] ??
               map['user'] ??
               map['updatedByName'] ??
               map['actorName'])
-              ?.toString(),
-      createdAt:
-          parseDate(
-            map['createdAt'] ??
-                map['timestamp'] ??
-                map['date'] ??
-                map['updatedAt'],
-          ),
+          ?.toString(),
+      createdAt: parseDate(
+        map['createdAt'] ?? map['timestamp'] ?? map['date'] ?? map['updatedAt'],
+      ),
       notes: (map['notes'] ?? map['comment'])?.toString(),
     );
   }

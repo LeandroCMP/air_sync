@@ -87,7 +87,6 @@ class OrderDraftModel {
     this.clientName,
     this.locationLabel,
     this.equipmentLabel,
-    this.costCenterId,
     this.scheduledAt,
     this.technicianIds = const [],
     this.checklist = const [],
@@ -106,7 +105,6 @@ class OrderDraftModel {
   final String? clientName;
   final String? locationLabel;
   final String? equipmentLabel;
-  final String? costCenterId;
   final DateTime? scheduledAt;
   final List<String> technicianIds;
   final List<String> checklist;
@@ -128,7 +126,6 @@ class OrderDraftModel {
     'clientName': clientName,
     'locationLabel': locationLabel,
     'equipmentLabel': equipmentLabel,
-    'costCenterId': costCenterId,
     'scheduledAt': scheduledAt?.toIso8601String(),
     'technicianIds': technicianIds,
     'checklist': checklist,
@@ -155,7 +152,6 @@ class OrderDraftModel {
       clientName: map['clientName'] as String?,
       locationLabel: map['locationLabel'] as String?,
       equipmentLabel: map['equipmentLabel'] as String?,
-      costCenterId: map['costCenterId'] as String?,
       scheduledAt:
           map['scheduledAt'] == null
               ? null
@@ -239,7 +235,6 @@ class OrderDraftModel {
       clientName: clientName,
       locationLabel: locationLabel,
       equipmentLabel: equipmentLabel,
-      costCenterId: costCenterId,
     );
   }
 
@@ -255,7 +250,6 @@ class OrderDraftModel {
       clientName: source.clientName,
       locationLabel: source.locationLabel,
       equipmentLabel: source.equipmentLabel,
-      costCenterId: source.costCenterId,
       scheduledAt: null,
       technicianIds: List<String>.from(source.technicianIds),
       checklist: source.checklist.map((item) => item.item).toList(),

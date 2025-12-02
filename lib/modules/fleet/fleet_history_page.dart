@@ -18,8 +18,10 @@ class FleetHistoryPage extends GetView<FleetHistoryController> {
         backgroundColor: context.themeDark,
         iconTheme: const IconThemeData(color: Colors.white),
         title: Text(
-          'Hist?rico - ',
+          'Histórico - ${controller.vehicleTitle}',
           style: const TextStyle(color: Colors.white),
+          overflow: TextOverflow.ellipsis,
+          maxLines: 1,
         ),
         actions: [
           IconButton(
@@ -198,11 +200,15 @@ class _VehicleHeaderCard extends StatelessWidget {
                         fontSize: 18,
                         fontWeight: FontWeight.bold,
                       ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                     const SizedBox(height: 4),
                     Text(
                       'Visualizando $monthLabel / $year',
                       style: const TextStyle(color: Colors.white60),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
                   ],
                 ),
@@ -286,36 +292,43 @@ class _HistoryDateFilters extends StatelessWidget {
           style: TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
         ),
         const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: _DropdownBox<int>(
-                label: 'Ano',
-                value: selectedYear,
-                items: years,
-                itemLabelBuilder: (value) => value.toString(),
-                onChanged: (value) {
-                  if (value != null) controller.setYear(value);
-                },
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          padding: EdgeInsets.zero,
+          child: Row(
+            children: [
+              SizedBox(
+                width: 160,
+                child: _DropdownBox<int>(
+                  label: 'Ano',
+                  value: selectedYear,
+                  items: years,
+                  itemLabelBuilder: (value) => value.toString(),
+                  onChanged: (value) {
+                    if (value != null) controller.setYear(value);
+                  },
+                ),
               ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: _DropdownBox<int?>(
-                label: 'Mês',
-                value: selectedMonth,
-                items: months,
-                itemLabelBuilder: (value) =>
-                    value == null ? 'Ano inteiro' : _monthLabel(value),
-                onChanged: controller.setMonth,
+              const SizedBox(width: 12),
+              SizedBox(
+                width: 160,
+                child: _DropdownBox<int?>(
+                  label: 'Mês',
+                  value: selectedMonth,
+                  items: months,
+                  itemLabelBuilder: (value) =>
+                      value == null ? 'Ano inteiro' : _monthLabel(value),
+                  onChanged: controller.setMonth,
+                ),
               ),
-            ),
-            IconButton(
-              tooltip: 'Limpar filtros',
-              onPressed: controller.resetFilters,
-              icon: const Icon(Icons.filter_alt_off, color: Colors.white70),
-            ),
-          ],
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Limpar filtros',
+                onPressed: controller.resetFilters,
+                icon: const Icon(Icons.filter_alt_off, color: Colors.white70),
+              ),
+            ],
+          ),
         ),
       ],
     );
@@ -522,15 +535,24 @@ class _FleetEventTile extends StatelessWidget {
                           Text(
                             subtitle,
                             style: const TextStyle(color: Colors.white70, fontSize: 12),
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
                           ),
                         ],
                       ),
                     ),
-                    Text(
-                      date != null
-                          ? FleetHistoryPage._dateTimeFormat.format(date!)
-                          : 'Data não informada',
-                      style: const TextStyle(color: Colors.white54, fontSize: 12),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        date != null
+                            ? FleetHistoryPage._dateTimeFormat.format(date!)
+                            : 'Data não informada',
+                        style: const TextStyle(color: Colors.white54, fontSize: 12),
+                        textAlign: TextAlign.end,
+                        overflow: TextOverflow.ellipsis,
+                        maxLines: 2,
+                        softWrap: true,
+                      ),
                     ),
                   ],
                 ),
@@ -649,13 +671,27 @@ class _DropdownBox<T> extends StatelessWidget {
   Widget build(BuildContext context) {
     return DropdownButtonFormField<T>(
       value: value,
+      isExpanded: true,
       decoration: InputDecoration(
         labelText: label,
         labelStyle: const TextStyle(color: Colors.white70),
         filled: true,
         fillColor: context.themeSurface,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
       ),
       dropdownColor: context.themeSurface,
+      selectedItemBuilder: (ctx) => items
+          .map(
+            (item) => Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                itemLabelBuilder(item),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          )
+          .toList(),
       items: items
           .map(
             (item) => DropdownMenuItem<T>(
@@ -708,7 +744,7 @@ String _subtitleFor(Map<String, dynamic> event) {
   final buffer = StringBuffer();
   final odo = event['km'] ?? event['atKm'] ?? event['odometer'] ?? event['odo'];
   if (odo != null && odo.toString().isNotEmpty) {
-    buffer.write('Odômetro:  km');
+    buffer.write('Odômetro: $odo km');
   }
   final notes = (event['notes'] ?? event['description'])?.toString();
   if (notes != null && notes.trim().isNotEmpty) {

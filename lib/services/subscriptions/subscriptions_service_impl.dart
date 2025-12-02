@@ -80,5 +80,9 @@ class SubscriptionsServiceImpl implements SubscriptionsService {
       );
 
   @override
+  Future<List<SubscriptionInvoiceModel>> createCarnet({bool payUpfront = false}) =>
+      _repository.createCarnet(payUpfront: payUpfront);
+
+  @override
   Future<void> runBillingNow() => _repository.runBillingNow();
 }

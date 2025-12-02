@@ -45,7 +45,6 @@ class OrdersServiceImpl implements OrdersService {
     List<OrderMaterialInput> materials = const [],
     List<OrderBillingItemInput> billingItems = const [],
     num billingDiscount = 0,
-    String? costCenterId,
   }) => _repo.create(
     clientId: clientId,
     locationId: locationId,
@@ -58,7 +57,6 @@ class OrdersServiceImpl implements OrdersService {
     materials: materials,
     billingItems: billingItems,
     billingDiscount: billingDiscount,
-    costCenterId: costCenterId,
   );
 
   @override
@@ -74,7 +72,6 @@ class OrdersServiceImpl implements OrdersService {
     String? clientId,
     String? locationId,
     String? equipmentId,
-    String? costCenterId,
   }) => _repo.update(
     orderId: orderId,
     status: status,
@@ -87,7 +84,6 @@ class OrdersServiceImpl implements OrdersService {
     clientId: clientId,
     locationId: locationId,
     equipmentId: equipmentId,
-    costCenterId: costCenterId,
   );
 
   @override
