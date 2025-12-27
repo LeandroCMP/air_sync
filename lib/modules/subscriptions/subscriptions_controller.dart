@@ -28,11 +28,13 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
   final invoiceStatusFilter = 'all'.obs;
   final Rxn<DateTime> invoiceFrom = Rxn<DateTime>();
   final Rxn<DateTime> invoiceTo = Rxn<DateTime>();
+  final RxInt invoicePage = 1.obs;
+  final RxInt invoiceLimit = 50.obs;
   final isLoading = false.obs;
   final isCreatingCarnet = false.obs;
-  final isRunningBilling = false.obs;
   final message = Rxn<MessageModel>();
   final isOwner = false.obs;
+  final restricted = false.obs;
   final lastIntentByInvoice = <String, SubscriptionPaymentIntentResult>{}.obs;
 
   @override
@@ -41,12 +43,16 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
     messageListener(message);
     isOwner.value = _auth.user.value?.isOwner ?? false;
     ever(_auth.user, (user) => isOwner.value = user?.isOwner ?? false);
+    final args = Get.arguments;
+    if (args is Map && args['restricted'] == true) {
+      restricted.value = true;
+    }
     super.onInit();
   }
 
   @override
   Future<void> onReady() async {
-    if (isOwner.value) {
+    if (isOwner.value || restricted.value) {
       await refreshAll();
     }
     super.onReady();
@@ -144,6 +150,8 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
       status: invoiceStatusFilter.value == 'all' ? null : invoiceStatusFilter.value,
       from: invoiceFrom.value,
       to: invoiceTo.value,
+      page: invoicePage.value,
+      limit: invoiceLimit.value,
     ));
     invoices.assignAll(list);
   }
@@ -231,38 +239,12 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
     }
   }
 
-  Future<void> runBillingNow() async {
-    if (isRunningBilling.value) return;
-    isRunningBilling.value = true;
-    try {
-      await _withTimeout(_service.runBillingNow(), customTimeout: const Duration(seconds: 25));
-      await refreshAll();
-      message(
-        MessageModel.success(
-          title: 'Billing',
-          message: 'Ciclo executado com sucesso.',
-        ),
-      );
-    } catch (error) {
-      message(
-        MessageModel.error(
-          title: 'Billing',
-          message: _resolveErrorMessage(
-            error,
-            'Falha ao executar ciclo. Verifique sua conexão e tente novamente.',
-          ),
-        ),
-      );
-    } finally {
-      isRunningBilling.value = false;
-    }
-  }
-
   Future<void> registerManualPayment({
     required String invoiceId,
     String? note,
     DateTime? paidAt,
     double? amount,
+    String? idempotencyKey,
   }) async {
     try {
       await _service.payInvoice(
@@ -270,6 +252,7 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
         note: note,
         paidAt: paidAt,
         amount: amount,
+        idempotencyKey: idempotencyKey,
       );
       await loadInvoices();
       message(
@@ -344,22 +327,25 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
     }
   }
 
-  String _resolveErrorMessage(Object error, String fallback) {
-    if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map) {
-        final code = data['code']?.toString();
-        final msg = data['message']?.toString();
-        if (msg != null && msg.isNotEmpty) {
-          return code != null ? '[$code] $msg' : msg;
-        }
-        if (code != null) {
-          return '$fallback ($code)';
-        }
+String _resolveErrorMessage(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String) {
+        final msg = (nested['message'] as String).trim();
+        if (msg.isNotEmpty) return msg;
+      }
+      if (data['message'] is String) {
+        final msg = (data['message'] as String).trim();
+        if (msg.isNotEmpty) return msg;
       }
     }
-    return fallback;
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
   }
+  return fallback;
+}
 
   String _defaultSuccessUrlForTenant() {
     final base = _appConfig.baseUrl;
@@ -394,5 +380,6 @@ class SubscriptionsController extends GetxController with LoaderMixin, MessagesM
     return false;
   }
 }
+
 
 

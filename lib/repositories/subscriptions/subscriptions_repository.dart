@@ -18,6 +18,8 @@ abstract class SubscriptionsRepository {
     String? status,
     DateTime? from,
     DateTime? to,
+    int page,
+    int limit,
   });
   Future<SubscriptionPaymentIntentResult> createPaymentIntent({
     required String invoiceId,
@@ -31,6 +33,7 @@ abstract class SubscriptionsRepository {
     String? note,
     DateTime? paidAt,
     double? amount,
+    String? idempotencyKey,
   });
 
   Future<SubscriptionInvoiceModel> negotiateInvoice({
@@ -40,6 +43,4 @@ abstract class SubscriptionsRepository {
   });
 
   Future<List<SubscriptionInvoiceModel>> createCarnet({bool payUpfront = false});
-
-  Future<void> runBillingNow();
 }

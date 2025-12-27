@@ -8,6 +8,7 @@ import 'package:air_sync/modules/inventory/inventory_controller.dart';
 import 'package:air_sync/modules/purchases/models/purchase_prefill.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:air_sync/services/purchases/purchases_service.dart';
+import 'package:dio/dio.dart';
 import 'package:air_sync/services/suppliers/suppliers_service.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -74,7 +75,7 @@ class PurchasesController extends GetxController
       message(
         MessageModel.error(
           title: 'Compras',
-          message: 'Falha ao carregar as compras: $e',
+          message: _apiError(e, 'Falha ao carregar as compras.'),
         ),
       );
     } finally {
@@ -140,7 +141,7 @@ class PurchasesController extends GetxController
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao criar compra. $errMsg',
+          message: _apiError(errMsg, 'Falha ao criar compra.'),
         ),
       );
       return null;
@@ -181,7 +182,7 @@ class PurchasesController extends GetxController
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao receber compra: $e',
+          message: _apiError(e, 'Falha ao receber compra.'),
         ),
       );
     } finally {
@@ -231,7 +232,7 @@ class PurchasesController extends GetxController
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao atualizar compra: $e',
+          message: _apiError(e, 'Falha ao atualizar compra.'),
         ),
       );
       return null;
@@ -484,7 +485,7 @@ class PurchasesController extends GetxController
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao enviar compra: $e',
+          message: _apiError(e, 'Falha ao enviar compra.'),
         ),
       );
     } finally {
@@ -508,7 +509,7 @@ class PurchasesController extends GetxController
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao aprovar compra: $e',
+          message: _apiError(e, 'Falha ao aprovar compra.'),
         ),
       );
     } finally {
@@ -533,7 +534,7 @@ class PurchasesController extends GetxController
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao marcar pedido: $e',
+          message: _apiError(e, 'Falha ao marcar pedido.'),
         ),
       );
     } finally {
@@ -633,6 +634,28 @@ class PurchasesController extends GetxController
       ),
     );
   }
+
+  String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+
 }
 
 

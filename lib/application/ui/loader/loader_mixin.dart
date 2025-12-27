@@ -70,6 +70,8 @@ mixin LoaderMixin on GetxController {
           '/suppliers',
           '/equipments',
           '/fleet',
+          '/sales',
+          'SalesPage',
           '/orders',
           '/OrdersPage',
           '/purchases',

@@ -1,7 +1,6 @@
 import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/models/sale_model.dart';
 import 'package:air_sync/repositories/sales/sales_repository.dart';
-import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
 class SalesRepositoryImpl implements SalesRepository {
@@ -11,39 +10,35 @@ class SalesRepositoryImpl implements SalesRepository {
 
   @override
   Future<List<SaleModel>> list({String? status, String? search}) async {
-    try {
-      final query = <String, dynamic>{
-        if ((status ?? '').isNotEmpty && status != 'all') 'status': status,
-        if ((search ?? '').isNotEmpty) 'text': search,
-      };
-      final res = await _api.dio
-          .get(
-            '/v1/sales',
-            queryParameters: query.isEmpty ? null : query,
-          )
-          .timeout(const Duration(seconds: 12));
-      final data = res.data;
-      List<Map<String, dynamic>> extract(dynamic payload) {
-        if (payload is List) {
-          return payload
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
-        }
-        if (payload is Map && payload['items'] is List) {
-          return (payload['items'] as List)
-              .whereType<Map>()
-              .map((e) => Map<String, dynamic>.from(e))
-              .toList();
-        }
-        return const [];
+    final query = <String, dynamic>{
+      if ((status ?? '').isNotEmpty && status != 'all') 'status': status,
+      if ((search ?? '').isNotEmpty) 'text': search,
+    };
+    final res = await _api.dio
+        .get(
+          '/v1/sales',
+          queryParameters: query.isEmpty ? null : query,
+        )
+        .timeout(const Duration(seconds: 12));
+    final data = res.data;
+    List<Map<String, dynamic>> extract(dynamic payload) {
+      if (payload is List) {
+        return payload
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
       }
-
-      final parsed = extract(data);
-      return parsed.map(SaleModel.fromMap).toList();
-    } on DioException {
-      return [];
+      if (payload is Map && payload['items'] is List) {
+        return (payload['items'] as List)
+            .whereType<Map>()
+            .map((e) => Map<String, dynamic>.from(e))
+            .toList();
+      }
+      return const [];
     }
+
+    final parsed = extract(data);
+    return parsed.map(SaleModel.fromMap).toList();
   }
 
   @override
@@ -55,6 +50,7 @@ class SalesRepositoryImpl implements SalesRepository {
     String? notes,
     Map<String, dynamic>? moveRequest,
     bool autoCreateOrder = false,
+    Map<String, dynamic>? orderMeta,
   }) async {
     final payload = <String, dynamic>{
       'clientId': clientId.trim(),
@@ -64,6 +60,7 @@ class SalesRepositoryImpl implements SalesRepository {
       if (discount != null) 'discount': discount,
       if ((notes ?? '').trim().isNotEmpty) 'notes': notes!.trim(),
       if (moveRequest != null && moveRequest.isNotEmpty) 'moveRequest': moveRequest,
+      if (orderMeta != null && orderMeta.isNotEmpty) 'orderMeta': orderMeta,
     };
     final res = await _api.dio
         .post('/v1/sales', data: payload)
@@ -81,6 +78,7 @@ class SalesRepositoryImpl implements SalesRepository {
     String? notes,
     Map<String, dynamic>? moveRequest,
     bool? autoCreateOrder,
+    Map<String, dynamic>? orderMeta,
   }) async {
     final payload = <String, dynamic>{};
     if (clientId != null) payload['clientId'] = clientId.trim();
@@ -89,6 +87,7 @@ class SalesRepositoryImpl implements SalesRepository {
     if (autoCreateOrder != null) payload['autoCreateOrder'] = autoCreateOrder;
     if (discount != null) payload['discount'] = discount;
     if (moveRequest != null) payload['moveRequest'] = moveRequest;
+    if (orderMeta != null && orderMeta.isNotEmpty) payload['orderMeta'] = orderMeta;
     if (items != null) {
       payload['items'] = items.map((e) => e.toPayload()).toList();
     }
@@ -155,9 +154,14 @@ class SalesRepositoryImpl implements SalesRepository {
   }
 
   @override
-  Future<SaleModel> launchOrderIfNeeded(String id, {bool force = false}) async {
+  Future<SaleModel> launchOrderIfNeeded(
+    String id, {
+    bool force = false,
+    Map<String, dynamic>? orderMeta,
+  }) async {
     final payload = <String, dynamic>{
       if (force) 'forceOrder': true,
+      if (orderMeta != null && orderMeta.isNotEmpty) 'orderMeta': orderMeta,
     };
     final res = await _api.dio
         .post(

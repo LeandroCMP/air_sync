@@ -22,9 +22,10 @@ Future<Uint8List> buildOrderReportPdf({
   final doc = pw.Document();
   final baseFont = pw.Font.helvetica();
   final boldFont = pw.Font.helveticaBold();
-  final accent = PdfColor.fromHex('#1D3557');
-  final lightFill = PdfColor.fromHex('#F3F6FB');
-  final borderColor = PdfColor.fromHex('#D8DEE8');
+  // Paleta alinhada ao app: verde principal e fundo escuro suave.
+  final accent = PdfColor.fromHex('#0D9488');
+  final lightFill = PdfColor.fromHex('#0F172A');
+  final borderColor = PdfColor.fromHex('#1F2937');
   final dateTimeFormatter = DateFormat('dd/MM/yyyy HH:mm');
   final dateFormatter = DateFormat('dd/MM/yyyy');
   final currencyFormatter = NumberFormat.currency(
@@ -133,6 +134,8 @@ Future<Uint8List> buildOrderReportPdf({
           final row = rows[index];
           final background = index.isEven ? PdfColors.white : lightFill;
           final showDivider = index != rows.length - 1;
+          final textColor =
+              background == lightFill ? PdfColors.white : PdfColors.black;
           return pw.Container(
             decoration: pw.BoxDecoration(
               color: background,
@@ -151,7 +154,11 @@ Future<Uint8List> buildOrderReportPdf({
                   flex: 1,
                   child: pw.Text(
                     row[0],
-                    style: pw.TextStyle(font: boldFont, fontSize: 10),
+                    style: pw.TextStyle(
+                      font: boldFont,
+                      fontSize: 10,
+                      color: textColor,
+                    ),
                   ),
                 ),
                 pw.SizedBox(width: 12),
@@ -159,7 +166,11 @@ Future<Uint8List> buildOrderReportPdf({
                   flex: 2,
                   child: pw.Text(
                     row[1],
-                    style: pw.TextStyle(font: baseFont, fontSize: 10),
+                    style: pw.TextStyle(
+                      font: baseFont,
+                      fontSize: 10,
+                      color: textColor,
+                    ),
                   ),
                 ),
               ],

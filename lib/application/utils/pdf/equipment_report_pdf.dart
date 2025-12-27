@@ -20,9 +20,10 @@ Future<Uint8List> buildEquipmentReportPdf({
   final doc = pw.Document();
   final baseFont = pw.Font.helvetica();
   final boldFont = pw.Font.helveticaBold();
-  final accent = PdfColor.fromHex('#1D3557');
-  final lightFill = PdfColor.fromHex('#F3F6FB');
-  final borderColor = PdfColor.fromHex('#D8DEE8');
+  // Paleta alinhada ao app: verde principal e fundo escuro suave.
+  final accent = PdfColor.fromHex('#0D9488');
+  final lightFill = PdfColor.fromHex('#0F172A');
+  final borderColor = PdfColor.fromHex('#1F2937');
   final dateFormatter = DateFormat('dd/MM/yyyy');
   final dateTimeFormatter = DateFormat('dd/MM/yyyy HH:mm');
 

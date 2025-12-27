@@ -19,7 +19,6 @@ import 'models/purchase_prefill.dart';
 final NumberFormat _purchaseCurrencyFormatter =
     NumberFormat.currency(locale: 'pt_BR', symbol: 'R\$');
 final DateFormat _purchaseDateFormatter = DateFormat('dd/MM/yyyy');
-final DateFormat _purchaseMonthFormatter = DateFormat.MMM('pt_BR');
 final DateFormat _purchaseMonthYearFormatter = DateFormat('MMM yyyy', 'pt_BR');
 
 String _formatSupplierDocument(String? value) {
@@ -998,6 +997,7 @@ Future<void> _openCreateBottomSheet(
   final supplierId = RxnString();
   final Rxn<SupplierModel> selectedSupplier = Rxn<SupplierModel>();
   final Map<String, SupplierModel> supplierCache = {};
+  final isSaving = false.obs;
 
   final itemNameCtrl = TextEditingController();
   String? selectedItemId;
@@ -1463,27 +1463,28 @@ Future<void> _openCreateBottomSheet(
                         ),
                       ),
                       const SizedBox(width: 8),
-                      SizedBox(
-                        width: 140,
-                        child: TextFormField(
-                          controller: unitCtrl,
-                          keyboardType: TextInputType.number,
-                          validator:
-                              (v) =>
-                                  selectedItemId == null
-                                      ? null
-                                      : FormValidators.validateNumber(
-                                        v,
-                                        fieldName: 'Unit',
-                                        positive: true,
-                                      ),
-                          decoration: const InputDecoration(
-                            labelText: 'Custo unit.',
-                            prefixText: 'R\$ ',
-                            labelStyle: TextStyle(color: Colors.white),
-                          ),
-                        ),
+                  SizedBox(
+                    width: 140,
+                    child: TextFormField(
+                      controller: unitCtrl,
+                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                      inputFormatters: [
+                        MoneyInputFormatter(locale: 'pt_BR', symbol: 'R\$'),
+                      ],
+                      validator: (v) {
+                        if (selectedItemId == null) return null;
+                        final parsed = _parseCurrencyText(v);
+                        if (parsed == null || parsed <= 0) {
+                          return 'Informe o custo unitário';
+                        }
+                        return null;
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Custo unit.',
+                        labelStyle: TextStyle(color: Colors.white),
                       ),
+                    ),
+                  ),
                       IconButton(
                         icon: const Icon(
                           Icons.add_circle_outline,
@@ -1496,11 +1497,7 @@ Future<void> _openCreateBottomSheet(
                                 qtyCtrl.text.trim().replaceAll(',', '.'),
                               ) ??
                               0;
-                          final unit =
-                              double.tryParse(
-                                unitCtrl.text.trim().replaceAll(',', '.'),
-                              ) ??
-                              0;
+                          final unit = _parseCurrencyText(unitCtrl.text) ?? 0;
                           if (id.isEmpty || qty <= 0 || unit <= 0) return;
                           items.add(
                             PurchaseItemModel(
@@ -1615,70 +1612,72 @@ Future<void> _openCreateBottomSheet(
                           height: 45,
                           child: ElevatedButton(
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: context.themeGreen,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(25),
-                              ),
-                            ),
-                            onPressed:
-                                (supplierId.value == null || items.isEmpty)
-                                    ? null
-                                    : () async {
-                                        if (!formKey.currentState!.validate()) {
-                                          return;
-                                        }
-                                        final freight = _parseCurrencyText(
-                                          freightCtrl.text,
-                                        );
-                                        final ctrl =
-                                            Get.find<PurchasesController>();
-                                        final created = await ctrl.create(
-                                          supplierId: supplierId.value!,
-                                          items: items.toList(),
-                                          status: status.value,
-                                          freight: freight,
-                                          notes: notesCtrl.text.trim().isNotEmpty
-                                              ? notesCtrl.text.trim()
-                                              : null,
-                                          paymentDueDate: paymentDueDate.value,
-                                        );
-                                        if (created != null) {
-                                          if (status.value == 'received' &&
-                                              created.status.toLowerCase() !=
-                                                  'received') {
-                                            await ctrl.receive(
-                                              created.id,
-                                              receivedAt: DateTime.now(),
-                                            );
-                                          } else if (created.status.toLowerCase() ==
-                                                  'received' &&
-                                              Get.isRegistered<InventoryController>()) {
-                                            final inventoryController =
-                                                Get.find<InventoryController>();
-                                            await inventoryController
-                                                .refreshCurrentView(
-                                              showLoader: false,
-                                            );
-                                            inventoryController.scheduleRefresh(
-                                              delay:
-                                                  const Duration(milliseconds: 400),
-                                              showLoader: false,
-                                            );
-                                          }
-                                          await ctrl.load();
-                                          if (context.mounted) Get.back();
-                                        }
-                                      },
-                            child: Text(
-                              'Salvar',
-                              style: TextStyle(
-                                fontWeight: FontWeight.bold,
-                                color: context.themeGray,
-                                fontSize: 18,
-                              ),
-                            ),
-                          ),
+                      backgroundColor: context.themeGreen,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(25),
+                      ),
+                    ),
+                    onPressed: (supplierId.value == null ||
+                            items.isEmpty ||
+                            isSaving.value)
+                        ? null
+                        : () async {
+                            if (!formKey.currentState!.validate()) return;
+                            isSaving.value = true;
+                            try {
+                              final freight = _parseCurrencyText(
+                                freightCtrl.text,
+                              );
+                              final ctrl = Get.find<PurchasesController>();
+                              final created = await ctrl.create(
+                                supplierId: supplierId.value!,
+                                items: items.toList(),
+                                status: status.value,
+                                freight: freight,
+                                notes: notesCtrl.text.trim().isNotEmpty
+                                    ? notesCtrl.text.trim()
+                                    : null,
+                                paymentDueDate: paymentDueDate.value,
+                              );
+                              if (created != null) {
+                                if (status.value == 'received' &&
+                                    created.status.toLowerCase() != 'received') {
+                                  await ctrl.receive(
+                                    created.id,
+                                    receivedAt: DateTime.now(),
+                                  );
+                                } else if (created.status.toLowerCase() ==
+                                        'received' &&
+                                    Get.isRegistered<InventoryController>()) {
+                                  final inventoryController =
+                                      Get.find<InventoryController>();
+                                  await inventoryController.refreshCurrentView(
+                                    showLoader: false,
+                                  );
+                                  inventoryController.scheduleRefresh(
+                                    delay: const Duration(milliseconds: 400),
+                                    showLoader: false,
+                                  );
+                                }
+                                await ctrl.load();
+                                if (context.mounted) Get.back();
+                              }
+                            } finally {
+                              isSaving.value = false;
+                            }
+                          },
+                    child: Obx(
+                      () => Text(
+                        isSaving.value ? 'Salvando...' : 'Salvar',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: context.themeGray,
+                          fontSize: 18,
                         ),
+                      ),
+                    ),
+                  ),
+                ),
                       ),
                       const SizedBox(width: 10),
                       SizedBox(
@@ -2498,24 +2497,10 @@ class _PurchaseFiltersBar extends StatelessWidget {
 
   final PurchasesController controller;
 
-
   @override
-
   Widget build(BuildContext context) {
-
     return Obx(() {
-
-      final years = controller.yearOptions;
-
-      final selectedYear = controller.yearFilter.value;
-
       final selectedMonth = controller.monthFilter.value;
-
-      final months = controller.monthOptions;
-
-      final monthsWithData = controller.monthsWithDataForYear(selectedYear);
-
-
 
       return Container(
         padding: const EdgeInsets.all(16),
@@ -2541,80 +2526,51 @@ class _PurchaseFiltersBar extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 12),
-            Wrap(
-              spacing: 10,
-              runSpacing: 8,
-              children: years
-                  .map(
-                    (year) => ChoiceChip(
-                      label: Text(year.toString()),
-                      selected: year == selectedYear,
-                      onSelected: (_) => controller.setYearFilter(year),
-                      selectedColor: context.themePrimary.withValues(alpha: .25),
-                      backgroundColor: Colors.white.withValues(alpha: 0.05),
-                      labelStyle: TextStyle(
-                        color: year == selectedYear
-                            ? Colors.white
-                            : Colors.white70,
-                        fontWeight:
-                            year == selectedYear ? FontWeight.w600 : null,
-                      ),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    icon: const Icon(Icons.date_range),
+                    label: Text(
+                      selectedMonth == null
+                          ? 'Selecionar m?s'
+                          : _purchaseMonthYearFormatter
+                              .format(selectedMonth)
+                              .toUpperCase(),
                     ),
-                  )
-                  .toList(),
-            ),
-            const SizedBox(height: 16),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: months.map((month) {
-                final hasData = monthsWithData.contains(month.month);
-                final selected =
-                    selectedMonth != null &&
-                    selectedMonth.year == month.year &&
-                    selectedMonth.month == month.month;
-                final label = _purchaseMonthFormatter
-                    .format(month)
-                    .replaceAll('.', '')
-                    .toUpperCase();
-                return ChoiceChip(
-                  label: Text(label),
-                  selected: selected,
-                  onSelected:
-                      hasData
-                          ? (value) =>
-                              controller.setMonthFilter(value ? month : null)
-                          : null,
-                  selectedColor: context.themePrimary.withValues(alpha: .2),
-                  backgroundColor: Colors.white.withValues(alpha: 0.05),
-                  disabledColor: Colors.white.withValues(alpha: 0.03),
-                  labelStyle: TextStyle(
-                    color: !hasData
-                        ? Colors.white24
-                        : selected
-                            ? Colors.white
-                            : Colors.white70,
-                    fontWeight: hasData && selected ? FontWeight.w600 : null,
+                    onPressed: () async {
+                      final now = DateTime.now();
+                      final picked = await showDatePicker(
+                        context: context,
+                        initialDate: selectedMonth ?? now,
+                        firstDate: DateTime(now.year - 2, 1, 1),
+                        lastDate: DateTime(now.year + 2, 12, 31),
+                        helpText: 'Escolha o m?s (ignore o dia)',
+                      );
+                      if (picked != null) {
+                        controller.setMonthFilter(
+                          DateTime(picked.year, picked.month),
+                        );
+                      }
+                    },
                   ),
-                );
-              }).toList(),
-            ),
-            if (selectedMonth != null)
-              Align(
-                alignment: Alignment.centerRight,
-                child: TextButton.icon(
-                  onPressed: () => controller.setMonthFilter(null),
-                  icon: const Icon(Icons.clear, size: 16),
-                  label: const Text('Limpar mes'),
                 ),
-              ),
+                if (selectedMonth != null) ...[
+                  const SizedBox(width: 8),
+                  IconButton(
+                    tooltip: 'Limpar Período',
+                    icon: const Icon(Icons.clear, color: Colors.white70),
+                    onPressed: () => controller.setMonthFilter(null),
+                  ),
+                ],
+              ],
+            ),
           ],
         ),
       );
     });
   }
 }
-
 
 class _ActiveFiltersBar extends StatelessWidget {
   const _ActiveFiltersBar({required this.controller});
@@ -3033,30 +2989,17 @@ class _PurchaseSummaryInfo {
 
 
 class _PurchaseCard extends StatelessWidget {
-
   const _PurchaseCard({
-
     required this.purchase,
-
     required this.controller,
-
     required this.onDetails,
-
     this.onReceive,
-
   });
 
-
-
   final PurchaseModel purchase;
-
   final PurchasesController controller;
-
   final VoidCallback? onReceive;
-
   final VoidCallback onDetails;
-
-
 
   Color _statusColor() {
     final status = purchase.status.toLowerCase();
@@ -3070,252 +3013,191 @@ class _PurchaseCard extends StatelessWidget {
     return Colors.white70;
   }
 
-
-
   @override
-
   Widget build(BuildContext context) {
-
     final supplier = controller.supplierNameFor(purchase.supplierId);
-
     final statusLabel = controller.statusLabel(purchase.status);
-
     final total = controller.totalFor(purchase);
-
     final subtotal = controller.subtotalFor(purchase);
-
     final freight = purchase.freight ?? 0;
-
     final createdAt = purchase.createdAt?.toLocal();
-
     final dueDate = purchase.paymentDueDate?.toLocal();
-
     final receivedAt = purchase.receivedAt?.toLocal();
-
     final now = DateTime.now();
-
     final startOfToday = DateTime(now.year, now.month, now.day);
-
     final isOverdue = dueDate != null && dueDate.isBefore(startOfToday);
-
     final alerts = purchase.alerts;
-
     final classifications = purchase.classifications;
 
-
+    Widget valueLine(
+      String label,
+      String value, {
+      Color? color,
+      bool bold = false,
+    }) {
+      return Text.rich(
+        TextSpan(
+          text: '$label\n',
+          style: const TextStyle(
+            color: Colors.white54,
+            fontSize: 12,
+            height: 1.2,
+          ),
+          children: [
+            TextSpan(
+              text: value,
+              style: TextStyle(
+                color: color ?? Colors.white,
+                fontWeight: bold ? FontWeight.w700 : FontWeight.w600,
+                fontSize: 14,
+              ),
+            ),
+          ],
+        ),
+        textAlign: TextAlign.right,
+      );
+    }
 
     return Material(
-
       color: Colors.transparent,
-
       child: InkWell(
-
         borderRadius: BorderRadius.circular(18),
-
         onTap: onDetails,
-
         child: Ink(
-
           decoration: BoxDecoration(
-
             color: context.themeSurface,
-
             borderRadius: BorderRadius.circular(18),
-
             border: Border.all(color: context.themeBorder),
-
             boxShadow: context.shadowCard,
-
           ),
-
           padding: const EdgeInsets.all(16),
-
           child: Column(
-
             crossAxisAlignment: CrossAxisAlignment.start,
-
             children: [
-
               Row(
-
                 crossAxisAlignment: CrossAxisAlignment.start,
-
                 children: [
-
                   Expanded(
-
                     child: Column(
-
                       crossAxisAlignment: CrossAxisAlignment.start,
-
                       children: [
-
                         Text(
-
                           supplier,
-
                           style: const TextStyle(
-
                             color: Colors.white,
-
                             fontSize: 16,
-
                             fontWeight: FontWeight.w600,
-
                           ),
-
                         ),
-
                         const SizedBox(height: 4),
-
                         Text(
-
                           'ID ${purchase.id}',
-
                           style: const TextStyle(color: Colors.white54),
-
                         ),
-
                       ],
-
                     ),
-
                   ),
-
                   _PurchaseInfoChip(
-
                     icon: Icons.flag_outlined,
-
                     label: 'Status',
-
                     value: statusLabel,
-
                     valueColor: _statusColor(),
-
                   ),
-
                 ],
-
               ),
-
               const SizedBox(height: 12),
-
               Wrap(
-
                 spacing: 12,
-
                 runSpacing: 10,
-
                 children: [
-
                   if (createdAt != null)
-
                     _PurchaseInfoChip(
-
                       icon: Icons.calendar_today_outlined,
-
                       label: 'Criada em',
-
                       value: _purchaseDateFormatter.format(createdAt),
-
                     ),
-
                   if (dueDate != null)
-
                     _PurchaseInfoChip(
-
                       icon: Icons.event_note_outlined,
-
                       label: 'Vencimento',
-
                       value: _purchaseDateFormatter.format(dueDate),
-
                       valueColor:
-
                           isOverdue ? Colors.orangeAccent : Colors.white,
-
                     ),
-
                   if (receivedAt != null)
-
                     _PurchaseInfoChip(
-
                       icon: Icons.download_done_outlined,
-
                       label: 'Recebida em',
-
                       value: _purchaseDateFormatter.format(receivedAt),
-
                     ),
-
                   _PurchaseInfoChip(
-
                     icon: Icons.inventory_2_outlined,
-
                     label: 'Itens',
-
                     value: '${purchase.items.length}',
-
                   ),
-
-                  _PurchaseInfoChip(
-
-                    icon: Icons.payments_outlined,
-
-                    label: 'Subtotal',
-
-                    value: _purchaseCurrencyFormatter.format(subtotal),
-
-                  ),
-
-                  if (freight > 0)
-
+                  if (alerts.isNotEmpty)
                     _PurchaseInfoChip(
-
-                      icon: Icons.local_shipping_outlined,
-
-                      label: 'Frete',
-
-                      value: _purchaseCurrencyFormatter.format(freight),
-
+                      icon: Icons.warning_amber_outlined,
+                      label: 'Alertas',
+                      value: '${alerts.length}',
+                      valueColor: Colors.orangeAccent,
                     ),
-
-                  _PurchaseInfoChip(
-
-                    icon: Icons.attach_money,
-
-                    label: 'Total',
-
-                    value: _purchaseCurrencyFormatter.format(total),
-
-                    valueColor: Colors.greenAccent,
-
-                  ),
-
                 ],
-
               ),
-
-              if (classifications.isNotEmpty) ...[
-
-                const SizedBox(height: 12),
-
-                const Text(
-
-                  'Categorias desta compra',
-
-                  style: TextStyle(
-
-                    color: Colors.white70,
-
-                    fontWeight: FontWeight.w600,
-
+              const SizedBox(height: 12),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 10,
+                      children: [
+                        if (freight > 0)
+                          _PurchaseInfoChip(
+                            icon: Icons.local_shipping_outlined,
+                            label: 'Frete',
+                            value: _purchaseCurrencyFormatter.format(freight),
+                          ),
+                      ],
+                    ),
                   ),
-
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      valueLine(
+                        'Subtotal',
+                        _purchaseCurrencyFormatter.format(subtotal),
+                      ),
+                      if (freight > 0) ...[
+                        const SizedBox(height: 6),
+                        valueLine(
+                          'Frete',
+                          _purchaseCurrencyFormatter.format(freight),
+                          color: Colors.white70,
+                        ),
+                      ],
+                      const SizedBox(height: 6),
+                      valueLine(
+                        'Total',
+                        _purchaseCurrencyFormatter.format(total),
+                        color: Colors.greenAccent,
+                        bold: true,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+              if (classifications.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                const Text(
+                  'Categorias desta compra',
+                  style: TextStyle(
+                    color: Colors.white70,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-
                 const SizedBox(height: 6),
-
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -3323,13 +3205,13 @@ class _PurchaseCard extends StatelessWidget {
                     return Chip(
                       backgroundColor: Colors.white10,
                       label: Text(
-                        ' · ',
+                        '${classification.categoryName} (${_purchaseCurrencyFormatter.format(classification.total)})',
+                        style: const TextStyle(color: Colors.white),
                       ),
                     );
                   }).toList(),
                 ),
               ],
-
               if (alerts.isNotEmpty) ...[
                 const SizedBox(height: 12),
                 const Text(
@@ -3340,116 +3222,60 @@ class _PurchaseCard extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 6),
-
                 Column(
-
                   children: alerts.take(2).map((alert) {
-
                     return Padding(
-
                       padding: const EdgeInsets.only(bottom: 6),
-
                       child: _PurchaseAlertChip(alert: alert),
-
                     );
-
                   }).toList(),
-
                 ),
-
                 if (alerts.length > 2)
-
                   Align(
-
                     alignment: Alignment.centerRight,
-
                     child: TextButton(
-
                       onPressed: onDetails,
-
                       child: Text('Ver todos (${alerts.length})'),
-
                     ),
-
                   ),
-
               ],
-
               const SizedBox(height: 12),
-
               Row(
-
                 children: [
-
                   if (onReceive != null) ...[
-
                     Expanded(
-
                       child: ElevatedButton.icon(
-
                         style: ElevatedButton.styleFrom(
-
                           backgroundColor: context.themeGreen,
-
                           foregroundColor: Colors.white,
-
                         ),
-
                         onPressed: onReceive,
-
                         icon: const Icon(Icons.download_done_outlined),
-
                         label: const Text('Marcar recebida'),
-
                       ),
-
                     ),
-
                     const SizedBox(width: 12),
-
                   ],
-
                   Expanded(
-
                     child: OutlinedButton.icon(
-
                       style: OutlinedButton.styleFrom(
-
                         foregroundColor: Colors.white,
-
                         side: BorderSide(color: context.themeBorder),
-
                       ),
-
                       onPressed: onDetails,
-
                       icon: const Icon(Icons.visibility_outlined),
-
                       label: const Text('Detalhes'),
-
                     ),
-
                   ),
-
                 ],
-
               ),
-
             ],
-
           ),
-
         ),
-
       ),
-
     );
-
   }
-
 }
-
-
 
 class _PurchaseInfoChip extends StatelessWidget {
 
@@ -3902,6 +3728,9 @@ class _PurchaseHistoryTimeline extends StatelessWidget {
     );
   }
 }
+
+
+
 
 
 

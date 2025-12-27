@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:air_sync/application/core/errors/auth_failure.dart';
 import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/application/core/network/app_config.dart';
@@ -5,7 +7,6 @@ import 'package:air_sync/application/core/network/token_storage.dart';
 import 'package:air_sync/models/user_model.dart';
 import 'package:air_sync/repositories/auth/auth_repository.dart';
 import 'package:dio/dio.dart';
-import 'dart:async';
 import 'package:get/get.dart';
 
 class AuthRepositoryImpl implements AuthRepository {
@@ -13,17 +14,15 @@ class AuthRepositoryImpl implements AuthRepository {
   final TokenStorage _tokens = Get.find<TokenStorage>();
   final AppConfig _config = Get.find<AppConfig>();
 
-  UserModel _mapUser(
-    Map<String, dynamic> userData, {
-    String? fallbackEmail,
-  }) {
+  UserModel _mapUser(Map<String, dynamic> userData, {String? fallbackEmail}) {
     final id = (userData['id'] ?? userData['_id'] ?? '').toString();
     if (id.isEmpty) {
       throw const AuthFailure(
         AuthFailureType.userNotFound,
-        'Usuário inválido retornado pela API.',
+        'UsuÃ¡rio invÃ¡lido retornado pela API.',
       );
     }
+
     final email = (userData['email'] ?? fallbackEmail ?? '').toString();
     final role = (userData['role'] ?? '').toString();
     final permissions =
@@ -56,6 +55,7 @@ class AuthRepositoryImpl implements AuthRepository {
         '/v1/auth/login',
         data: {'email': email, 'password': password},
       );
+
       final data = Map<String, dynamic>.from(res.data as Map);
       final access = (data['accessToken'] ?? '') as String;
       final refresh = (data['refreshToken'] ?? '') as String;
@@ -63,27 +63,27 @@ class AuthRepositoryImpl implements AuthRepository {
       await _tokens.save(access: access, refresh: refresh, jti: jti);
       _updateTenantId(data);
 
-      final userData =
-          Map<String, dynamic>.from(
-            (data['user'] ?? data['account'] ?? <String, dynamic>{})
-                as Map,
-          );
+      final userData = Map<String, dynamic>.from(
+        (data['user'] ?? data['account'] ?? <String, dynamic>{}) as Map,
+      );
       _updateTenantId(userData);
       userData['email'] ??= email;
+
       return _mapUser(userData, fallbackEmail: email);
     } on AuthFailure {
       rethrow;
     } on DioException catch (e) {
       final status = e.response?.statusCode ?? 0;
+      final apiMessage = _extractMessage(e) ?? '';
       if (status == 401) {
-        throw const AuthFailure(
+        throw AuthFailure(
           AuthFailureType.wrongPassword,
-          'Usuário ou senha inválidos.',
+          apiMessage.isNotEmpty ? apiMessage : 'UsuÃ¡rio ou senha invÃ¡lidos.',
         );
       }
-      throw const AuthFailure(
+      throw AuthFailure(
         AuthFailureType.unknown,
-        'Erro de autenticação com a API.',
+        apiMessage.isNotEmpty ? apiMessage : 'Erro de autenticaÃ§Ã£o com a API.',
       );
     } catch (_) {
       throw const AuthFailure(AuthFailureType.unknown, 'Erro inesperado.');
@@ -106,6 +106,7 @@ class AuthRepositoryImpl implements AuthRepository {
     String? document,
   }) async {
     final payload = <String, dynamic>{};
+
     String? sanitizeDigits(String? value) {
       if (value == null) return null;
       final digits = value.replaceAll(RegExp(r'\\D'), '');
@@ -120,12 +121,12 @@ class AuthRepositoryImpl implements AuthRepository {
     if (sanitizedPhone != null) payload['phone'] = sanitizedPhone;
     final sanitizedDocument = sanitizeDigits(document);
     if (sanitizedDocument != null) payload['document'] = sanitizedDocument;
+
     final res = await _api.dio.patch('/v1/auth/me', data: payload);
     final data = res.data;
     if (data is Map) {
       return _mapUser(Map<String, dynamic>.from(data));
     }
-    // fallback: reconsultar
     return me();
   }
 
@@ -148,7 +149,7 @@ class AuthRepositoryImpl implements AuthRepository {
     try {
       await _api.dio.post('/v1/auth/forgot-password', data: {'email': email});
     } catch (_) {
-      // evita revelar se o e-mail existe ou não
+      // evita revelar se o e-mail existe ou nÃ£o
     }
   }
 
@@ -201,5 +202,21 @@ class AuthRepositoryImpl implements AuthRepository {
     if (candidate != null && candidate != _config.tenantId) {
       unawaited(_config.setTenantId(candidate));
     }
+  }
+
+  String? _extractMessage(DioException e) {
+    final data = e.response?.data;
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if (data is Map) {
+      final innerError = data['error'];
+      if (innerError is Map) {
+        final msg = innerError['message'];
+        if (msg is String && msg.trim().isNotEmpty) return msg.trim();
+      }
+      final msg = data['message'] ?? data['detail'] ?? data['error'];
+      if (msg is String && msg.trim().isNotEmpty) return msg.trim();
+    }
+    if ((e.message ?? '').isNotEmpty) return e.message;
+    return null;
   }
 }

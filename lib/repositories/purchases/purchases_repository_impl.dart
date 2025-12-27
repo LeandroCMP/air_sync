@@ -1,6 +1,5 @@
 import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/models/purchase_model.dart';
-import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
 import 'purchases_repository.dart';
@@ -10,71 +9,67 @@ class PurchasesRepositoryImpl implements PurchasesRepository {
 
   @override
   Future<List<PurchaseModel>> list() async {
-    try {
-      final res = await _api.dio
-          .get('/v1/purchases')
-          .timeout(const Duration(seconds: 12));
-      final data = res.data;
+    final res = await _api.dio
+        .get('/v1/purchases')
+        .timeout(const Duration(seconds: 12));
+    final data = res.data;
 
-      List<dynamic>? extractList(dynamic d) {
-        if (d is List) return d;
-        if (d is Map) {
-          dynamic inner =
-              d['data'] ??
-              d['items'] ??
-              d['results'] ??
-              d['purchases'] ??
-              d['rows'] ??
-              d['content'];
-          if (inner is List) return inner;
-          if (inner is Map) {
-            final nested = inner['items'] ?? inner['data'] ?? inner['docs'];
-            if (nested is List) return nested;
+    List<dynamic>? extractList(dynamic d) {
+      if (d is List) return d;
+      if (d is Map) {
+        dynamic inner =
+            d['data'] ??
+            d['items'] ??
+            d['results'] ??
+            d['purchases'] ??
+            d['rows'] ??
+            d['content'];
+        if (inner is List) return inner;
+        if (inner is Map) {
+          final nested = inner['items'] ?? inner['data'] ?? inner['docs'];
+          if (nested is List) return nested;
+        }
+        // Fallback: find first list-of-maps that looks like purchases
+        for (final entry in d.values) {
+          if (entry is List && entry.isNotEmpty && entry.first is Map) {
+            return entry;
           }
-          // Fallback: find first list-of-maps that looks like purchases
-          for (final entry in d.values) {
-            if (entry is List && entry.isNotEmpty && entry.first is Map) {
-              return entry;
-            }
-            if (entry is Map) {
-              final innerVals = entry.values;
-              for (final v in innerVals) {
-                if (v is List && v.isNotEmpty && v.first is Map) {
-                  return v;
-                }
+          if (entry is Map) {
+            final innerVals = entry.values;
+            for (final v in innerVals) {
+              if (v is List && v.isNotEmpty && v.first is Map) {
+                return v;
               }
             }
           }
         }
-        return null;
       }
-
-      // If a single object is returned, try to parse as one purchase
-      if (data is Map &&
-          (data['items'] is List ||
-              data['supplierId'] != null ||
-              data['_id'] != null ||
-              data['id'] != null)) {
-        try {
-          return [PurchaseModel.fromMap(Map<String, dynamic>.from(data))];
-        } catch (_) {}
-      }
-
-      final list = extractList(data) ?? [];
-      final parsed = <PurchaseModel>[];
-      for (final e in list) {
-        try {
-          if (e is Map) {
-            parsed.add(PurchaseModel.fromMap(Map<String, dynamic>.from(e)));
-          }
-        } catch (_) {
-          // skip invalid element
-        }
-      }
-      return parsed;
-    } on DioException {
-      return [];
+      return null;
     }
+
+    // If a single object is returned, try to parse as one purchase
+    if (data is Map &&
+        (data['items'] is List ||
+            data['supplierId'] != null ||
+            data['_id'] != null ||
+            data['id'] != null)) {
+      try {
+        return [PurchaseModel.fromMap(Map<String, dynamic>.from(data))];
+      } catch (_) {}
+    }
+
+    final list = extractList(data) ?? [];
+    final parsed = <PurchaseModel>[];
+    for (final e in list) {
+      try {
+        if (e is Map) {
+          parsed.add(PurchaseModel.fromMap(Map<String, dynamic>.from(e)));
+        }
+      } catch (_) {
+        // skip invalid element
+      }
+    }
+    return parsed;
   }
 
   @override

@@ -940,6 +940,13 @@ class _Actions extends StatelessWidget {
 
     }
 
+    if (controller.serviceTypes.isEmpty) {
+
+      await controller.refreshServiceTypes();
+
+    }
+    final serviceTypes = controller.serviceTypes.toList();
+
     final companyProfile = await controller.fetchCompanyProfile();
 
     if (!context.mounted) return;
@@ -951,7 +958,7 @@ class _Actions extends StatelessWidget {
       order: currentOrder,
 
       inventoryItems: inventoryItems,
-
+      serviceTypes: serviceTypes,
       companyProfile: companyProfile,
 
     );
@@ -1259,92 +1266,116 @@ class _Actions extends StatelessWidget {
 
 
   Future<void> _handleUpdate(BuildContext context) async {
-
     final technicians = await controller.fetchTechnicians();
-
     if (!context.mounted) return;
 
     final result = await showOrderUpdateSheet(
-
       context: context,
-
       order: order,
-
       technicians: technicians,
-
     );
 
     if (result == null) return;
 
-    await controller.updateOrder(
-
+    final ok = await controller.updateOrder(
       status: result.status,
-
       scheduledAt: result.scheduledAt,
-
       technicianIds: result.technicianIds,
-
       notes: result.notes,
-
     );
-
-  }
-
-
-
-  Future<void> _handleReschedule(BuildContext context) async {
-
-    final now = DateTime.now();
-
-    final initialDate = order.scheduledAt ?? now;
-
-    final date = await showDatePicker(
-
-      context: context,
-
-      initialDate: initialDate,
-
-      firstDate: DateTime(now.year - 1),
-
-      lastDate: DateTime(now.year + 2),
-
-    );
-
-    if (date == null) return;
 
     if (!context.mounted) return;
 
-    final time = await showTimePicker(
+    if (!ok && controller.bookingConflict.value != null) {
+      await _showBookingConflictDialog(context);
+    }
+  }
 
+  Future<void> _handleReschedule(BuildContext context) async {
+    final now = DateTime.now();
+    final initialDate = order.scheduledAt ?? now;
+
+    final date = await showDatePicker(
       context: context,
+      initialDate: initialDate,
+      firstDate: DateTime(now.year - 1),
+      lastDate: DateTime(now.year + 2),
+    );
 
+    if (date == null) return;
+    if (!context.mounted) return;
+
+    final time = await showTimePicker(
+      context: context,
       initialTime: TimeOfDay.fromDateTime(initialDate),
-
     );
 
     if (time == null) return;
 
     final scheduled = DateTime(
-
       date.year,
-
       date.month,
-
       date.day,
-
       time.hour,
-
       time.minute,
-
     );
 
-    await controller.rescheduleOrder(scheduledAt: scheduled);
+    final ok = await controller.rescheduleOrder(scheduledAt: scheduled);
+    if (!context.mounted) return;
+    if (!ok && controller.bookingConflict.value != null) {
+      await _showBookingConflictDialog(context);
+    }
+  }
 
+  Future<void> _showBookingConflictDialog(BuildContext context) async {
+    final conflict = controller.bookingConflict.value;
+    if (conflict == null) return;
+
+    final technicians = await controller.fetchTechnicians();
+    final techNames = technicians
+        .where((tech) => conflict.technicianIds.contains(tech.id))
+        .map((tech) => tech.name)
+        .where((name) => name.trim().isNotEmpty)
+        .toList();
+
+    final base = conflict.message.isNotEmpty
+        ? conflict.message
+        : 'Este tecnico ja tem OS nesse horario.';
+    final detail =
+        techNames.isEmpty ? '' : '\\nTecnicos: ${techNames.join(', ')}';
+
+    if (!context.mounted) return;
+
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Conflito de agenda'),
+        content: Text('$base\\nAjuste o horario ou troque o tecnico.$detail'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: const Text('Fechar'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _handleReschedule(context);
+            },
+            child: const Text('Alterar horario'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _handleUpdate(context);
+            },
+            child: const Text('Trocar tecnico'),
+          ),
+        ],
+      ),
+    );
   }
 
 }
-
-
 
 List<InventoryItemModel> _materialsAsInventory(
 
@@ -4443,6 +4474,3 @@ class _ChecklistToggle {
   bool done;
 
 }
-
-
-

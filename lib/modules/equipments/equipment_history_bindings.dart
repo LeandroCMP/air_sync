@@ -8,6 +8,10 @@ import 'package:air_sync/services/equipments/equipments_service.dart';
 import 'package:air_sync/services/equipments/equipments_service_impl.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
 import 'package:air_sync/services/locations/locations_service_impl.dart';
+import 'package:air_sync/repositories/maintenance/maintenance_repository.dart';
+import 'package:air_sync/repositories/maintenance/maintenance_repository_impl.dart';
+import 'package:air_sync/services/maintenance/maintenance_service.dart';
+import 'package:air_sync/services/maintenance/maintenance_service_impl.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:air_sync/services/users/users_service.dart';
 import 'package:air_sync/services/users/users_service_impl.dart';
@@ -51,6 +55,18 @@ class EquipmentHistoryBindings implements Bindings {
         fenix: true,
       );
     }
+    if (!Get.isRegistered<MaintenanceRepository>()) {
+      Get.lazyPut<MaintenanceRepository>(
+        () => MaintenanceRepositoryImpl(),
+        fenix: true,
+      );
+    }
+    if (!Get.isRegistered<MaintenanceService>()) {
+      Get.lazyPut<MaintenanceService>(
+        () => MaintenanceServiceImpl(repository: Get.find()),
+        fenix: true,
+      );
+    }
 
     OrdersService? ordersService;
     if (Get.isRegistered<OrdersService>()) {
@@ -66,6 +82,10 @@ class EquipmentHistoryBindings implements Bindings {
         service: Get.find<EquipmentsService>(),
         ordersService: ordersService,
         usersService: usersService,
+        maintenanceService:
+            Get.isRegistered<MaintenanceService>()
+                ? Get.find<MaintenanceService>()
+                : null,
       ),
       fenix: true,
     );

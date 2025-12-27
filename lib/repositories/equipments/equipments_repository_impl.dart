@@ -40,21 +40,22 @@ class EquipmentsRepositoryImpl implements EquipmentsRepository {
 
   @override
   Future<List<EquipmentModel>> listByClient(String clientId) async {
-    try {
-      final res = await _api.dio.get(
-        '/v1/equipment',
-        queryParameters: {'clientId': clientId},
-      );
-      final data = res.data;
-      if (data is List) {
-        return data
-            .map((e) => EquipmentModel.fromMap(Map<String, dynamic>.from(e)))
-            .toList();
-      }
-      return [];
-    } on DioException {
-      return [];
+    final res = await _api.dio.get(
+      '/v1/equipment',
+      queryParameters: {'clientId': clientId},
+    );
+    final data = res.data;
+    if (data is List) {
+      return data
+          .map((e) => EquipmentModel.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
     }
+    if (data is Map && data['items'] is List) {
+      return (data['items'] as List)
+          .map((e) => EquipmentModel.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    }
+    return [];
   }
 
   @override
@@ -62,22 +63,23 @@ class EquipmentsRepositoryImpl implements EquipmentsRepository {
     String clientId, {
     String? locationId,
   }) async {
-    try {
-      final query = <String, dynamic>{'clientId': clientId};
-      if (locationId != null && locationId.isNotEmpty) {
-        query['locationId'] = locationId;
-      }
-      final res = await _api.dio.get('/v1/equipment', queryParameters: query);
-      final data = res.data;
-      if (data is List) {
-        return data
-            .map((e) => EquipmentModel.fromMap(Map<String, dynamic>.from(e)))
-            .toList();
-      }
-      return [];
-    } on DioException {
-      return [];
+    final query = <String, dynamic>{'clientId': clientId};
+    if (locationId != null && locationId.isNotEmpty) {
+      query['locationId'] = locationId;
     }
+    final res = await _api.dio.get('/v1/equipment', queryParameters: query);
+    final data = res.data;
+    if (data is List) {
+      return data
+          .map((e) => EquipmentModel.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+    if (data is Map && data['items'] is List) {
+      return (data['items'] as List)
+          .map((e) => EquipmentModel.fromMap(Map<String, dynamic>.from(e as Map)))
+          .toList();
+    }
+    return [];
   }
 
   @override

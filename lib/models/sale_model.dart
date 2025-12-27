@@ -121,8 +121,6 @@ class SaleModel {
     this.expectedAt,
     this.createdAt,
     this.updatedAt,
-    this.costCenterId,
-    this.costCenterName,
     this.discount,
     this.moveRequest,
     this.notes,
@@ -145,8 +143,6 @@ class SaleModel {
   final DateTime? expectedAt;
   final DateTime? createdAt;
   final DateTime? updatedAt;
-  final String? costCenterId;
-  final String? costCenterName;
   final double? discount;
   final Map<String, dynamic>? moveRequest;
   final String? notes;
@@ -213,9 +209,6 @@ class SaleModel {
       expectedAt: parseDate(map['expectedAt'] ?? map['dueDate']),
       createdAt: parseDate(map['createdAt']),
       updatedAt: parseDate(map['updatedAt']),
-      costCenterId: map['costCenterId']?.toString() ?? map['cost_center_id']?.toString(),
-      costCenterName: map['costCenterName']?.toString() ??
-          (map['costCenter'] is Map ? (map['costCenter']['name'] ?? '').toString() : null),
       discount: parseDouble(map['discount'] ?? totals?['discount']),
       moveRequest: map['moveRequest'] is Map
           ? Map<String, dynamic>.from(map['moveRequest'])
@@ -232,6 +225,7 @@ class SaleModel {
   bool get canApprove => status == 'draft' || status == 'pending';
   bool get canFulfill => status == 'approved';
   bool get canCancel => status != 'cancelled' && status != 'fulfilled';
+  bool get canEdit => status == 'draft' || status == 'quoted';
 
   String get displayTitle {
     if ((title ?? '').isNotEmpty) return title!;

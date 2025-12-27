@@ -14,7 +14,6 @@ import 'package:air_sync/modules/fleet/fleet_module.dart';
 import 'package:air_sync/modules/users/users_module.dart';
 import 'package:air_sync/modules/login/login_module.dart';
 import 'package:air_sync/modules/splash/splash_module.dart';
-import 'package:air_sync/modules/cost_centers/cost_centers_module.dart';
 import 'package:air_sync/modules/sales/sales_module.dart';
 import 'package:air_sync/modules/profile/user_profile_module.dart';
 import 'package:air_sync/modules/subscriptions/subscriptions_module.dart';
@@ -37,9 +36,13 @@ void main() async {
   final appConfig = AppConfig();
   await appConfig.load();
   if (appConfig.stripePublishableKey.isNotEmpty) {
-    stripe.Stripe.publishableKey = appConfig.stripePublishableKey;
-    stripe.Stripe.merchantIdentifier = 'merchant.com.airsync';
-    await stripe.Stripe.instance.applySettings();
+    try {
+      stripe.Stripe.publishableKey = appConfig.stripePublishableKey;
+      stripe.Stripe.merchantIdentifier = 'merchant.com.airsync';
+      await stripe.Stripe.instance.applySettings();
+    } catch (_) {
+      // Falha ao inicializar Stripe: segue sem quebrar o app.
+    }
   }
   runApp(MyApp(appConfig: appConfig));
 }
@@ -96,7 +99,6 @@ class MyApp extends StatelessWidget {
         ...PurchasesModule().routers,
         ...ContractsModule().routers,
         ...FleetModule().routers,
-        ...CostCentersModule().routers,
         ...SalesModule().routers,
         ...SubscriptionsModule().routers,
         ...UserProfileModule().routers,

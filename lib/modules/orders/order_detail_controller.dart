@@ -9,18 +9,22 @@ import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
 import 'package:air_sync/models/create_order_purchase_dto.dart';
+import 'package:air_sync/models/maintenance_service_type.dart';
 import 'package:air_sync/models/purchase_model.dart';
 import 'package:air_sync/models/order_costs_model.dart';
 import 'package:air_sync/models/order_model.dart';
+import 'package:air_sync/modules/orders/order_booking_conflict.dart';
 import 'package:air_sync/modules/orders/orders_controller.dart';
 import 'package:air_sync/services/client/client_service.dart';
 import 'package:air_sync/services/company_profile/company_profile_service.dart';
 import 'package:air_sync/services/equipments/equipments_service.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
+import 'package:air_sync/services/maintenance/maintenance_service.dart';
 import 'package:air_sync/services/orders/order_label_service.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:air_sync/services/users/users_service.dart';
+import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
 class OrderDetailController extends GetxController
@@ -32,6 +36,7 @@ class OrderDetailController extends GetxController
     InventoryService? inventoryService,
     ClientService? clientService,
     LocationsService? locationsService,
+    MaintenanceService? maintenanceService,
     EquipmentsService? equipmentsService,
     CompanyProfileService? companyProfileService,
     UsersService? usersService,
@@ -41,6 +46,7 @@ class OrderDetailController extends GetxController
        _inventoryService = inventoryService,
        _clientService = clientService,
        _locationsService = locationsService,
+       _maintenanceService = maintenanceService,
        _equipmentsService = equipmentsService,
        _companyProfileService = companyProfileService,
        _usersService = usersService,
@@ -52,6 +58,7 @@ class OrderDetailController extends GetxController
   final InventoryService? _inventoryService;
   final ClientService? _clientService;
   final LocationsService? _locationsService;
+  final MaintenanceService? _maintenanceService;
   final EquipmentsService? _equipmentsService;
   final CompanyProfileService? _companyProfileService;
   final UsersService? _usersService;
@@ -59,12 +66,17 @@ class OrderDetailController extends GetxController
 
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
+  final Rxn<OrderBookingConflict> bookingConflict = Rxn<OrderBookingConflict>();
   final Rxn<OrderModel> order = Rxn<OrderModel>();
   final Rxn<OrderCostsModel> costSummary = Rxn<OrderCostsModel>();
   final RxBool costSummaryLoading = false.obs;
   final RxnString costSummaryError = RxnString();
   final RxBool assistantLoading = false.obs;
   final RxBool summaryLoading = false.obs;
+  final RxList<MaintenanceServiceType> serviceTypes =
+      <MaintenanceServiceType>[].obs;
+  final RxBool serviceTypesLoading = false.obs;
+  final RxnString serviceTypesError = RxnString();
   List<InventoryItemModel>? _inventoryCache;
   CompanyProfileModel? _profileCache;
   List<CollaboratorModel>? _techniciansCache;
@@ -82,6 +94,7 @@ class OrderDetailController extends GetxController
 
   @override
   Future<void> onReady() async {
+    unawaited(_loadServiceTypes());
     await load();
     super.onReady();
   }
@@ -123,7 +136,7 @@ class OrderDetailController extends GetxController
     }
   }
 
-  Future<void> updateOrder({
+  Future<bool> updateOrder({
     String? status,
     DateTime? scheduledAt,
     List<String>? technicianIds,
@@ -147,13 +160,34 @@ class OrderDetailController extends GetxController
       await _setOrder(updated);
       unawaited(_loadCostSummary());
       message(MessageModel.success(title: 'OS', message: 'Dados atualizados.'));
+      return true;
+    } on DioException catch (e) {
+      final conflict = parseOrderBookingConflict(e);
+      if (conflict != null) {
+        bookingConflict.value = conflict;
+        message(
+          MessageModel.error(
+            title: 'Conflito de agenda',
+            message: _bookingConflictMessage(conflict),
+          ),
+        );
+      } else {
+        message(
+          MessageModel.error(
+            title: 'Erro',
+            message: 'Nao foi possivel atualizar a OS.',
+          ),
+        );
+      }
+      return false;
     } catch (_) {
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Não foi possível atualizar a OS.',
+          message: 'Nao foi possivel atualizar a OS.',
         ),
       );
+      return false;
     } finally {
       isLoading(false);
     }
@@ -180,11 +214,20 @@ class OrderDetailController extends GetxController
       unawaited(_loadCostSummary());
       message(MessageModel.success(title: 'OS', message: 'Ordem finalizada.'));
       return true;
+    } on DioException catch (e) {
+      final friendly = _extractApiError(e);
+      message(
+        MessageModel.error(
+          title: 'Erro',
+          message: friendly ?? 'Nao foi possivel finalizar a OS.',
+        ),
+      );
+      return false;
     } catch (_) {
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Não foi possível finalizar a OS.',
+          message: 'Nao foi possivel finalizar a OS.',
         ),
       );
       return false;
@@ -193,7 +236,7 @@ class OrderDetailController extends GetxController
     }
   }
 
-  Future<void> rescheduleOrder({
+  Future<bool> rescheduleOrder({
     required DateTime scheduledAt,
     String? notes,
   }) async {
@@ -209,13 +252,34 @@ class OrderDetailController extends GetxController
       message(
         MessageModel.success(title: 'OS', message: 'Reagendada com sucesso.'),
       );
+      return true;
+    } on DioException catch (e) {
+      final conflict = parseOrderBookingConflict(e);
+      if (conflict != null) {
+        bookingConflict.value = conflict;
+        message(
+          MessageModel.error(
+            title: 'Conflito de agenda',
+            message: _bookingConflictMessage(conflict),
+          ),
+        );
+      } else {
+        message(
+          MessageModel.error(
+            title: 'Erro',
+            message: 'Nao foi possivel reagendar a OS.',
+          ),
+        );
+      }
+      return false;
     } catch (_) {
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Não foi possível reagendar a OS.',
+          message: 'Nao foi possivel reagendar a OS.',
         ),
       );
+      return false;
     } finally {
       isLoading(false);
     }
@@ -553,7 +617,23 @@ class OrderDetailController extends GetxController
     return map;
   }
 
+  Future<void> _loadServiceTypes({bool forceRefresh = false}) async {
+    final svc = _maintenanceService;
+    if (svc == null) return;
+    serviceTypesLoading(true);
+    serviceTypesError.value = null;
+    try {
+      final list = await svc.listServiceTypes(forceRefresh: forceRefresh);
+      serviceTypes.assignAll(list);
+    } catch (_) {
+      serviceTypesError.value = 'Nao foi possivel carregar tipos de servico.';
+    } finally {
+      serviceTypesLoading(false);
+    }
+  }
+
   Future<void> _setOrder(OrderModel value) async {
+    bookingConflict.value = null;
     final labeler = _labelService;
     if (labeler == null) {
       order.value = value;
@@ -570,6 +650,34 @@ class OrderDetailController extends GetxController
     }
   }
 
+  String _bookingConflictMessage(OrderBookingConflict conflict) {
+    final names =
+        (_techniciansCache ?? const [])
+            .where((tech) => conflict.technicianIds.contains(tech.id))
+            .map((tech) => tech.name.trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+
+    final base =
+        conflict.message.trim().isNotEmpty
+            ? conflict.message.trim()
+            : 'Este tecnico ja tem OS nesse horario.';
+    final suffix =
+        names.isEmpty ? '' : ' Tecnico(s): ${names.join(', ')}.';
+
+    return '$base Ajuste o horario ou troque o tecnico.$suffix';
+  }
+
+  String? _extractApiError(DioException e) {
+    final data = e.response?.data;
+    final code = data is Map ? data['code'] : null;
+    if (code == 'SERVICE_TYPE_NOT_FOUND') {
+      return 'Tipo de servico nao encontrado. Recarregue o catalogo e tente novamente.';
+    }
+    return null;
+  }
+
+  Future<void> refreshServiceTypes() => _loadServiceTypes(forceRefresh: true);
   Future<void> refreshCostSummary() => _loadCostSummary();
 
   Future<void> _loadCostSummary() async {

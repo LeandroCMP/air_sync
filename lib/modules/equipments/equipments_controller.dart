@@ -4,6 +4,7 @@ import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/services/equipments/equipments_service.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
+import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
 class EquipmentsController extends GetxController
@@ -45,6 +46,28 @@ class EquipmentsController extends GetxController
     }
   }
 
+  String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+
+
   Future<void> create({
     required String locationId,
     required String room,
@@ -76,7 +99,7 @@ class EquipmentsController extends GetxController
         ),
       );
     } catch (err) {
-      message(MessageModel.error(title: 'Erro', message: err.toString()));
+      message(MessageModel.error(title: 'Erro', message: _apiError(err, 'Falha ao executar a opera??o.')));
     } finally {
       isLoading(false);
     }
@@ -115,7 +138,7 @@ class EquipmentsController extends GetxController
         ),
       );
     } catch (err) {
-      message(MessageModel.error(title: 'Erro', message: err.toString()));
+      message(MessageModel.error(title: 'Erro', message: _apiError(err, 'Falha ao executar a opera??o.')));
     } finally {
       isLoading(false);
     }
@@ -133,7 +156,7 @@ class EquipmentsController extends GetxController
         ),
       );
     } catch (err) {
-      message(MessageModel.error(title: 'Erro', message: err.toString()));
+      message(MessageModel.error(title: 'Erro', message: _apiError(err, 'Falha ao executar a opera??o.')));
     } finally {
       isLoading(false);
     }
@@ -163,7 +186,7 @@ class EquipmentsController extends GetxController
         ),
       );
     } catch (err) {
-      message(MessageModel.error(title: 'Erro', message: err.toString()));
+      message(MessageModel.error(title: 'Erro', message: _apiError(err, 'Falha ao executar a opera??o.')));
     } finally {
       isLoading(false);
     }
@@ -185,7 +208,7 @@ class EquipmentsController extends GetxController
         ),
       );
     } catch (err) {
-      message(MessageModel.error(title: 'Erro', message: err.toString()));
+      message(MessageModel.error(title: 'Erro', message: _apiError(err, 'Falha ao executar a opera??o.')));
     } finally {
       isLoading(false);
     }

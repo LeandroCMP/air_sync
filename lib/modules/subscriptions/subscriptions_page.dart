@@ -1,11 +1,7 @@
-import 'dart:convert';
-
-import 'package:air_sync/application/core/network/app_config.dart';
-import 'package:air_sync/application/ui/input_formatters.dart';
 import 'package:air_sync/application/ui/theme_extensions.dart';
+import 'package:air_sync/application/core/network/app_config.dart';
 import 'package:air_sync/models/subscription_models.dart';
 import 'package:air_sync/modules/subscriptions/subscriptions_controller.dart';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -13,8 +9,6 @@ import 'package:flutter_stripe/flutter_stripe.dart' as stripe;
 import 'package:intl/intl.dart';
 
 const double _fixedPlanAmount = 120;
-const String _stripeMerchantIdentifier = 'merchant.com.airsync';
-
 bool _isProratedInvoice(
   SubscriptionInvoiceModel invoice, {
   double? planAmount,
@@ -96,7 +90,7 @@ class _OverviewTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      if (!controller.isOwner.value) {
+      if (!controller.isOwner.value && !controller.restricted.value) {
         return const _OwnerOnlyNotice();
       }
 
@@ -117,17 +111,14 @@ class _OverviewTab extends StatelessWidget {
           children: [
             _SectionHeader(
               title: 'Plano e cobran\u00e7a',
-              subtitle:
-                  'Informa\u00e7\u00f5es fixas do plano AirSync e contatos financeiros.',
-              actionLabel: 'Editar prefer\u00eancias',
-              onAction: () => _openBillingPreferencesForm(context, controller),
+              subtitle: 'Informa\u00e7\u00f5es b\u00e1sicas e dia padr\u00e3o de cobran\u00e7a.',
+              actionLabel: 'Alterar dia de cobran\u00e7a',
+              onAction: () => _openBillingDayForm(context, controller),
             ),
             _CurrentPlanCard(
               current: current,
               alerts: alerts,
               onEdit: () => _openBillingDayForm(context, controller),
-              onRunCycle: null,
-              isRunningBilling: false,
             ),
             const SizedBox(height: 16),
             _CarnetActions(controller: controller),
@@ -279,192 +270,6 @@ class _OverviewTab extends StatelessWidget {
     }
     return pending.first;
   }
-
-  Future<void> _openBillingPreferencesForm(
-    BuildContext context,
-    SubscriptionsController controller,
-  ) async {
-    final current = controller.current.value;
-    final formKey = GlobalKey<FormState>();
-    final nameCtrl =
-        TextEditingController(text: current?.billingContactName ?? '');
-    final emailCtrl =
-        TextEditingController(text: current?.billingContactEmail ?? '');
-    final phoneCtrl =
-        TextEditingController(text: current?.billingContactPhone ?? '');
-    final methodCtrl =
-        TextEditingController(text: current?.preferredPaymentMethod ?? '');
-    final notesCtrl = TextEditingController(text: current?.notes ?? '');
-    final billingDayCtrl =
-        TextEditingController(text: current?.billingDay?.toString() ?? '');
-
-    await showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: context.themeDark,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (sheetCtx) {
-        return Padding(
-          padding: EdgeInsets.only(
-            left: 20,
-            right: 20,
-            top: 24,
-            bottom: MediaQuery.of(sheetCtx).viewInsets.bottom + 24,
-          ),
-          child: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const Text(
-                  'Prefer\u00eancias de pagamento',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  'Atualize o contato financeiro, dia de cobran\u00e7a e observac\u00f5es que aparecer\u00e3o nas faturas.',
-                  style: TextStyle(color: Colors.white70),
-                ),
-                const SizedBox(height: 20),
-                TextFormField(
-                  controller: billingDayCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [
-                    FilteringTextInputFormatter.digitsOnly,
-                    LengthLimitingTextInputFormatter(2),
-                  ],
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Dia de cobran\u00e7a (1-28)',
-                    labelStyle: TextStyle(color: Colors.white70),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return null;
-                    final number = int.tryParse(value);
-                    if (number == null || number < 1 || number > 28) {
-                      return 'Informe um dia entre 1 e 28';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: nameCtrl,
-                  textCapitalization: TextCapitalization.words,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Respons\u00e1vel financeiro',
-                    labelStyle: TextStyle(color: Colors.white70),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: emailCtrl,
-                  keyboardType: TextInputType.emailAddress,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'E-mail para cobran\u00e7as',
-                    labelStyle: TextStyle(color: Colors.white70),
-                  ),
-                  validator: (value) {
-                    if (value == null || value.isEmpty) return null;
-                    final regex = RegExp(r'^\S+@\S+\.\S+$');
-                    if (!regex.hasMatch(value.trim())) {
-                      return 'Digite um e-mail v\u00e1lido';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: phoneCtrl,
-                  keyboardType: TextInputType.phone,
-                  inputFormatters: [PhoneInputFormatter()],
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Telefone para contato',
-                    labelStyle: TextStyle(color: Colors.white70),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: methodCtrl,
-                  textCapitalization: TextCapitalization.sentences,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'M\u00e9todo preferido (PIX, cart\u00e3o...)',
-                    labelStyle: TextStyle(color: Colors.white70),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextFormField(
-                  controller: notesCtrl,
-                  maxLines: 3,
-                  style: const TextStyle(color: Colors.white),
-                  decoration: const InputDecoration(
-                    labelText: 'Observa\u00e7\u00f5es para o financeiro',
-                    labelStyle: TextStyle(color: Colors.white70),
-                  ),
-                ),
-                const SizedBox(height: 24),
-                SizedBox(
-                  height: 48,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      if (!formKey.currentState!.validate()) return;
-                      final trimmed = billingDayCtrl.text.trim();
-                      final billingDay =
-                          trimmed.isEmpty ? null : int.tryParse(trimmed);
-                      await controller.updateCurrentSettings(
-                        billingDay: billingDay,
-                        billingContactName: nameCtrl.text.trim().isEmpty
-                            ? null
-                            : nameCtrl.text.trim(),
-                        billingContactEmail: emailCtrl.text.trim().isEmpty
-                            ? null
-                            : emailCtrl.text.trim(),
-                        billingContactPhone: phoneCtrl.text.trim().isEmpty
-                            ? null
-                            : phoneCtrl.text.trim(),
-                        preferredPaymentMethod: methodCtrl.text.trim().isEmpty
-                            ? null
-                            : methodCtrl.text.trim(),
-                        notes:
-                            notesCtrl.text.trim().isEmpty
-                                ? null
-                                : notesCtrl.text.trim(),
-                      );
-                      if (sheetCtx.mounted) {
-                        Navigator.of(sheetCtx).pop();
-                      }
-                    },
-                    child: const Text(
-                      'Salvar prefer\u00eancias',
-                      style: TextStyle(fontWeight: FontWeight.w600),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-
-    nameCtrl.dispose();
-    emailCtrl.dispose();
-    phoneCtrl.dispose();
-    methodCtrl.dispose();
-    notesCtrl.dispose();
-    billingDayCtrl.dispose();
-  }
 }
 
 class _InvoicesTab extends StatelessWidget {
@@ -475,528 +280,54 @@ class _InvoicesTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      if (!controller.isOwner.value) {
-        return const _OwnerOnlyNotice();
-      }
-
       final invoices = controller.invoices;
-
-      return Column(
-        children: [
-          _InvoiceFiltersBar(controller: controller),
-          Expanded(
-            child: RefreshIndicator(
-              onRefresh: controller.loadInvoices,
+      final billingDay = controller.current.value?.billingDay;
+      final planAmount = controller.current.value?.plan?.amount;
+      return RefreshIndicator(
+        onRefresh: controller.loadInvoices,
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              child: _InvoiceFiltersBar(controller: controller),
+            ),
+            const SizedBox(height: 8),
+            Expanded(
               child: invoices.isEmpty
                   ? const _EmptyInvoicesView()
                   : ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 24),
+                      itemCount: invoices.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 12),
                       itemBuilder: (_, index) {
-                        final invoice = invoices[index];
-                        final planAmount = controller.current.value?.plan?.amount;
+                        final inv = invoices[index];
                         return _InvoiceTile(
-                          invoice: invoice,
-                          billingDay: controller.current.value?.billingDay,
+                          invoice: inv,
+                          billingDay: billingDay,
                           planAmount: planAmount,
-                          onTap: () => _openInvoiceDetail(context, invoice),
+                          controller: controller,
                         );
                       },
-                      separatorBuilder: (_, __) => const SizedBox(height: 12),
-                      itemCount: invoices.length,
                     ),
             ),
-          ),
-        ],
+          ],
+        ),
       );
     });
   }
-
-  void _openInvoiceDetail(
-    BuildContext context,
-    SubscriptionInvoiceModel invoice,
-  ) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (_) {
-        return Obx(() {
-          final intent = controller.lastIntentByInvoice[invoice.id];
-          final invoiceToUse = _findInvoice(invoice.id) ?? invoice;
-          final billingDay = controller.current.value?.billingDay;
-          final startedAt = controller.current.value?.startedAt;
-          final planAmount = controller.current.value?.plan?.amount;
-          final isTrialAmount = _isTrialInvoice(invoiceToUse);
-          final isProratedAmount =
-              _isProratedInvoice(invoiceToUse, planAmount: planAmount);
-          final startLabel = startedAt != null
-              ? SubscriptionsPage.formatDate(startedAt)
-              : 'a ativa\u00e7\u00e3o';
-          final billingLabel =
-              billingDay ?? invoiceToUse.dueDate?.day ?? '--';
-
-          return Padding(
-            padding: EdgeInsets.only(
-              left: 20,
-              right: 20,
-              top: 16,
-              bottom: MediaQuery.of(context).viewInsets.bottom + 24,
-            ),
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Fatura ${invoiceToUse.reference ?? invoiceToUse.id}',
-                          style: Theme.of(context).textTheme.titleMedium,
-                        ),
-                      ),
-                      _StatusChip(status: invoiceToUse.status),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    SubscriptionsPage.formatCurrency(
-                      invoiceToUse.amountDue,
-                      currency: invoiceToUse.currency,
-                    ),
-                    style: Theme.of(context)
-                        .textTheme
-                        .headlineSmall
-                        ?.copyWith(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Vencimento: ${SubscriptionsPage.formatDate(invoiceToUse.dueDate)}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                  const SizedBox(height: 16),
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      _InfoTile(
-                        icon: Icons.calendar_today_outlined,
-                        label: 'Emitida em',
-                        value:
-                            SubscriptionsPage.formatDate(invoiceToUse.createdAt),
-                      ),
-                      _InfoTile(
-                        icon: Icons.credit_card_outlined,
-                        label: 'M\u00e9todo anterior',
-                        value: invoiceToUse.paymentMethod ?? '--',
-                      ),
-                      _InfoTile(
-                        icon: Icons.link_outlined,
-                        label: 'Stripe ID',
-                        value: invoiceToUse.stripeInvoiceId ?? '--',
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  if (isTrialAmount) ...[
-                    _InfoBanner(
-                      icon: Icons.auto_awesome_rounded,
-                        text:
-                            'Trial ativo - nenhuma cobran\u00e7a hoje. Pague at\u00e9 ${SubscriptionsPage.formatDate(invoiceToUse.dueDate)} sem juros durante a car\u00eancia.',
-                    ),
-                    const SizedBox(height: 16),
-                  ] else if (isProratedAmount) ...[
-                    _InfoBanner(
-                      icon: Icons.av_timer_rounded,
-                        text:
-                            'Cobran\u00e7a pr\u00f3-rata referente ao per\u00edodo entre $startLabel e o dia $billingLabel. Pagamento opcional durante a car\u00eancia at\u00e9 ${SubscriptionsPage.formatDate(invoiceToUse.dueDate)}.',
-                    ),
-                    const SizedBox(height: 16),
-                  ] else if (billingDay != null) ...[
-                    _InfoBanner(
-                      icon: Icons.calendar_month_outlined,
-                      text:
-                          'Esta fatura segue o ciclo fixo do dia $billingDay de cada m\u00eas.',
-                    ),
-                    const SizedBox(height: 16),
-                  ],
-                  if (intent != null) _PaymentIntentResultView(intent: intent),
-                  if (intent == null) ...[
-                    if (isTrialAmount) ...[
-                      _InfoBanner(
-                        icon: Icons.celebration_rounded,
-                        text:
-                            'Trial ativo - nenhuma cobran\u00e7a hoje. Aproveite o sistema e volte quando quiser pagar.',
-                      ),
-                    ] else ...[
-                      Text(
-                        isProratedAmount
-                            ? 'Pagamento opcional durante o per\u00edodo de car\u00eancia:'
-                            : 'Selecione a forma de pagamento:',
-                        style: Theme.of(context).textTheme.titleSmall,
-                      ),
-                      const SizedBox(height: 12),
-                      Wrap(
-                        spacing: 12,
-                        runSpacing: 12,
-                        children: [
-                          _ActionButton(
-                            icon: Icons.pix,
-                            label: 'Gerar PIX (Stripe)',
-                            onPressed: () => _openPaymentMethodSheet(
-                              context,
-                              invoiceToUse,
-                              'PIX',
-                            ),
-                          ),
-                          _ActionButton(
-                            icon: Icons.credit_score_rounded,
-                            label: 'Cart\u00e3o (Stripe)',
-                            onPressed: () => _openPaymentMethodSheet(
-                              context,
-                              invoiceToUse,
-                              'CARD_CREDIT',
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ],
-                  const SizedBox(height: 24),
-                  Text(
-                    'Op\u00e7\u00f5es administrativas',
-                    style: Theme.of(context).textTheme.titleSmall,
-                  ),
-                  const SizedBox(height: 12),
-                  Wrap(
-                    spacing: 12,
-                    runSpacing: 12,
-                    children: [
-                      _ActionButton(
-                        icon: Icons.receipt_long_outlined,
-                        label: 'Registrar pagamento',
-                        onPressed: () =>
-                            _openManualPaymentDialog(context, invoiceToUse),
-                      ),
-                      _ActionButton(
-                        icon: Icons.support_agent_outlined,
-                        label: 'Renegociar',
-                        onPressed: () =>
-                            _openNegotiateDialog(context, invoiceToUse),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'Ap\u00f3s confirmar algum pagamento aguarde alguns segundos e atualize a lista para ver o status atualizado.',
-                    style: Theme.of(context)
-                        .textTheme
-                        .bodySmall
-                        ?.copyWith(color: Colors.white70),
-                  ),
-                ],
-              ),
-            ),
-          );
-        });
-      },
-    );
-  }
-
-  Future<void> _openPaymentMethodSheet(
-    BuildContext context,
-    SubscriptionInvoiceModel invoice,
-    String method,
-  ) async {
-    if (method == 'CARD_CREDIT' && !_isStripeCardSupported()) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Pagamentos por cart?o s? est?o dispon?veis em Android, iOS ou Web.',
-          ),
-        ),
-      );
-      return;
-    }
-    final appConfig = Get.find<AppConfig>();
-    if (method != 'PIX') {
-      controller.lastIntentByInvoice.remove(invoice.id);
-      controller.lastIntentByInvoice.refresh();
-    }
-    final intent = await controller.createPaymentIntent(
-      invoiceId: invoice.id,
-      method: method,
-      cacheResult: method == 'PIX',
-    );
-    if (intent == null || !context.mounted) return;
-    if (method == 'PIX') {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content:
-              Text('PIX gerado. Use o QR Code exibido para concluir o pagamento.'),
-        ),
-      );
-      return;
-    }
-    final publishableKey =
-        (intent.publishableKey != null && intent.publishableKey!.isNotEmpty)
-            ? intent.publishableKey
-            : appConfig.stripePublishableKey;
-    if (publishableKey == null || publishableKey.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-            'Configure a Stripe Publishable Key para aceitar pagamentos por cart?o.',
-          ),
-        ),
-      );
-      return;
-    }
-    try {
-      if (stripe.Stripe.publishableKey != publishableKey) {
-        stripe.Stripe.publishableKey = publishableKey;
-        stripe.Stripe.merchantIdentifier = _stripeMerchantIdentifier;
-        await stripe.Stripe.instance.applySettings();
-      }
-      await stripe.Stripe.instance.initPaymentSheet(
-        paymentSheetParameters: stripe.SetupPaymentSheetParameters(
-          paymentIntentClientSecret: intent.clientSecret,
-          merchantDisplayName: 'AirSync',
-          style: context.mounted && Theme.of(context).brightness == Brightness.dark
-              ? ThemeMode.dark
-              : ThemeMode.light,
-        ),
-      );
-      await stripe.Stripe.instance.presentPaymentSheet();
-      if (context.mounted) {
-        Navigator.of(context).pop(); // fecha o detalhe da fatura
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Pagamento processado pela Stripe.')),
-        );
-      }
-      await controller.loadInvoices();
-    } on stripe.StripeException catch (error) {
-      final message = error.error.localizedMessage ?? 'Pagamento cancelado.';
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(message)),
-        );
-      }
-    } catch (error) {
-      Get.log('stripe_payment_error: $error');
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Não foi possível abrir o pagamento Stripe.'),
-          ),
-        );
-      }
-    }
-  }
-
-  void _openManualPaymentDialog(
-    BuildContext context,
-    SubscriptionInvoiceModel invoice,
-  ) {
-    final formKey = GlobalKey<FormState>();
-    final amountCtrl = TextEditingController();
-    final noteCtrl = TextEditingController();
-    DateTime? paidAt = DateTime.now();
-
-    showDialog(
-      context: context,
-      builder: (_) => StatefulBuilder(builder: (context, setState) {
-        return AlertDialog(
-          title: const Text('Pagamento manual'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    'Use quando receber transfer\u00eancia ou PIX fora do Stripe.',
-                    style: Theme.of(context).textTheme.bodySmall,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: amountCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Valor recebido (opcional)',
-                    ),
-                    keyboardType: TextInputType.number,
-                  ),
-                  const SizedBox(height: 12),
-                  TextFormField(
-                    controller: noteCtrl,
-                    decoration: const InputDecoration(labelText: 'Observa\u00e7\u00e3o'),
-                    maxLines: 3,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Descreva como o pagamento foi confirmado';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Pago em: ${SubscriptionsPage.formatDate(paidAt)}',
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: paidAt ?? DateTime.now(),
-                            firstDate: DateTime.now().subtract(const Duration(days: 365)),
-                            lastDate: DateTime.now(),
-                          );
-                          if (picked != null) {
-                            setState(() => paidAt = picked);
-                          }
-                        },
-                        child: const Text('Alterar'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: Get.back,
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                final amount = double.tryParse(amountCtrl.text.replaceAll(',', '.'));
-                await controller.registerManualPayment(
-                  invoiceId: invoice.id,
-                  note: noteCtrl.text.trim(),
-                  paidAt: paidAt,
-                  amount: amount,
-                );
-                Get.back();
-              },
-              child: const Text('Registrar'),
-            ),
-          ],
-        );
-      }),
-    );
-  }
-
-  void _openNegotiateDialog(
-    BuildContext context,
-    SubscriptionInvoiceModel invoice,
-  ) {
-    final formKey = GlobalKey<FormState>();
-    final noteCtrl = TextEditingController();
-    DateTime? newDate = invoice.dueDate;
-
-    showDialog(
-      context: context,
-      builder: (_) => StatefulBuilder(builder: (context, setState) {
-        return AlertDialog(
-          title: const Text('Renegociar fatura'),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: noteCtrl,
-                    decoration:
-                        const InputDecoration(labelText: 'Mensagem ao financeiro'),
-                    maxLines: 3,
-                    validator: (value) {
-                      if (value == null || value.isEmpty) {
-                        return 'Explique o motivo da renegocia\u00e7\u00e3o';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          'Novo vencimento: ${SubscriptionsPage.formatDate(newDate)}',
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () async {
-                          final picked = await showDatePicker(
-                            context: context,
-                            initialDate: newDate ?? DateTime.now(),
-                            firstDate: DateTime.now(),
-                            lastDate: DateTime.now().add(const Duration(days: 365)),
-                          );
-                          if (picked != null) {
-                            setState(() => newDate = picked);
-                          }
-                        },
-                        child: const Text('Escolher data'),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: Get.back,
-              child: const Text('Cancelar'),
-            ),
-            ElevatedButton(
-              onPressed: () async {
-                if (!formKey.currentState!.validate()) return;
-                await controller.negotiateInvoice(
-                  invoiceId: invoice.id,
-                  note: noteCtrl.text.trim(),
-                  newDueDate: newDate,
-                );
-                Get.back();
-              },
-              child: const Text('Enviar'),
-            ),
-          ],
-        );
-      }),
-    );
-  }
-
-  SubscriptionInvoiceModel? _findInvoice(String id) {
-    for (final item in controller.invoices) {
-      if (item.id == id) return item;
-    }
-    return null;
-  }
 }
+
 class _CurrentPlanCard extends StatelessWidget {
   const _CurrentPlanCard({
     required this.current,
     required this.alerts,
     required this.onEdit,
-    required this.onRunCycle,
-    required this.isRunningBilling,
   });
 
   final SubscriptionCurrentModel? current;
   final SubscriptionAlertModel? alerts;
   final VoidCallback? onEdit;
-  final VoidCallback? onRunCycle;
-  final bool isRunningBilling;
 
   @override
   Widget build(BuildContext context) {
@@ -1065,12 +396,6 @@ class _CurrentPlanCard extends StatelessWidget {
                   helper: 'Dia do m\u00eas em que o boleto/cart\u00e3o \u00e9 cobrado.',
                 ),
                 _InfoTile(
-                  icon: Icons.payment_outlined,
-                  label: 'M\u00e9todo preferido',
-                  value: current?.preferredPaymentMethod ?? '--',
-                  helper: 'Indica como voc\u00ea prefere pagar esta assinatura.',
-                ),
-                _InfoTile(
                   icon: Icons.account_circle_outlined,
                   label: 'Contato financeiro',
                   value: contact.isEmpty ? '--' : contact,
@@ -1095,26 +420,10 @@ class _CurrentPlanCard extends StatelessWidget {
               children: [
                 _ActionButton(
                   icon: Icons.edit_outlined,
-                  label: 'Editar prefer\u00eancias',
+                  label: 'Alterar dia de cobran\u00e7a',
                   onPressed: onEdit,
                 ),
-                _ActionButton(
-                  icon: Icons.restart_alt_rounded,
-                  label: isRunningBilling
-                      ? 'Executando cobran\u00e7a...'
-                      : 'Executar cobran\u00e7a agora',
-                  onPressed: onRunCycle,
-                  isLoading: isRunningBilling,
-                ),
               ],
-            ),
-            const SizedBox(height: 8),
-            Text(
-              'Use este comando apenas quando precisar recalcular faturas e alertas imediatamente.',
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.white70),
             ),
           ],
         ),
@@ -1603,13 +912,13 @@ class _InvoiceFiltersBar extends StatelessWidget {
 class _InvoiceTile extends StatelessWidget {
   const _InvoiceTile({
     required this.invoice,
-    this.onTap,
+    required this.controller,
     this.billingDay,
     this.planAmount,
   });
 
   final SubscriptionInvoiceModel invoice;
-  final VoidCallback? onTap;
+  final SubscriptionsController controller;
   final int? billingDay;
   final double? planAmount;
 
@@ -1618,6 +927,7 @@ class _InvoiceTile extends StatelessWidget {
     final theme = Theme.of(context);
     final isProrated = _isProratedInvoice(invoice, planAmount: planAmount);
     final isTrial = _isTrialInvoice(invoice);
+    final double openAmount = invoice.amountDue;
     final helperText = () {
       if (isTrial) {
         final due = SubscriptionsPage.formatDate(invoice.dueDate);
@@ -1635,7 +945,6 @@ class _InvoiceTile extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: onTap,
         child: Padding(
           padding: const EdgeInsets.all(16),
           child: Row(
@@ -1705,6 +1014,17 @@ class _InvoiceTile extends StatelessWidget {
                       alignment: Alignment.centerRight,
                       child: _StatusChip(status: invoice.status),
                     ),
+                    if (invoice.isPending) ...[
+                      const SizedBox(height: 8),
+                      FilledButton.icon(
+                        style: FilledButton.styleFrom(
+                          minimumSize: const Size(120, 40),
+                        ),
+                        onPressed: () => _showPaySheet(context, openAmount),
+                        icon: const Icon(Icons.payments_outlined, size: 18),
+                        label: const Text('Pagar agora'),
+                      ),
+                    ],
                     if (helperText != null && (isTrial || isProrated)) ...[
                       const SizedBox(height: 4),
                       Text(
@@ -1722,74 +1042,189 @@ class _InvoiceTile extends StatelessWidget {
       ),
     );
   }
-}
 
-class _PaymentIntentResultView extends StatelessWidget {
-  const _PaymentIntentResultView({required this.intent});
+  void _showPaySheet(BuildContext context, double openAmount) {
+    String method = 'PIX';
 
-  final SubscriptionPaymentIntentResult intent;
-
-  @override
-  Widget build(BuildContext context) {
-    return Card(
-      color: Colors.green.withValues(alpha: 0.08),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Pagamento iniciado (${intent.method}).',
-              style: Theme.of(context)
-                  .textTheme
-                  .titleSmall
-                  ?.copyWith(color: Colors.greenAccent),
-            ),
-            const SizedBox(height: 8),
-            if (intent.pixQrCodeBase64 != null)
-              Center(
-                child: Image.memory(
-                  base64Decode(intent.pixQrCodeBase64!),
-                  width: 180,
-                  height: 180,
-                  fit: BoxFit.contain,
-                ),
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: context.themeSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => Padding(
+        padding: EdgeInsets.only(
+          left: 20,
+          right: 20,
+          top: 20,
+          bottom: MediaQuery.of(ctx).viewInsets.bottom + 20,
+        ),
+        child: StatefulBuilder(
+          builder: (_, setState) => Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Pagar fatura',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
               ),
-            if (intent.pixCopyAndPaste != null) ...[
-              const SizedBox(height: 12),
-              SelectableText(
-                intent.pixCopyAndPaste!,
+              const SizedBox(height: 8),
+              Text(
+                'Valor a pagar (fixo): ${SubscriptionsPage.formatCurrency(openAmount, currency: invoice.currency)}',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
-              Align(
-                alignment: Alignment.centerRight,
-              child: TextButton.icon(
-                onPressed: () async {
-                  final messenger = ScaffoldMessenger.of(context);
-                  await Clipboard.setData(
-                    ClipboardData(text: intent.pixCopyAndPaste!),
-                  );
-                  messenger.showSnackBar(
-                    const SnackBar(content: Text('C\u00f3digo PIX copiado.')),
-                  );
-                },
-                  icon: const Icon(Icons.copy, size: 16),
-                  label: const Text('Copiar'),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<String>(
+                value: method,
+                items: const [
+                  DropdownMenuItem(value: 'PIX', child: Text('PIX')),
+                  DropdownMenuItem(value: 'CARD_CREDIT', child: Text('Cart\u00e3o de cr\u00e9dito')),
+                  DropdownMenuItem(value: 'CARD_DEBIT', child: Text('Cart\u00e3o de d\u00e9bito')),
+                  DropdownMenuItem(value: 'BANK_TRANSFER', child: Text('Transfer\u00eancia banc\u00e1ria')),
+                ],
+                onChanged: (v) => setState(() => method = v ?? 'PIX'),
+                decoration: const InputDecoration(labelText: 'M\u00e9todo de pagamento'),
+              ),
+              const SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.check_circle_outline),
+                  label: const Text('Gerar pagamento'),
+                  onPressed: () async {
+                    Navigator.of(ctx).pop();
+                    final intent = await controller.createPaymentIntent(
+                      invoiceId: invoice.id,
+                      method: method,
+                    );
+                    if (!context.mounted) return;
+                    if (intent != null) {
+                      await _handleStripePayment(context, intent);
+                      if (!context.mounted) return;
+                      await _showStripeInfo(context, intent, method);
+                    }
+                  },
                 ),
               ),
             ],
-            const SizedBox(height: 8),
+          ),
+        ),
+      ),
+    );
+  }
+  Future<void> _showStripeInfo(
+    BuildContext context,
+    SubscriptionPaymentIntentResult intent,
+    String method,
+  ) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: context.themeSurface,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
             Text(
-              intent.expiresAt == null
-                  ? 'Aguarde confirma\u00e7\u00e3o da Stripe.'
-                  : 'Expira em ${SubscriptionsPage.formatDate(intent.expiresAt)}.',
-              style: Theme.of(context).textTheme.bodySmall,
+              'Pagamento Stripe ($method)',
+              style: Theme.of(ctx)
+                  .textTheme
+                  .titleMedium
+                  ?.copyWith(fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            if ((intent.pixCopyAndPaste ?? '').isNotEmpty) ...[
+              const Text(
+                'PIX Copia e Cola',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              SelectableText(intent.pixCopyAndPaste!),
+            ] else if (intent.clientSecret.isNotEmpty) ...[
+              const Text(
+                'Pagamento iniciado. Finalize no provedor ou com o client secret abaixo:',
+                style: TextStyle(fontWeight: FontWeight.w600),
+              ),
+              const SizedBox(height: 6),
+              SelectableText(intent.clientSecret),
+            ] else
+              const Text('Pagamento iniciado. Siga as instru\u00e7\u00f5es do provedor.'),
+            if (intent.expiresAt != null) ...[
+              const SizedBox(height: 12),
+              Text(
+                'Expira em: ${SubscriptionsPage.formatDate(intent.expiresAt)}',
+                style: Theme.of(ctx).textTheme.bodySmall,
+              ),
+            ],
+            const SizedBox(height: 16),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('Fechar'),
+              ),
             ),
           ],
         ),
       ),
     );
+  }
+
+  Future<void> _handleStripePayment(
+    BuildContext context,
+    SubscriptionPaymentIntentResult intent,
+  ) async {
+    if (intent.clientSecret.isEmpty) return;
+    try {
+      final configKey = Get.find<AppConfig>().stripePublishableKey;
+      final publishableKey = (intent.publishableKey ?? '').isNotEmpty
+          ? intent.publishableKey!
+          : configKey;
+      if (publishableKey.isEmpty) {
+        Get.snackbar(
+          'Pagamento',
+          'Chave do Stripe não configurada.',
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+        );
+        return;
+      }
+      stripe.Stripe.publishableKey = publishableKey;
+      stripe.Stripe.merchantIdentifier = 'merchant.com.airsync';
+      await stripe.Stripe.instance.initPaymentSheet(
+        paymentSheetParameters: stripe.SetupPaymentSheetParameters(
+          paymentIntentClientSecret: intent.clientSecret,
+          merchantDisplayName: 'AirSync',
+          style: ThemeMode.dark,
+        ),
+      );
+      await stripe.Stripe.instance.presentPaymentSheet();
+      Get.snackbar(
+        'Pagamento',
+        'Pagamento processado com sucesso.',
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      await controller.loadInvoices();
+    } on stripe.StripeException catch (e) {
+      Get.snackbar(
+        'Pagamento',
+        'Stripe: ${e.error.localizedMessage ?? e.error.message ?? 'Falha no pagamento.'}',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+      );
+    } catch (e) {
+      Get.snackbar(
+        'Pagamento',
+        'Falha ao abrir o fluxo do Stripe: $e',
+        snackPosition: SnackPosition.BOTTOM,
+        backgroundColor: Colors.redAccent.withValues(alpha: 0.8),
+      );
+    }
   }
 }
 
@@ -1921,43 +1356,6 @@ class _InfoTile extends StatelessWidget {
               ),
             ),
           ],
-        ],
-      ),
-    );
-  }
-}
-
-class _InfoBanner extends StatelessWidget {
-  const _InfoBanner({required this.text, this.icon});
-
-  final String text;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        color: Colors.white.withValues(alpha: 0.05),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.08)),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 20, color: Colors.white70),
-            const SizedBox(width: 12),
-          ],
-          Expanded(
-            child: Text(
-              text,
-              style: Theme.of(context)
-                  .textTheme
-                  .bodySmall
-                  ?.copyWith(color: Colors.white70),
-            ),
-          ),
         ],
       ),
     );
@@ -2220,15 +1618,4 @@ class _MetricData {
   final String value;
   final IconData icon;
   final String? helper;
-}
-
-bool _isStripeCardSupported() {
-  if (kIsWeb) return true;
-  switch (defaultTargetPlatform) {
-    case TargetPlatform.android:
-    case TargetPlatform.iOS:
-      return true;
-    default:
-      return false;
-  }
 }

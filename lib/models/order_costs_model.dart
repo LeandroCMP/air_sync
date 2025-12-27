@@ -50,8 +50,6 @@ class OrderCostMetric {
 class OrderCostsModel {
   const OrderCostsModel({
     required this.orderId,
-    this.costCenterId,
-    this.costCenterName,
     required this.materialsCost,
     required this.purchasesCost,
     required this.overheadCost,
@@ -63,8 +61,6 @@ class OrderCostsModel {
   });
 
   final String orderId;
-  final String? costCenterId;
-  final String? costCenterName;
   final double materialsCost;
   final double purchasesCost;
   final double overheadCost;
@@ -125,7 +121,6 @@ class OrderCostsModel {
                     map['breakdown'] ??
                     map['items']) as List?) ??
         const [];
-    final costCenterMap = map['costCenter'] as Map?;
 
     double marginValue =
         parseDouble(
@@ -153,17 +148,6 @@ class OrderCostsModel {
 
     return OrderCostsModel(
       orderId: parseString(map['orderId']) ?? '',
-      costCenterId:
-          parseString(
-            map['costCenterId'] ?? costCenterMap?['id'] ?? costCenterMap?['_id'],
-          ),
-      costCenterName:
-          parseString(
-            map['costCenterName'] ??
-                map['costCenterLabel'] ??
-                costCenterMap?['name'] ??
-                costCenterMap?['label'],
-          ),
       materialsCost:
           parseDouble(
             totals['materials'] ??
@@ -202,8 +186,6 @@ class OrderCostsModel {
 
   OrderCostsModel copyWith({
     String? orderId,
-    String? costCenterId,
-    String? costCenterName,
     double? materialsCost,
     double? purchasesCost,
     double? overheadCost,
@@ -215,8 +197,6 @@ class OrderCostsModel {
   }) {
     return OrderCostsModel(
       orderId: orderId ?? this.orderId,
-      costCenterId: costCenterId ?? this.costCenterId,
-      costCenterName: costCenterName ?? this.costCenterName,
       materialsCost: materialsCost ?? this.materialsCost,
       purchasesCost: purchasesCost ?? this.purchasesCost,
       overheadCost: overheadCost ?? this.overheadCost,

@@ -1,5 +1,9 @@
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
+import 'package:get/get.dart';
+import 'package:air_sync/modules/subscriptions/subscriptions_bindings.dart';
+import 'package:air_sync/modules/subscriptions/subscriptions_controller.dart';
+import 'package:air_sync/modules/subscriptions/subscriptions_page.dart';
 
 import 'app_config.dart';
 import 'token_storage.dart';
@@ -8,6 +12,7 @@ class ApiClient {
   final AppConfig _config;
   final TokenStorage _tokens;
   final Dio _dio;
+  bool _handlingSuspended = false;
 
   final _logoutCallbacks = <VoidCallback>{};
 
@@ -45,6 +50,58 @@ class ApiClient {
           handler.next(options);
         },
         onError: (e, handler) async {
+          // Conta suspensa: intercepta 403 com código específico e redireciona.
+          if (e.response?.statusCode == 403) {
+            final data = e.response?.data;
+            String? code;
+            String? msg;
+            if (data is Map) {
+              final nested = data['error'];
+              if (nested is Map) {
+                code = nested['code']?.toString();
+                msg = nested['message']?.toString();
+              }
+              msg ??= data['message']?.toString();
+            } else if (data is String) {
+              msg = data;
+            }
+            if (code == 'ACCOUNT_SUSPENDED') {
+              if (_handlingSuspended) return;
+              _handlingSuspended = true;
+              final current = Get.currentRoute;
+              final alreadyOnSubs = current.contains('/subscriptions');
+              final onLogin = current.contains('/login');
+              if (onLogin) {
+                // Deixa o controlador de login tratar, evita alertas duplicados.
+                _handlingSuspended = false;
+                return;
+              }
+              if (!alreadyOnSubs && msg != null && msg.trim().isNotEmpty) {
+                Get.snackbar(
+                  'Conta suspensa',
+                  msg.trim(),
+                  snackPosition: SnackPosition.BOTTOM,
+                );
+              }
+              try {
+                if (!Get.isRegistered<SubscriptionsController>()) {
+                  SubscriptionsBindings().dependencies();
+                }
+                Get.offAll(
+                  () => const SubscriptionsPage(),
+                  binding: SubscriptionsBindings(),
+                  arguments: {
+                    'restricted': true,
+                    'reason': code,
+                  },
+                );
+              } catch (_) {
+                Get.offAllNamed('/login');
+              }
+              _handlingSuspended = false;
+              return; // Evita propagar o erro
+            }
+          }
           // Attempt naive refresh on 401 once
           if (e.response?.statusCode == 401) {
             final path = e.requestOptions.path;

@@ -4,7 +4,7 @@ import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/supplier_model.dart';
 import 'package:air_sync/services/suppliers/suppliers_service.dart';
-import 'package:dio/dio.dart' as dio;
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -68,7 +68,7 @@ class SuppliersController extends GetxController
       return true;
     } catch (e) {
       message(
-        MessageModel.error(title: 'Erro', message: 'Falha ao criar fornecedor'),
+        MessageModel.error(title: 'Erro', message: _apiError(e, 'Falha ao criar fornecedor')),
       );
       return false;
     } finally {
@@ -104,11 +104,11 @@ class SuppliersController extends GetxController
         ),
       );
       return true;
-    } catch (_) {
+    } catch (e) {
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao atualizar fornecedor',
+          message: _apiError(e, 'Falha ao atualizar fornecedor'),
         ),
       );
       return false;
@@ -131,9 +131,9 @@ class SuppliersController extends GetxController
       );
       return true;
     } catch (e) {
-      if (e is dio.DioException) {
+      if (e is DioException) {
         final code = e.response?.statusCode ?? 0;
-        String msg = 'Falha ao remover fornecedor';
+        String msg = _apiError(e, 'Falha ao remover fornecedor');
         if (code == 401) {
           msg = 'Sessao expirada';
         } else if (code == 403) {
@@ -148,7 +148,7 @@ class SuppliersController extends GetxController
         message(
           MessageModel.error(
             title: 'Erro',
-            message: 'Falha ao remover fornecedor',
+            message: _apiError(e, 'Falha ao remover fornecedor'),
           ),
         );
       }
@@ -180,6 +180,29 @@ class SuppliersController extends GetxController
       statusFilter.value = value;
     }
   }
+
+  String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+
+
 
   @override
   void onClose() {

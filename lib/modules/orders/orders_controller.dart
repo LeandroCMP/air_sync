@@ -5,9 +5,11 @@ import 'package:air_sync/models/order_model.dart';
 import 'package:air_sync/modules/orders/order_create_bindings.dart';
 import 'package:air_sync/modules/orders/order_create_page.dart';
 import 'package:air_sync/modules/orders/order_create_result.dart';
+import 'package:air_sync/modules/orders/order_booking_conflict.dart';
 import 'package:air_sync/services/orders/order_draft_storage.dart';
 import 'package:air_sync/services/orders/order_label_service.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
+import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -123,9 +125,9 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
       final enriched = await _labelService.enrichAll(list);
       orders.assignAll(enriched.where((order) => !order.isDraft).toList());
       _recomputeVisible();
-    } catch (_) {
+    } catch (e) {
       message(
-        MessageModel.error(title: 'Erro', message: 'Falha ao carregar ordens.'),
+        MessageModel.error(title: 'Erro', message: _apiError(e, 'Falha ao carregar ordens.')),
       );
     } finally {
       _activeLoads = (_activeLoads - 1).clamp(0, 1 << 30).toInt();
@@ -325,16 +327,37 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
                   : 'Nova OS criada a partir da ${source.id}.',
         ),
       );
+    } on DioException catch (e) {
+      final conflict = parseOrderBookingConflict(e);
+      if (conflict != null) {
+        final techHint =
+            source.technicianIds.isEmpty
+                ? ''
+                : ' Tecnicos: ${source.technicianIds.join(', ')}.';
+        message(
+          MessageModel.error(
+            title: 'Conflito de agenda',
+            message:
+                'Este tecnico ja tem OS nesse horario.$techHint Ajuste o horario ou escolha outra equipe antes de duplicar.',
+          ),
+        );
+      } else {
+        message(
+          MessageModel.error(
+            title: 'Duplicacao',
+            message: 'Nao foi possivel duplicar a OS.',
+          ),
+        );
+      }
     } catch (_) {
       message(
         MessageModel.error(
-          title: 'Duplicação',
-          message: 'Não foi possível duplicar a OS.',
+          title: 'Duplicacao',
+          message: 'Nao foi possivel duplicar a OS.',
         ),
       );
     }
   }
-
   void upsertOrder(OrderModel updated) {
     if (status.value.isNotEmpty && updated.status != status.value) {
       orders.removeWhere((order) => order.id == updated.id);
@@ -359,4 +382,27 @@ class OrdersController extends GetxController with LoaderMixin, MessagesMixin {
       visibleOrders.removeWhere((order) => order.id == id);
     }
   }
+
+  String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
 }
+
+}
+

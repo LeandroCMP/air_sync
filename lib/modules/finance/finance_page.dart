@@ -11,7 +11,6 @@ import 'package:air_sync/models/finance_forecast_model.dart';
 
 import 'package:air_sync/models/order_model.dart';
 
-import 'package:air_sync/modules/finance/finance_reconciliation_page.dart';
 
 import 'package:air_sync/modules/finance/widgets/aging_summary_card.dart';
 
@@ -427,24 +426,14 @@ class FinanceController extends GetxController {
   }
 
 
-
   @override
-
   Future<void> refresh() async {
-
     await load();
-
     await Future.wait([
-
       loadAudit(),
-
       loadForecast(days: forecastDays.value),
-
     ]);
-
   }
-
-
 
   String get periodLabel {
 
@@ -709,7 +698,7 @@ class _FinanceDashboardBody extends StatelessWidget {
 
             onReconciliationTap: () => Get.to(
 
-              () => const FinanceReconciliationPage(),
+              () => const (),
 
             ),
 
@@ -1641,7 +1630,7 @@ class _FilterRow extends StatelessWidget {
 
                   Text(
 
-                    'Atualize o mes ou filtre por centro de custo.',
+                    'Atualize o mês ou ajuste os filtros.',
 
                     style: TextStyle(color: context.themeTextSubtle),
 
@@ -1694,23 +1683,14 @@ class _ShortcutRow extends StatelessWidget {
   final VoidCallback onAllocationTap;
 
   final bool allocationLoading;
-
-  final VoidCallback onReconciliationTap;
-
-
+  final VoidCallback? onReconciliationTap;
 
   const _ShortcutRow({
-
     required this.onAuditTap,
-
     required this.onForecastTap,
-
     required this.onAllocationTap,
-
     required this.allocationLoading,
-
-    required this.onReconciliationTap,
-
+    this.onReconciliationTap,
   });
 
 
@@ -1771,15 +1751,7 @@ class _ShortcutRow extends StatelessWidget {
 
         ),
 
-        OutlinedButton.icon(
-
-          onPressed: onReconciliationTap,
-
-          icon: const Icon(Icons.compare_arrows_rounded),
-
-          label: const Text('Reconciliao'),
-
-        ),
+        
 
       ],
 
@@ -3686,6 +3658,13 @@ class FinanceForecastPage extends StatelessWidget {
   }
 
 }
+
+
+
+
+
+
+
 
 
 

@@ -6,12 +6,15 @@ import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
 import 'package:air_sync/models/sale_model.dart';
+import 'package:air_sync/models/collaborator_models.dart';
 import 'package:air_sync/modules/orders/order_detail_bindings.dart';
 import 'package:air_sync/modules/orders/order_detail_page.dart';
 import 'package:air_sync/services/client/client_service.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
 import 'package:air_sync/services/sales/sales_service.dart';
+import 'package:air_sync/services/users/users_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -21,15 +24,18 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
     required ClientService clientService,
     required InventoryService inventoryService,
     required LocationsService locationsService,
+    required UsersService usersService,
   })  : _service = service,
         _clientService = clientService,
         _inventoryService = inventoryService,
-        _locationsService = locationsService;
+        _locationsService = locationsService,
+        _usersService = usersService;
 
   final SalesService _service;
   final ClientService _clientService;
   final InventoryService _inventoryService;
   final LocationsService _locationsService;
+  final UsersService _usersService;
 
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
@@ -38,6 +44,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
   final searchCtrl = TextEditingController();
   final RxString searchTerm = ''.obs;
   Timer? _searchDebounce;
+  final technicians = <CollaboratorModel>[].obs;
 
   List<SaleModel> get filteredSales {
     final text = searchTerm.value.trim().toLowerCase();
@@ -74,8 +81,15 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
       final results = await _service.list(
         status: statusFilter.value == 'all' ? null : statusFilter.value,
         search: searchTerm.value.isEmpty ? null : searchTerm.value,
-      );
+      ).timeout(const Duration(seconds: 12));
       sales.assignAll(results);
+    } catch (e) {
+      message(
+        MessageModel.error(
+          title: 'Vendas',
+          message: _apiError(e, 'Não foi possível carregar as vendas. Tente novamente.'),
+        ),
+      );
     } finally {
       isLoading(false);
     }
@@ -106,6 +120,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
     String? notes,
     Map<String, dynamic>? moveRequest,
     bool autoCreateOrder = false,
+    Map<String, dynamic>? orderMeta,
   }) async {
     if (items.isEmpty) {
       message(
@@ -126,6 +141,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
         notes: notes,
         moveRequest: moveRequest,
         autoCreateOrder: autoCreateOrder,
+        orderMeta: orderMeta,
       );
       _replaceSale(sale);
       message(
@@ -138,7 +154,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao criar venda: $e',
+          message: _apiError(e, 'Falha ao criar venda.'),
         ),
       );
     } finally {
@@ -155,6 +171,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
     String? notes,
     Map<String, dynamic>? moveRequest,
     bool? autoCreateOrder,
+    Map<String, dynamic>? orderMeta,
   }) async {
     isLoading(true);
     try {
@@ -167,6 +184,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
         notes: notes,
         moveRequest: moveRequest,
         autoCreateOrder: autoCreateOrder,
+        orderMeta: orderMeta,
       );
       _replaceSale(sale);
       message(
@@ -179,7 +197,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao atualizar venda: $e',
+          message: _apiError(e, 'Falha ao atualizar venda.'),
         ),
       );
     } finally {
@@ -205,6 +223,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
   Future<void> launchOrder({
     required SaleModel sale,
     bool force = false,
+    Map<String, dynamic>? orderMeta,
   }) async {
     final alreadyLinked = (sale.linkedOrderId ?? '').isNotEmpty;
     if (alreadyLinked && !force) {
@@ -232,6 +251,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
       final updated = await _service.launchOrderIfNeeded(
         sale.id,
         force: force,
+        orderMeta: orderMeta,
       );
       _replaceSale(updated);
       if ((updated.linkedOrderId ?? '').isEmpty) {
@@ -253,7 +273,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
       message(
         MessageModel.error(
           title: 'Erro',
-          message: 'Falha ao gerar OS: $e',
+          message: _apiError(e, 'Falha ao gerar OS. Tente novamente.'),
         ),
       );
     } finally {
@@ -279,7 +299,7 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
       message(
         MessageModel.error(
           title: 'Erro',
-          message: e.toString(),
+          message: _apiError(e, 'Falha ao atualizar status da venda.'),
         ),
       );
     } finally {
@@ -394,11 +414,44 @@ class SalesController extends GetxController with LoaderMixin, MessagesMixin {
     }
   }
 
+  Future<List<CollaboratorModel>> ensureTechniciansLoaded() async {
+    if (technicians.isNotEmpty) return technicians;
+    try {
+      final data = await _usersService.list(role: CollaboratorRole.tech);
+      technicians.assignAll(data);
+      return data;
+    } catch (_) {
+      return const [];
+    }
+  }
+
   @override
   void onClose() {
     _searchDebounce?.cancel();
     searchCtrl.dispose();
     super.onClose();
   }
+
+  String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+
 }
 

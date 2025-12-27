@@ -6,6 +6,7 @@ import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/application/core/session/session_service.dart';
 import 'package:air_sync/models/user_model.dart';
 import 'package:air_sync/services/auth/auth_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -84,7 +85,7 @@ class UserProfileController extends GetxController
       message(
         MessageModel.error(
           title: 'Falha ao carregar perfil',
-          message: error.toString(),
+          message: _apiError(error, 'Falha ao carregar perfil.'),
         ),
       );
     } finally {
@@ -179,7 +180,7 @@ class UserProfileController extends GetxController
       message(
         MessageModel.error(
           title: 'Falha ao salvar',
-          message: error.toString(),
+          message: _apiError(error, 'Falha ao carregar perfil.'),
         ),
       );
     } finally {
@@ -244,7 +245,7 @@ class UserProfileController extends GetxController
       message(
         MessageModel.error(
           title: 'Falha ao alterar senha',
-          message: error.toString(),
+          message: _apiError(error, 'Falha ao carregar perfil.'),
         ),
       );
     } finally {
@@ -264,3 +265,26 @@ class UserProfileController extends GetxController
     super.onClose();
   }
 }
+
+
+String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+

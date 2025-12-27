@@ -5,10 +5,12 @@ import 'package:air_sync/models/collaborator_models.dart';
 import 'package:air_sync/models/equipment_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/location_model.dart';
+import 'package:air_sync/models/maintenance_service_type.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
+import 'package:air_sync/modules/orders/order_booking_conflict.dart';
 import 'order_create_controller.dart';
 
 class OrderCreatePage extends GetView<OrderCreateController> {
@@ -31,6 +33,9 @@ class OrderCreatePage extends GetView<OrderCreateController> {
           final billingItems = controller.billingItems.toList(growable: false);
           final checklist = controller.checklist.toList(growable: false);
           final scheduledAt = controller.scheduledAt.value;
+          final serviceTypes = controller.serviceTypes.toList(growable: false);
+          final serviceTypesLoading = controller.serviceTypesLoading.value;
+          final bookingConflict = controller.bookingConflict.value;
 
           return Stack(
             children: [
@@ -59,6 +64,13 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                             ),
                             const SizedBox(height: 12),
                             _TechnicianSelector(controller: controller),
+                            if (bookingConflict != null) ...[
+                              const SizedBox(height: 12),
+                              _BookingConflictBanner(
+                                controller: controller,
+                                conflict: bookingConflict,
+                              ),
+                            ],
                             const SizedBox(height: 12),
                             TextFormField(
                               controller: controller.notesCtrl,
@@ -205,6 +217,9 @@ class OrderCreatePage extends GetView<OrderCreateController> {
                               (index) => _BillingRow(
                                 entry: billingItems[index],
                                 index: index,
+                                serviceTypes: serviceTypes,
+                                serviceTypesLoading: serviceTypesLoading,
+                                onReloadServiceTypes: controller.refreshServiceTypes,
                                 onRemove:
                                     () => controller.removeBillingRow(index),
                               ),
@@ -652,6 +667,27 @@ class _TechnicianSelector extends StatelessWidget {
   }
 }
 
+Future<DateTime?> _pickOrderDateTime(
+  BuildContext context, {
+  DateTime? initial,
+}) async {
+  final now = DateTime.now();
+  final initialDate = initial ?? now;
+  final date = await showDatePicker(
+    context: context,
+    initialDate: initialDate,
+    firstDate: DateTime(now.year - 1),
+    lastDate: DateTime(now.year + 2),
+  );
+  if (date == null || !context.mounted) return null;
+  final time = await showTimePicker(
+    context: context,
+    initialTime: TimeOfDay.fromDateTime(initial ?? now),
+  );
+  if (time == null) return DateTime(date.year, date.month, date.day);
+  return DateTime(date.year, date.month, date.day, time.hour, time.minute);
+}
+
 class _ScheduledField extends StatelessWidget {
   const _ScheduledField({required this.controller, required this.scheduledAt});
 
@@ -696,26 +732,127 @@ class _ScheduledField extends StatelessWidget {
   }
 
   Future<void> _pickDateTime(BuildContext context) async {
-    final now = DateTime.now();
-    final initialDate = scheduledAt ?? now;
-    final date = await showDatePicker(
-      context: context,
-      initialDate: initialDate,
-      firstDate: DateTime(now.year - 1),
-      lastDate: DateTime(now.year + 2),
+    final picked = await _pickOrderDateTime(
+      context,
+      initial: scheduledAt,
     );
-    if (date == null || !context.mounted) return;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(scheduledAt ?? now),
-    );
-    if (!context.mounted) return;
-    if (time == null) {
-      controller.setScheduledAt(DateTime(date.year, date.month, date.day));
-      return;
+    if (picked != null) {
+      controller.setScheduledAt(picked);
     }
-    controller.setScheduledAt(
-      DateTime(date.year, date.month, date.day, time.hour, time.minute),
+  }
+}
+
+class _BookingConflictBanner extends StatelessWidget {
+  const _BookingConflictBanner({
+    required this.controller,
+    required this.conflict,
+  });
+
+  final OrderCreateController controller;
+  final OrderBookingConflict conflict;
+
+  @override
+  Widget build(BuildContext context) {
+    final techNames =
+        controller.technicians
+            .where((tech) => conflict.technicianIds.contains(tech.id))
+            .map((tech) => tech.name)
+            .where((name) => name.trim().isNotEmpty)
+            .toList();
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.orangeAccent.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.orangeAccent.withValues(alpha: 0.6)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.warning_amber_rounded, color: Colors.orangeAccent),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  conflict.message.isNotEmpty
+                      ? conflict.message
+                      : 'Este tecnico ja tem OS nesse horario.',
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Altere o horario ou escolha outro tecnico para continuar.',
+            style: TextStyle(color: Colors.white70),
+          ),
+          if (techNames.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Tecnicos em conflito: ${techNames.join(', ')}',
+              style: const TextStyle(color: Colors.white70, fontSize: 13),
+            ),
+          ],
+          const SizedBox(height: 10),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                icon: const Icon(Icons.schedule),
+                label: const Text('Alterar horario'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orangeAccent,
+                  side: BorderSide(color: Colors.orangeAccent.withValues(alpha: 0.6)),
+                ),
+                onPressed: () async {
+                  final picked = await _pickOrderDateTime(
+                    context,
+                    initial: controller.scheduledAt.value,
+                  );
+                  if (picked != null) {
+                    controller.setScheduledAt(picked);
+                  }
+                },
+              ),
+              OutlinedButton.icon(
+                icon: const Icon(Icons.switch_account_outlined),
+                label: const Text('Trocar tecnico'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.orangeAccent,
+                  side: BorderSide(color: Colors.orangeAccent.withValues(alpha: 0.6)),
+                ),
+                onPressed: () async {
+                  final technicians = controller.technicians.toList(growable: false);
+                  if (technicians.isEmpty) {
+                    Get.snackbar(
+                      'Tecnicos',
+                      'Nenhum tecnico disponivel para seleção.',
+                      snackPosition: SnackPosition.BOTTOM,
+                    );
+                    return;
+                  }
+                  final picked = await _TechnicianPickerModal.show(
+                    context: context,
+                    technicians: technicians,
+                    initialSelection: controller.selectedTechnicianIds.toList(),
+                  );
+                  if (picked != null) {
+                    controller.setTechnicians(picked);
+                  }
+                },
+              ),
+            ],
+          ),
+        ],
+      ),
     );
   }
 }
@@ -891,11 +1028,17 @@ class _BillingRow extends StatelessWidget {
   const _BillingRow({
     required this.entry,
     required this.index,
+    required this.serviceTypes,
+    required this.serviceTypesLoading,
+    required this.onReloadServiceTypes,
     required this.onRemove,
   });
 
   final OrderBillingDraft entry;
   final int index;
+  final List<MaintenanceServiceType> serviceTypes;
+  final bool serviceTypesLoading;
+  final VoidCallback onReloadServiceTypes;
   final VoidCallback onRemove;
 
   @override
@@ -941,7 +1084,13 @@ class _BillingRow extends StatelessWidget {
                 DropdownMenuItem(value: 'part', child: Text('Peca')),
               ],
               onChanged:
-                  (value) => entry.type.value = value ?? entry.type.value,
+                  (value) {
+                    entry.type.value = value ?? entry.type.value;
+                    if (entry.type.value != 'service') {
+                      entry.serviceType.value = null;
+                      entry.nextMaintenanceCtrl.text = '';
+                    }
+                  },
             ),
           ),
           const SizedBox(height: 12),
@@ -979,9 +1128,87 @@ class _BillingRow extends StatelessWidget {
               ),
             ],
           ),
+          if (entry.type.value == 'service') ...[
+            const SizedBox(height: 12),
+            DropdownButtonFormField<String>(
+              value: entry.serviceType.value,
+              isExpanded: true,
+              dropdownColor: context.themeSurface,
+              decoration: InputDecoration(
+                labelText: 'Tipo de serviÇõo',
+                helperText: serviceTypesLoading
+                    ? 'Carregando tipos...'
+                    : serviceTypes.isEmpty
+                        ? 'Nenhum tipo encontrado. Recarregue ou cadastre na web.'
+                        : 'Selecione para gerar o prУximo lembrete.',
+              ),
+              style: const TextStyle(color: Colors.white),
+              items:
+                  serviceTypes
+                      .map(
+                        (type) => DropdownMenuItem(
+                          value: type.code,
+                          child: Text('${type.name} \u2013 ${type.defaultIntervalDays} dias'),
+                        ),
+                      )
+                      .toList(),
+              onChanged: (value) {
+                entry.serviceType.value = value;
+                if ((entry.nextMaintenanceCtrl.text.trim().isEmpty) &&
+                    value != null &&
+                    value.isNotEmpty) {
+                  final match = serviceTypes.firstWhere(
+                    (type) => type.code == value,
+                    orElse: () => MaintenanceServiceType(
+                      code: value,
+                      name: value,
+                      defaultIntervalDays: 0,
+                    ),
+                  );
+                  if (match.defaultIntervalDays > 0) {
+                    entry.nextMaintenanceCtrl.text =
+                        match.defaultIntervalDays.toString();
+                  }
+                }
+              },
+            ),
+            const SizedBox(height: 12),
+            TextField(
+              controller: entry.nextMaintenanceCtrl,
+              keyboardType: TextInputType.number,
+              decoration: InputDecoration(
+                labelText: 'Intervalo para prУxima manutenЧгo (dias)',
+                helperText: _helperForServiceType(entry),
+                suffixIcon: IconButton(
+                  tooltip: 'Recarregar tipos',
+                  onPressed: onReloadServiceTypes,
+                  icon: const Icon(Icons.refresh, color: Colors.white70),
+                ),
+              ),
+              style: const TextStyle(color: Colors.white),
+            ),
+          ],
         ],
       ),
     );
+  }
+
+  String _helperForServiceType(OrderBillingDraft entry) {
+    final code = entry.serviceType.value;
+    if (code == null || code.isEmpty) {
+      return 'Selecione um tipo. Se vazio, o lembrete nao sera gerado.';
+    }
+    MaintenanceServiceType? match;
+    for (final type in serviceTypes) {
+      if (type.code == code) {
+        match = type;
+        break;
+      }
+    }
+    if (match == null || match.defaultIntervalDays <= 0) {
+      return 'Sem intervalo padrУo. Informe manualmente se quiser lembrete.';
+    }
+    return 'Intervalo padrУo: ${match.defaultIntervalDays} dias';
   }
 }
 

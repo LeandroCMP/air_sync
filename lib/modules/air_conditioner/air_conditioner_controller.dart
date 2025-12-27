@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import 'package:flutter/material.dart';
 import 'package:air_sync/models/air_conditioner_model.dart';
 import 'package:air_sync/models/residence_model.dart';
+import 'package:dio/dio.dart';
 
 class AirConditionerController extends GetxController with MessagesMixin, LoaderMixin {
   final Rx<ResidenceModel?> residence = Rx<ResidenceModel?>(null);
@@ -62,11 +63,11 @@ class AirConditionerController extends GetxController with MessagesMixin, Loader
       );
 
       clearForm();
-    } catch (_) {
+    } catch (e) {
       message(
         MessageModel.error(
           title: 'Erro!',
-          message: 'Erro inesperado ao cadastrar o equipamento.',
+          message: _apiError(e, 'Erro inesperado ao cadastrar o equipamento.'),
         ),
       );
     } finally {
@@ -87,4 +88,26 @@ class AirConditionerController extends GetxController with MessagesMixin, Loader
     btusController.dispose();
     super.onClose();
   }
+
+  String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+
 }

@@ -22,6 +22,11 @@ class AppConfig {
     _tenantId = prefs.getString(_tenantIdKey) ?? _tenantId;
     _stripePublishableKey =
         prefs.getString(_stripeKeyPref) ?? _stripePublishableKey;
+    if (_stripePublishableKey.isEmpty) {
+      // fallback fixo
+      _stripePublishableKey =
+          'pk_test_51SV1zVJm3CNX7D18gGlAtEYKq35SFFVvd6JIr2QtwyoqY5G13dLkngi4eD2Z5Jrvl8ahpcu64Y0otP29Z4SeUBPU00b7nwD8cu';
+    }
   }
 
   Future<void> setBaseUrl(String url) async {

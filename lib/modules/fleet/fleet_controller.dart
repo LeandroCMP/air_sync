@@ -218,6 +218,9 @@ class FleetController extends GetxController with LoaderMixin, MessagesMixin {
     if (e is DioException) {
       try {
         final data = e.response?.data;
+        if (data is Map && data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+          return (data['message'] as String).trim();
+        }
         if (data is Map && data['error'] is Map) {
           final err = Map<String, dynamic>.from(data['error']);
           final code = (err['code'] ?? '').toString();

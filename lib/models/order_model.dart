@@ -25,8 +25,6 @@ class OrderModel {
   final String? clientName;
   final String? locationLabel;
   final String? equipmentLabel;
-  final String? costCenterId;
-  final String? costCenterName;
   final List<OrderPaymentEntry> payments;
   final double paymentGrossTotal;
   final double paymentFeeTotal;
@@ -56,8 +54,6 @@ class OrderModel {
     this.clientName,
     this.locationLabel,
     this.equipmentLabel,
-    this.costCenterId,
-    this.costCenterName,
     this.payments = const [],
     this.paymentGrossTotal = 0,
     this.paymentFeeTotal = 0,
@@ -283,15 +279,6 @@ class OrderModel {
       equipmentLabel = _string(map, ['equipmentName', 'equipmentLabel']);
     }
 
-    final costCenterId = _string(map, ['costCenterId', 'cost_center_id']);
-    String? costCenterName =
-        _string(map, ['costCenterName', 'costCenterLabel', 'cost_center_name']);
-    final costCenterMap = map['costCenter'];
-    if (costCenterName == null && costCenterMap is Map) {
-      costCenterName =
-          _string(costCenterMap, ['name']) ?? _string(costCenterMap, ['label']);
-    }
-
     return OrderModel(
       id: id ?? '',
       clientId: clientId,
@@ -315,8 +302,6 @@ class OrderModel {
       clientName: clientName,
       locationLabel: locationLabel,
       equipmentLabel: equipmentLabel,
-      costCenterId: costCenterId,
-      costCenterName: costCenterName,
       payments: payments,
       paymentGrossTotal: paymentGrossTotal,
       paymentFeeTotal: paymentFeeTotal,
@@ -342,8 +327,6 @@ class OrderModel {
     String? clientName,
     String? locationLabel,
     String? equipmentLabel,
-    String? costCenterId,
-    String? costCenterName,
     List<OrderPaymentEntry>? payments,
     double? paymentGrossTotal,
     double? paymentFeeTotal,
@@ -373,8 +356,6 @@ class OrderModel {
       clientName: clientName ?? this.clientName,
       locationLabel: locationLabel ?? this.locationLabel,
       equipmentLabel: equipmentLabel ?? this.equipmentLabel,
-      costCenterId: costCenterId ?? this.costCenterId,
-      costCenterName: costCenterName ?? this.costCenterName,
       payments: payments ?? this.payments,
       paymentGrossTotal: paymentGrossTotal ?? this.paymentGrossTotal,
       paymentFeeTotal: paymentFeeTotal ?? this.paymentFeeTotal,
@@ -503,12 +484,16 @@ class OrderBillingItem {
   final String name;
   final num qty;
   final num unitPrice;
+  final String? serviceTypeCode;
+  final int? nextMaintenanceInDays;
 
   OrderBillingItem({
     required this.type,
     required this.name,
     required this.qty,
     required this.unitPrice,
+    this.serviceTypeCode,
+    this.nextMaintenanceInDays,
   });
 
   factory OrderBillingItem.fromMap(Map<String, dynamic> map) {
@@ -517,6 +502,11 @@ class OrderBillingItem {
       name: _string(map, ['name']) ?? '',
       qty: (map['qty'] ?? map['quantity'] ?? 0) as num,
       unitPrice: (map['unitPrice'] ?? map['price'] ?? 0) as num,
+      serviceTypeCode: _string(map, ['serviceTypeCode']),
+      nextMaintenanceInDays:
+          map['nextMaintenanceInDays'] is num
+              ? (map['nextMaintenanceInDays'] as num).toInt()
+              : int.tryParse('${map['nextMaintenanceInDays'] ?? ''}'),
     );
   }
 
@@ -527,6 +517,9 @@ class OrderBillingItem {
     'name': name,
     'qty': qty,
     'unitPrice': unitPrice,
+    if (serviceTypeCode != null && serviceTypeCode!.trim().isNotEmpty)
+      'serviceTypeCode': serviceTypeCode,
+    if (nextMaintenanceInDays != null) 'nextMaintenanceInDays': nextMaintenanceInDays,
   };
 }
 
@@ -722,12 +715,16 @@ class OrderBillingItemInput {
   final String name;
   final num qty;
   final num unitPrice;
+  final String? serviceTypeCode;
+  final int? nextMaintenanceInDays;
 
   OrderBillingItemInput({
     required this.type,
     required this.name,
     required this.qty,
     required this.unitPrice,
+    this.serviceTypeCode,
+    this.nextMaintenanceInDays,
   });
 
   Map<String, dynamic> toJson() => {
@@ -735,6 +732,9 @@ class OrderBillingItemInput {
     'name': name,
     'qty': qty,
     'unitPrice': unitPrice,
+    if (serviceTypeCode != null && serviceTypeCode!.trim().isNotEmpty)
+      'serviceTypeCode': serviceTypeCode,
+    if (nextMaintenanceInDays != null) 'nextMaintenanceInDays': nextMaintenanceInDays,
   };
 }
 

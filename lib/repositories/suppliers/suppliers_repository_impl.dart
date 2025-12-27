@@ -1,6 +1,5 @@
 import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/models/supplier_model.dart';
-import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
 import 'suppliers_repository.dart';
@@ -10,18 +9,17 @@ class SuppliersRepositoryImpl implements SuppliersRepository {
 
   @override
   Future<List<SupplierModel>> list({String? text}) async {
-    try {
-      final res = await _api.dio.get('/v1/suppliers', queryParameters: (text != null && text.isNotEmpty) ? {'text': text} : null);
-      final data = res.data;
-      if (data is List) {
-        return data
-            .map((e) => SupplierModel.fromMap(Map<String, dynamic>.from(e)))
-            .toList();
-      }
-      return [];
-    } on DioException {
-      return [];
+    final res = await _api.dio.get(
+      '/v1/suppliers',
+      queryParameters: (text != null && text.isNotEmpty) ? {'text': text} : null,
+    );
+    final data = res.data;
+    if (data is List) {
+      return data
+          .map((e) => SupplierModel.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
     }
+    return [];
   }
 
   @override

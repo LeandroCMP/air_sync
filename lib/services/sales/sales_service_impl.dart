@@ -24,6 +24,7 @@ class SalesServiceImpl implements SalesService {
     String? notes,
     Map<String, dynamic>? moveRequest,
     bool autoCreateOrder = false,
+    Map<String, dynamic>? orderMeta,
   }) async {
     final sale = await _repository.create(
       clientId: clientId,
@@ -41,7 +42,7 @@ class SalesServiceImpl implements SalesService {
     if ((approved.linkedOrderId ?? '').isNotEmpty) {
       return approved;
     }
-    return launchOrderIfNeeded(approved.id, force: true);
+    return launchOrderIfNeeded(approved.id, force: true, orderMeta: orderMeta);
   }
 
   @override
@@ -62,6 +63,7 @@ class SalesServiceImpl implements SalesService {
     String? notes,
     Map<String, dynamic>? moveRequest,
     bool? autoCreateOrder,
+    Map<String, dynamic>? orderMeta,
   }) =>
       _repository.update(
         id,
@@ -72,6 +74,7 @@ class SalesServiceImpl implements SalesService {
         notes: notes,
         moveRequest: moveRequest,
         autoCreateOrder: autoCreateOrder,
+        orderMeta: orderMeta,
       );
 
   @override
@@ -82,6 +85,10 @@ class SalesServiceImpl implements SalesService {
       _repository.commercialAssistant(id, question);
 
   @override
-  Future<SaleModel> launchOrderIfNeeded(String id, {bool force = false}) =>
-      _repository.launchOrderIfNeeded(id, force: force);
+  Future<SaleModel> launchOrderIfNeeded(
+    String id, {
+    bool force = false,
+    Map<String, dynamic>? orderMeta,
+  }) =>
+      _repository.launchOrderIfNeeded(id, force: force, orderMeta: orderMeta);
 }

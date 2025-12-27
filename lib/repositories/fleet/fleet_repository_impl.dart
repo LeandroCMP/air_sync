@@ -1,6 +1,5 @@
 ﻿import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/models/fleet_vehicle_model.dart';
-import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
 import 'fleet_repository.dart';
@@ -10,48 +9,44 @@ class FleetRepositoryImpl implements FleetRepository {
 
   @override
   Future<List<FleetVehicleModel>> list({String? text, String? sort, String? order}) async {
-    try {
-      final qp = <String, dynamic>{
-        if (text != null && text.isNotEmpty) 'text': text,
-        if (sort != null && sort.isNotEmpty) 'sort': sort,
-        if (order != null && order.isNotEmpty) 'order': order,
-      };
-      final res = await _api.dio
-          .get('/v1/fleet/vehicles', queryParameters: qp.isEmpty ? null : qp)
-          .timeout(const Duration(seconds: 12));
-      final data = res.data;
+    final qp = <String, dynamic>{
+      if (text != null && text.isNotEmpty) 'text': text,
+      if (sort != null && sort.isNotEmpty) 'sort': sort,
+      if (order != null && order.isNotEmpty) 'order': order,
+    };
+    final res = await _api.dio
+        .get('/v1/fleet/vehicles', queryParameters: qp.isEmpty ? null : qp)
+        .timeout(const Duration(seconds: 12));
+    final data = res.data;
 
-      List<dynamic>? extractList(dynamic d) {
-        if (d is List) return d;
-        if (d is Map) {
-          dynamic inner = d['data'] ?? d['items'] ?? d['results'] ?? d['vehicles'] ?? d['rows'] ?? d['content'];
-          if (inner is List) return inner;
-          if (inner is Map) {
-            final nested = inner['items'] ?? inner['data'] ?? inner['docs'];
-            if (nested is List) return nested;
+    List<dynamic>? extractList(dynamic d) {
+      if (d is List) return d;
+      if (d is Map) {
+        dynamic inner = d['data'] ?? d['items'] ?? d['results'] ?? d['vehicles'] ?? d['rows'] ?? d['content'];
+        if (inner is List) return inner;
+        if (inner is Map) {
+          final nested = inner['items'] ?? inner['data'] ?? inner['docs'];
+          if (nested is List) return nested;
+        }
+        for (final entry in d.values) {
+          if (entry is List && entry.isNotEmpty && entry.first is Map) {
+            return entry;
           }
-          for (final entry in d.values) {
-            if (entry is List && entry.isNotEmpty && entry.first is Map) {
-              return entry;
-            }
-            if (entry is Map) {
-              for (final v in entry.values) {
-                if (v is List && v.isNotEmpty && v.first is Map) return v;
-              }
+          if (entry is Map) {
+            for (final v in entry.values) {
+              if (v is List && v.isNotEmpty && v.first is Map) return v;
             }
           }
         }
-        return null;
       }
-
-      final list = extractList(data) ?? [];
-      return list
-          .whereType<Map>()
-          .map((e) => FleetVehicleModel.fromMap(Map<String, dynamic>.from(e)))
-          .toList();
-    } on DioException {
-      return [];
+      return null;
     }
+
+    final list = extractList(data) ?? [];
+    return list
+        .whereType<Map>()
+        .map((e) => FleetVehicleModel.fromMap(Map<String, dynamic>.from(e)))
+        .toList();
   }
 
   @override

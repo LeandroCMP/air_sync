@@ -150,7 +150,7 @@ class LoginPage extends GetView<LoginController> {
                                       ),
                                       const SizedBox(height: 4),
                                       const Text(
-                                        'Caso seja seu primeiro acesso, vocÃª trocarÃ¡ a senha logo apÃ³s entrar.',
+                                        'Caso seja seu primeiro acesso, voce pode trocar a senha logo apos entrar.',
                                         style: TextStyle(color: Colors.white54, fontSize: 12),
                                         textAlign: TextAlign.center,
                                       ),
@@ -401,23 +401,101 @@ class LoginPage extends GetView<LoginController> {
                                 ),
                                 const SizedBox(height: 12),
                                 Obx(
-                                  () => controller.canUseBiometrics.value &&
-                                          controller.biometricEnabled.value
-                                      ? SizedBox(
-                                          width: double.infinity,
-                                          child: OutlinedButton.icon(
-                                            onPressed: controller.isLoading.value
-                                                ? null
-                                                : controller.biometricLogin,
-                                            icon: const Icon(Icons.fingerprint_rounded),
-                                            label: Text(
-                                              controller.hasBiometricCredentials.value
-                                                  ? 'Entrar com biometria'
-                                                  : 'Ativar biometria e salvar acesso',
+                                  () {
+                                    final canBio = controller.canUseBiometrics.value;
+                                    final enabled = controller.biometricEnabled.value;
+                                    final hasCreds = controller.hasBiometricCredentials.value;
+                                    if (!canBio || !enabled) return const SizedBox.shrink();
+                                    final label = hasCreds
+                                        ? 'Entrar com biometria'
+                                        : 'Ativar biometria e salvar acesso';
+                                    final subtitle = hasCreds
+                                        ? 'Use sua digital/rosto para acessar rapidamente.'
+                                        : 'Salvamos com segurança após o próximo login.';
+                                    final onTap = controller.isLoading.value
+                                        ? null
+                                        : hasCreds
+                                            ? controller.biometricLogin
+                                            : () => controller.enableBiometric(true);
+
+                                    return SizedBox(
+                                      width: double.infinity,
+                                      child: ElevatedButton(
+                                        onPressed: onTap,
+                                        style: ElevatedButton.styleFrom(
+                                          padding: EdgeInsets.zero,
+                                          backgroundColor: Colors.transparent,
+                                          shadowColor: Colors.transparent,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.circular(18),
+                                          ),
+                                        ),
+                                        child: Ink(
+                                          decoration: BoxDecoration(
+                                            gradient: LinearGradient(
+                                              colors: [
+                                                Colors.tealAccent.withValues(alpha: 0.9),
+                                                context.themeGreen,
+                                              ],
+                                              begin: Alignment.topLeft,
+                                              end: Alignment.bottomRight,
+                                            ),
+                                            borderRadius: BorderRadius.circular(18),
+                                          ),
+                                          child: Padding(
+                                            padding: const EdgeInsets.symmetric(
+                                              vertical: 14,
+                                              horizontal: 14,
+                                            ),
+                                            child: Row(
+                                              children: [
+                                                Container(
+                                                  padding: const EdgeInsets.all(10),
+                                                  decoration: BoxDecoration(
+                                                    color: Colors.white.withValues(alpha: 0.18),
+                                                    shape: BoxShape.circle,
+                                                  ),
+                                                  child: const Icon(
+                                                    Icons.fingerprint_rounded,
+                                                    color: Colors.white,
+                                                    size: 24,
+                                                  ),
+                                                ),
+                                                const SizedBox(width: 12),
+                                                Expanded(
+                                                  child: Column(
+                                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                                    children: [
+                                                      Text(
+                                                        label,
+                                                        style: const TextStyle(
+                                                          color: Colors.white,
+                                                          fontWeight: FontWeight.w700,
+                                                          fontSize: 15,
+                                                        ),
+                                                      ),
+                                                      const SizedBox(height: 2),
+                                                      Text(
+                                                        subtitle,
+                                                        style: const TextStyle(
+                                                          color: Colors.white70,
+                                                          fontSize: 12.5,
+                                                        ),
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                                const Icon(
+                                                  Icons.arrow_forward_rounded,
+                                                  color: Colors.white,
+                                                ),
+                                              ],
                                             ),
                                           ),
-                                        )
-                                      : const SizedBox.shrink(),
+                                        ),
+                                      ),
+                                    );
+                                  },
                                 ),
                                 const SizedBox(height: 10),
                                 SizedBox(
@@ -764,4 +842,3 @@ Future<void> _showSignupSheet(
     },
   );
 }
-

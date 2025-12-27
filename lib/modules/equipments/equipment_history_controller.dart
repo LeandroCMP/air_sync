@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/collaborator_models.dart';
 import 'package:air_sync/models/maintenance_model.dart';
+import 'package:air_sync/models/maintenance_reminder_model.dart';
 import 'package:get/get.dart';
 import 'package:printing/printing.dart';
 
@@ -11,6 +14,7 @@ import 'package:air_sync/services/equipments/equipments_service.dart';
 import 'package:air_sync/application/utils/pdf/equipment_report_pdf.dart';
 import 'package:air_sync/application/auth/auth_service_application.dart';
 import 'package:air_sync/services/locations/locations_service.dart';
+import 'package:air_sync/services/maintenance/maintenance_service.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:air_sync/services/users/users_service.dart';
 
@@ -19,19 +23,25 @@ class EquipmentHistoryController extends GetxController
   final EquipmentsService _service;
   final OrdersService? _ordersService;
   final UsersService? _usersService;
+  final MaintenanceService? _maintenanceService;
   EquipmentHistoryController({
     required EquipmentsService service,
     OrdersService? ordersService,
     UsersService? usersService,
+    MaintenanceService? maintenanceService,
   }) : _service = service,
        _ordersService = ordersService,
-       _usersService = usersService;
+       _usersService = usersService,
+       _maintenanceService = maintenanceService;
 
   late final String equipmentId;
   EquipmentModel? equipment;
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
   final items = <Map<String, dynamic>>[].obs;
+  final reminders = <MaintenanceReminderModel>[].obs;
+  final RxBool remindersLoading = false.obs;
+  final RxnString remindersError = RxnString();
   List<CollaboratorModel>? _technicianCatalog;
   final Map<String, String> _technicianNameIndex = {};
 
@@ -55,6 +65,7 @@ class EquipmentHistoryController extends GetxController
   @override
   Future<void> onReady() async {
     await load();
+    unawaited(loadReminders());
     super.onReady();
   }
 
@@ -74,6 +85,24 @@ class EquipmentHistoryController extends GetxController
       );
     } finally {
       isLoading(false);
+    }
+  }
+
+  Future<void> loadReminders() async {
+    final svc = _maintenanceService;
+    if (svc == null) return;
+    remindersLoading(true);
+    remindersError.value = null;
+    try {
+      final list = await svc.listReminders(
+        equipmentId: equipmentId,
+        status: 'pending',
+      );
+      reminders.assignAll(list);
+    } catch (_) {
+      remindersError.value = 'Falha ao carregar lembretes.';
+    } finally {
+      remindersLoading(false);
     }
   }
 

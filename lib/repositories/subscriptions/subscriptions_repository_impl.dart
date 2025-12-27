@@ -1,7 +1,6 @@
 import 'package:air_sync/application/core/network/api_client.dart';
 import 'package:air_sync/models/subscription_models.dart';
 import 'package:air_sync/repositories/subscriptions/subscriptions_repository.dart';
-import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
 class SubscriptionsRepositoryImpl implements SubscriptionsRepository {
@@ -50,28 +49,36 @@ class SubscriptionsRepositoryImpl implements SubscriptionsRepository {
   }
 
   @override
-  Future<List<SubscriptionInvoiceModel>> invoices({String? status, DateTime? from, DateTime? to}) async {
-    try {
-      final query = <String, dynamic>{};
-      if (status != null && status != 'all') query['status'] = status;
-      if (from != null) query['from'] = from.toIso8601String();
-      if (to != null) query['to'] = to.toIso8601String();
+  Future<List<SubscriptionInvoiceModel>> invoices({
+    String? status,
+    DateTime? from,
+    DateTime? to,
+    int page = 1,
+    int limit = 50,
+  }) async {
+    final query = <String, dynamic>{'page': page, 'limit': limit};
+    if (status != null && status != 'all') query['status'] = status;
+    if (from != null) query['from'] = from.toIso8601String();
+    if (to != null) query['to'] = to.toIso8601String();
 
-      final res = await _api.dio.get(
-        '/v1/subscriptions/invoices',
-        queryParameters: query.isEmpty ? null : query,
-      );
-      final data = res.data;
-      if (data is List) {
-        return data
-            .whereType<Map>()
-            .map((e) => SubscriptionInvoiceModel.fromMap(Map<String, dynamic>.from(e)))
-            .toList();
-      }
-      return const [];
-    } on DioException {
-      return const [];
+    final res = await _api.dio.get(
+      '/v1/subscriptions/invoices',
+      queryParameters: query.isEmpty ? null : query,
+    );
+    final data = res.data;
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map((e) => SubscriptionInvoiceModel.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
     }
+    if (data is Map && data['items'] is List) {
+      return (data['items'] as List)
+          .whereType<Map>()
+          .map((e) => SubscriptionInvoiceModel.fromMap(Map<String, dynamic>.from(e)))
+          .toList();
+    }
+    return const [];
   }
 
   @override
@@ -101,11 +108,13 @@ class SubscriptionsRepositoryImpl implements SubscriptionsRepository {
     String? note,
     DateTime? paidAt,
     double? amount,
+    String? idempotencyKey,
   }) async {
     final payload = <String, dynamic>{
       if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
       if (paidAt != null) 'paidAt': paidAt.toIso8601String(),
       if (amount != null) 'amount': amount,
+      if ((idempotencyKey ?? '').isNotEmpty) 'idempotencyKey': idempotencyKey,
     };
     final res = await _api.dio.post(
       '/v1/subscriptions/invoices/$invoiceId/pay',
@@ -151,10 +160,5 @@ class SubscriptionsRepositoryImpl implements SubscriptionsRepository {
           .toList();
     }
     return const [];
-  }
-
-  @override
-  Future<void> runBillingNow() async {
-    await _api.dio.post('/v1/subscriptions/billing/run');
   }
 }

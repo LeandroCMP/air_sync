@@ -48,18 +48,24 @@ class OrderDraftBillingItem {
     required this.name,
     required this.qty,
     required this.unitPrice,
+    this.serviceTypeCode,
+    this.nextMaintenanceInDays,
   });
 
   final String type;
   final String name;
   final double qty;
   final double unitPrice;
+  final String? serviceTypeCode;
+  final int? nextMaintenanceInDays;
 
   Map<String, dynamic> toMap() => {
     'type': type,
     'name': name,
     'qty': qty,
     'unitPrice': unitPrice,
+    'serviceTypeCode': serviceTypeCode,
+    'nextMaintenanceInDays': nextMaintenanceInDays,
   };
 
   factory OrderDraftBillingItem.fromMap(Map<String, dynamic> map) {
@@ -69,11 +75,22 @@ class OrderDraftBillingItem {
       qty: map['qty'] is num ? (map['qty'] as num).toDouble() : 0,
       unitPrice:
           map['unitPrice'] is num ? (map['unitPrice'] as num).toDouble() : 0,
+      serviceTypeCode: map['serviceTypeCode']?.toString(),
+      nextMaintenanceInDays:
+          map['nextMaintenanceInDays'] is num
+              ? (map['nextMaintenanceInDays'] as num).toInt()
+              : int.tryParse('${map['nextMaintenanceInDays'] ?? ''}'),
     );
   }
 
-  OrderBillingItem toBillingItem() =>
-      OrderBillingItem(type: type, name: name, qty: qty, unitPrice: unitPrice);
+  OrderBillingItem toBillingItem() => OrderBillingItem(
+        type: type,
+        name: name,
+        qty: qty,
+        unitPrice: unitPrice,
+        serviceTypeCode: serviceTypeCode,
+        nextMaintenanceInDays: nextMaintenanceInDays,
+      );
 }
 
 class OrderDraftModel {

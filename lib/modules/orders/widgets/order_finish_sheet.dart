@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:air_sync/models/company_profile_model.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/models/order_model.dart';
+import 'package:air_sync/models/maintenance_service_type.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -205,6 +206,7 @@ Future<OrderFinishResult?> showOrderFinishSheet({
   required BuildContext context,
   required OrderModel order,
   required List<InventoryItemModel> inventoryItems,
+  required List<MaintenanceServiceType> serviceTypes,
   CompanyProfileModel? companyProfile,
 }) {
   return showModalBottomSheet<OrderFinishResult>(
@@ -214,6 +216,7 @@ Future<OrderFinishResult?> showOrderFinishSheet({
         (_) => _FinishOrderSheet(
           order: order,
           inventoryItems: inventoryItems,
+          serviceTypes: serviceTypes,
           companyProfile: companyProfile,
         ),
   );
@@ -223,11 +226,13 @@ class _FinishOrderSheet extends StatefulWidget {
   const _FinishOrderSheet({
     required this.order,
     required this.inventoryItems,
+    required this.serviceTypes,
     this.companyProfile,
   });
 
   final OrderModel order;
   final List<InventoryItemModel> inventoryItems;
+  final List<MaintenanceServiceType> serviceTypes;
   final CompanyProfileModel? companyProfile;
 
   @override
@@ -460,15 +465,21 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
                             child: Column(
                               children:
                                   _services.asMap().entries.map((entry) {
-                                    return _FinishServiceCard(
-                                      draft: entry.value,
-                                      onRemove:
-                                          _services.length == 1
-                                              ? null
-                                              : () => _removeService(entry.key),
-                                    );
-                                  }).toList(),
-                            ),
+                                     return _FinishServiceCard(
+                                       draft: entry.value,
+                                       serviceTypes: widget.serviceTypes,
+                                       onServiceTypeChanged: (value) =>
+                                           _onServiceTypeSelected(
+                                             entry.value,
+                                             value,
+                                           ),
+                                       onRemove:
+                                           _services.length == 1
+                                               ? null
+                                               : () => _removeService(entry.key),
+                                     );
+                                   }).toList(),
+                                 ),
                           ),
                           const SizedBox(height: 16),
                           _SheetSection(
@@ -771,17 +782,50 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
     return 'Variação vs. original: $prefix${formatCurrencyPtBr(diff.abs())}';
   }
 
+  int? _defaultIntervalFor(String? code) {
+    if (code == null || code.isEmpty) return null;
+    for (final type in widget.serviceTypes) {
+      if (type.code == code) return type.defaultIntervalDays;
+    }
+    return null;
+  }
+
+  int? _resolveNextMaintenanceDays(_FinishServiceDraft draft) {
+    final override =
+        int.tryParse(draft.nextMaintenanceCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (override != null && override > 0) return override;
+    return _defaultIntervalFor(draft.serviceTypeCode);
+  }
+
+  void _onServiceTypeSelected(_FinishServiceDraft draft, String? code) {
+    draft.serviceTypeCode = code;
+    if ((draft.nextMaintenanceCtrl.text.trim().isEmpty) &&
+        code != null &&
+        code.isNotEmpty) {
+      final interval = _defaultIntervalFor(code);
+      if (interval != null && interval > 0) {
+        draft.nextMaintenanceCtrl.text = interval.toString();
+      }
+    }
+    _handleDraftChanged();
+  }
+
   List<_FinishServiceDraft> _buildInitialServices(OrderModel order) {
     final drafts =
         order.billing.items
             .where((item) => item.type == 'service')
-            .map(
-              (item) => _FinishServiceDraft(
+            .map((item) {
+              final nextMaintenance =
+                  item.nextMaintenanceInDays ??
+                  _defaultIntervalFor(item.serviceTypeCode);
+              return _FinishServiceDraft(
                 name: item.name,
                 quantity: item.qty.toDouble(),
                 unitPrice: item.unitPrice.toDouble(),
-              ),
-            )
+                serviceTypeCode: item.serviceTypeCode,
+                nextMaintenanceInDays: nextMaintenance,
+              );
+            })
             .toList();
     if (drafts.isEmpty) drafts.add(_FinishServiceDraft());
     return drafts;
@@ -851,11 +895,13 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
   void _attachServiceDraft(_FinishServiceDraft draft) {
     draft.qtyCtrl.addListener(_handleDraftChanged);
     draft.unitPriceCtrl.addListener(_handleDraftChanged);
+    draft.nextMaintenanceCtrl.addListener(_handleDraftChanged);
   }
 
   void _detachServiceDraft(_FinishServiceDraft draft) {
     draft.qtyCtrl.removeListener(_handleDraftChanged);
     draft.unitPriceCtrl.removeListener(_handleDraftChanged);
+    draft.nextMaintenanceCtrl.removeListener(_handleDraftChanged);
   }
 
   void _addPaymentDraft() {
@@ -1021,12 +1067,21 @@ class _FinishOrderSheetState extends State<_FinishOrderSheet> {
         return;
       }
       final price = draft.unitPrice ?? 0;
+      final code = draft.serviceTypeCode?.trim() ?? '';
+      if (code.isEmpty) {
+        _error.value =
+            'Selecione o tipo de serviço para gerar a próxima manutenção.';
+        return;
+      }
+      final nextMaintenance = _resolveNextMaintenanceDays(draft);
       billingItems.add(
         OrderBillingItemInput(
           type: 'service',
           name: name,
           qty: qty,
           unitPrice: price,
+          serviceTypeCode: code,
+          nextMaintenanceInDays: nextMaintenance,
         ),
       );
     }
@@ -1209,21 +1264,33 @@ class _FinishMaterialDraft {
 }
 
 class _FinishServiceDraft {
-  _FinishServiceDraft({String? name, double? quantity, double? unitPrice})
-    : nameCtrl = TextEditingController(text: name ?? ''),
-      qtyCtrl = TextEditingController(
-        text:
-            quantity != null
-                ? quantity.toStringAsFixed(quantity % 1 == 0 ? 0 : 2)
-                : '1',
-      ),
-      unitPriceCtrl = TextEditingController(
-        text: unitPrice != null ? formatCurrencyPtBr(unitPrice) : '',
-      );
+  _FinishServiceDraft({
+    String? name,
+    double? quantity,
+    double? unitPrice,
+    this.serviceTypeCode,
+    int? nextMaintenanceInDays,
+  }) : nameCtrl = TextEditingController(text: name ?? ''),
+       qtyCtrl = TextEditingController(
+         text:
+             quantity != null
+                 ? quantity.toStringAsFixed(quantity % 1 == 0 ? 0 : 2)
+                 : '1',
+       ),
+       unitPriceCtrl = TextEditingController(
+         text: unitPrice != null ? formatCurrencyPtBr(unitPrice) : '',
+       ),
+       nextMaintenanceCtrl = TextEditingController(
+         text: nextMaintenanceInDays != null && nextMaintenanceInDays > 0
+             ? nextMaintenanceInDays.toString()
+             : '',
+       );
 
   final TextEditingController nameCtrl;
   final TextEditingController qtyCtrl;
   final TextEditingController unitPriceCtrl;
+  final TextEditingController nextMaintenanceCtrl;
+  String? serviceTypeCode;
 
   bool get hasContent => nameCtrl.text.trim().isNotEmpty;
   String get name => nameCtrl.text;
@@ -1240,6 +1307,7 @@ class _FinishServiceDraft {
     nameCtrl.dispose();
     qtyCtrl.dispose();
     unitPriceCtrl.dispose();
+    nextMaintenanceCtrl.dispose();
   }
 }
 
@@ -1339,9 +1407,16 @@ class _FinishMaterialCard extends StatelessWidget {
 }
 
 class _FinishServiceCard extends StatelessWidget {
-  const _FinishServiceCard({required this.draft, this.onRemove});
+  const _FinishServiceCard({
+    required this.draft,
+    required this.serviceTypes,
+    required this.onServiceTypeChanged,
+    this.onRemove,
+  });
 
   final _FinishServiceDraft draft;
+  final List<MaintenanceServiceType> serviceTypes;
+  final ValueChanged<String?> onServiceTypeChanged;
   final VoidCallback? onRemove;
 
   @override
@@ -1378,6 +1453,39 @@ class _FinishServiceCard extends StatelessWidget {
             decoration: const InputDecoration(labelText: 'Descrição'),
           ),
           const SizedBox(height: 12),
+          DropdownButtonFormField<String>(
+            value: draft.serviceTypeCode,
+            isExpanded: true,
+            dropdownColor: context.themeSurface,
+            decoration: InputDecoration(
+              labelText: 'Tipo de serviço',
+              helperText: serviceTypes.isEmpty
+                  ? 'Nenhum tipo encontrado. Atualize o catálogo na web e recarregue.'
+                  : 'Selecione para gerar a próxima manutenção.',
+            ),
+            items:
+                serviceTypes
+                    .map(
+                      (type) => DropdownMenuItem<String>(
+                        value: type.code,
+                        child: Text(
+                          '${type.name} \u2013 ${type.defaultIntervalDays} dias',
+                        ),
+                      ),
+                    )
+                    .toList(),
+            onChanged: onServiceTypeChanged,
+          ),
+          const SizedBox(height: 12),
+          TextField(
+            controller: draft.nextMaintenanceCtrl,
+            keyboardType: TextInputType.number,
+            decoration: InputDecoration(
+              labelText: 'Intervalo para próxima manutenção (dias)',
+              helperText: _helperForServiceType(),
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
             children: [
               Expanded(
@@ -1407,6 +1515,27 @@ class _FinishServiceCard extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  String _helperForServiceType() {
+    if (serviceTypes.isEmpty) {
+      return 'Sem tipos cadastrados. Se prosseguir, o lembrete nao sera gerado.';
+    }
+    final code = draft.serviceTypeCode;
+    if (code == null || code.isEmpty) {
+      return 'Selecione o tipo para gerar o proximo lembrete.';
+    }
+    MaintenanceServiceType? match;
+    for (final type in serviceTypes) {
+      if (type.code == code) {
+        match = type;
+        break;
+      }
+    }
+    if (match == null || match.defaultIntervalDays <= 0) {
+      return 'Sem intervalo padrao. Informe manualmente se quiser lembrete.';
+    }
+    return 'Intervalo padrao: ${match.defaultIntervalDays} dias';
   }
 }
 
@@ -1795,4 +1924,3 @@ class _InventoryPicker extends StatelessWidget {
     );
   }
 }
-

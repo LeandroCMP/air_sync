@@ -23,6 +23,10 @@ import 'package:air_sync/repositories/purchases/purchases_repository.dart';
 import 'package:air_sync/repositories/purchases/purchases_repository_impl.dart';
 import 'package:air_sync/services/purchases/purchases_service.dart';
 import 'package:air_sync/services/purchases/purchases_service_impl.dart';
+import 'package:air_sync/repositories/maintenance/maintenance_repository.dart';
+import 'package:air_sync/repositories/maintenance/maintenance_repository_impl.dart';
+import 'package:air_sync/services/maintenance/maintenance_service.dart';
+import 'package:air_sync/services/maintenance/maintenance_service_impl.dart';
 import 'package:air_sync/repositories/users/users_repository.dart';
 import 'package:air_sync/repositories/users/users_repository_impl.dart';
 import 'package:air_sync/services/users/users_service.dart';
@@ -144,6 +148,18 @@ class OrderDetailBindings implements Bindings {
         fenix: true,
       );
     }
+    if (!Get.isRegistered<MaintenanceRepository>()) {
+      Get.lazyPut<MaintenanceRepository>(
+        () => MaintenanceRepositoryImpl(),
+        fenix: true,
+      );
+    }
+    if (!Get.isRegistered<MaintenanceService>()) {
+      Get.lazyPut<MaintenanceService>(
+        () => MaintenanceServiceImpl(repository: Get.find()),
+        fenix: true,
+      );
+    }
     Get.put(
       OrderDetailController(
         orderId: orderId,
@@ -167,6 +183,10 @@ class OrderDetailBindings implements Bindings {
         equipmentsService:
             Get.isRegistered<EquipmentsService>()
                 ? Get.find<EquipmentsService>()
+                : null,
+        maintenanceService:
+            Get.isRegistered<MaintenanceService>()
+                ? Get.find<MaintenanceService>()
                 : null,
         companyProfileService:
             Get.isRegistered<CompanyProfileService>()

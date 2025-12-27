@@ -1,6 +1,7 @@
 import 'package:air_sync/models/subscription_models.dart';
 import 'package:air_sync/repositories/subscriptions/subscriptions_repository.dart';
 import 'package:air_sync/services/subscriptions/subscriptions_service.dart';
+import 'package:uuid/uuid.dart';
 
 class SubscriptionsServiceImpl implements SubscriptionsService {
   SubscriptionsServiceImpl({required SubscriptionsRepository repository})
@@ -36,8 +37,20 @@ class SubscriptionsServiceImpl implements SubscriptionsService {
   Future<SubscriptionAlertModel> alerts() => _repository.alerts();
 
   @override
-  Future<List<SubscriptionInvoiceModel>> invoices({String? status, DateTime? from, DateTime? to}) =>
-      _repository.invoices(status: status, from: from, to: to);
+  Future<List<SubscriptionInvoiceModel>> invoices({
+    String? status,
+    DateTime? from,
+    DateTime? to,
+    int page = 1,
+    int limit = 50,
+  }) =>
+      _repository.invoices(
+        status: status,
+        from: from,
+        to: to,
+        page: page,
+        limit: limit,
+      );
 
   @override
   Future<SubscriptionPaymentIntentResult> createPaymentIntent({
@@ -59,13 +72,17 @@ class SubscriptionsServiceImpl implements SubscriptionsService {
     String? note,
     DateTime? paidAt,
     double? amount,
-  }) =>
-      _repository.payInvoice(
-        invoiceId: invoiceId,
-        note: note,
-        paidAt: paidAt,
-        amount: amount,
-      );
+    String? idempotencyKey,
+  }) {
+    final key = idempotencyKey ?? const Uuid().v4();
+    return _repository.payInvoice(
+      invoiceId: invoiceId,
+      note: note,
+      paidAt: paidAt,
+      amount: amount,
+      idempotencyKey: key,
+    );
+  }
 
   @override
   Future<SubscriptionInvoiceModel> negotiateInvoice({
@@ -82,7 +99,4 @@ class SubscriptionsServiceImpl implements SubscriptionsService {
   @override
   Future<List<SubscriptionInvoiceModel>> createCarnet({bool payUpfront = false}) =>
       _repository.createCarnet(payUpfront: payUpfront);
-
-  @override
-  Future<void> runBillingNow() => _repository.runBillingNow();
 }

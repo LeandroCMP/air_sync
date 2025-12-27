@@ -3,9 +3,9 @@ import 'package:air_sync/models/finance_audit_model.dart';
 import 'package:air_sync/models/finance_dashboard_model.dart';
 import 'package:air_sync/models/finance_forecast_model.dart';
 import 'package:air_sync/models/finance_transaction.dart';
-import 'package:air_sync/models/finance_reconciliation_model.dart';
 import 'package:air_sync/repositories/finance/finance_repository.dart';
 import 'package:air_sync/services/finance/finance_service.dart';
+import 'package:uuid/uuid.dart';
 
 class FinanceServiceImpl implements FinanceService {
   final FinanceRepository _repo;
@@ -17,8 +17,17 @@ class FinanceServiceImpl implements FinanceService {
     String? status,
     DateTime? from,
     DateTime? to,
+    int page = 1,
+    int limit = 50,
   }) =>
-      _repo.list(type: type, status: status, from: from, to: to);
+      _repo.list(
+        type: type,
+        status: status,
+        from: from,
+        to: to,
+        page: page,
+        limit: limit,
+      );
 
   @override
   Future<FinanceDashboardModel> dashboard({
@@ -39,9 +48,17 @@ class FinanceServiceImpl implements FinanceService {
   Future<void> pay({
     required String id,
     required String method,
-    required double amount,
-  }) =>
-      _repo.pay(id: id, method: method, amount: amount);
+    double? amount,
+    String? idempotencyKey,
+  }) {
+    final key = idempotencyKey ?? const Uuid().v4();
+    return _repo.pay(
+      id: id,
+      method: method,
+      amount: amount,
+      idempotencyKey: key,
+    );
+  }
 
   @override
   Future<void> allocateIndirectCosts({
@@ -53,16 +70,6 @@ class FinanceServiceImpl implements FinanceService {
     to: to,
     categories: categories,
   );
-
-  @override
-  Future<List<FinanceReconciliationPayment>> reconciliationPayments({
-    String scope = 'all',
-  }) => _repo.reconciliationPayments(scope: scope);
-
-  @override
-  Future<List<FinanceReconciliationIssue>> reconciliationReport({
-    String scope = 'all',
-  }) => _repo.reconciliationReport(scope: scope);
 
   @override
   Future<FinanceAnomalyReport> anomalies({

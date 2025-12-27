@@ -5,6 +5,7 @@ import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/modules/inventory_item_history/inventory_item_history_controller.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -363,11 +364,20 @@ class InventoryController extends GetxController
   }
 
   String _friendlyError(Object error, String fallback) {
+    if (error is DioException) {
+      final data = error.response?.data;
+      if (data is Map && data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+      if (data is String && data.trim().isNotEmpty) {
+        return data.trim();
+      }
+    }
     if (error is InventoryFailure) {
       final cleaned =
           error.message.replaceFirst(RegExp(r'^\[[A-Z_]+\]\s*'), '').trim();
-      if (cleaned.toLowerCase() == 'erro de validação') {
-        return '$cleaned. Confira unidade e quantidade mínima.';
+      if (cleaned.toLowerCase() == 'erro de valida??o') {
+        return '$cleaned. Confira unidade e quantidade m?nima.';
       }
       return cleaned.isEmpty ? fallback : cleaned;
     }

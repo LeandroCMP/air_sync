@@ -2,6 +2,7 @@ import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/client_model.dart';
 import 'package:air_sync/services/client/client_service.dart';
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -32,7 +33,7 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   final formKey = GlobalKey<FormState>();
   final nameController = TextEditingController();
   final docController = TextEditingController();
-  final notesController = TextEditingController();
+final notesController = TextEditingController();
   final phoneInputController = TextEditingController();
   final emailInputController = TextEditingController();
 
@@ -138,7 +139,7 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
         _currentPage += 1;
       }
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Falha ao carregar clientes.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -284,7 +285,7 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
         return true;
       }
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Falha ao carregar clientes.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -316,7 +317,7 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
       );
       success = true;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Falha ao carregar clientes.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -359,3 +360,26 @@ class ClientController extends GetxController with MessagesMixin, LoaderMixin {
   String _upperRequired(String value) => value.trim().toUpperCase();
 
 }
+
+
+String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+

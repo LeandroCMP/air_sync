@@ -335,19 +335,31 @@ class UsersController extends GetxController with LoaderMixin, MessagesMixin {
   }
 
   void _emitError(String title, Object error) {
-    String detail = 'Ocorreu um erro inesperado.';
-    if (error is DioException) {
-      final data = error.response?.data;
-      if (data is Map && data['message'] is String) {
-        detail = data['message'] as String;
-      } else if (error.message != null) {
-        detail = error.message!;
-      }
-    } else if (error is Exception) {
-      detail = error.toString();
-    }
+    final detail = _apiError(error, 'Ocorreu um erro inesperado.');
     message(MessageModel.error(title: title, message: detail));
   }
+
+  String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+
 
   @override
   void onClose() {

@@ -6,6 +6,7 @@ class LocalStorageService {
   static const _activationPrefix = 'activation_verified_';
   static const _activationPendingPrefix = 'activation_pending_';
   static const _graceNoticePrefix = 'grace_notice_shown_';
+  static const _suspendedKey = 'account_suspended_flag';
 
   Future<void> setRememberMe(bool value) async {
     final prefs = await SharedPreferences.getInstance();
@@ -55,5 +56,15 @@ class LocalStorageService {
   Future<bool> isGraceNoticeShown(String userId) async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool('$_graceNoticePrefix$userId') ?? false;
+  }
+
+  Future<void> setSuspendedFlag(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_suspendedKey, value);
+  }
+
+  Future<bool> isSuspendedFlag() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_suspendedKey) ?? false;
   }
 }

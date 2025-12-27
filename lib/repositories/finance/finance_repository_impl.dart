@@ -4,7 +4,6 @@ import 'package:air_sync/models/finance_audit_model.dart';
 import 'package:air_sync/models/finance_dashboard_model.dart';
 import 'package:air_sync/models/finance_forecast_model.dart';
 import 'package:air_sync/models/finance_transaction.dart';
-import 'package:air_sync/models/finance_reconciliation_model.dart';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
 
@@ -19,9 +18,15 @@ class FinanceRepositoryImpl implements FinanceRepository {
     String? status,
     DateTime? from,
     DateTime? to,
+    int page = 1,
+    int limit = 50,
   }) async {
     try {
-      final params = <String, dynamic>{'type': type};
+      final params = <String, dynamic>{
+        'type': type,
+        'page': page,
+        'limit': limit,
+      };
       if (status != null) params['status'] = status;
       if (from != null) params['from'] = from.toUtc().toIso8601String();
       if (to != null) params['to'] = to.toUtc().toIso8601String();
@@ -46,11 +51,17 @@ class FinanceRepositoryImpl implements FinanceRepository {
   Future<void> pay({
     required String id,
     required String method,
-    required double amount,
+    double? amount,
+    String? idempotencyKey,
   }) async {
+    final payload = <String, dynamic>{
+      'method': method,
+      if (amount != null) 'amount': amount,
+      if ((idempotencyKey ?? '').isNotEmpty) 'idempotencyKey': idempotencyKey,
+    };
     await _api.dio.patch(
       '/v1/finance/transactions/$id/pay',
-      data: {'method': method, 'amount': amount},
+      data: payload,
     );
   }
 
@@ -119,85 +130,6 @@ class FinanceRepositoryImpl implements FinanceRepository {
   }
 
   @override
-  Future<List<FinanceReconciliationPayment>> reconciliationPayments({
-    String scope = 'all',
-  }) async {
-    try {
-      final res = await _api.dio
-          .get(
-            '/v1/finance/reconciliation/payments',
-            queryParameters: {'scope': scope},
-          )
-          .timeout(const Duration(seconds: 12));
-      final data = res.data;
-      final list = <FinanceReconciliationPayment>[];
-      if (data is List) {
-        for (final entry in data) {
-          if (entry is Map) {
-            list.add(
-              FinanceReconciliationPayment.fromMap(
-                Map<String, dynamic>.from(entry),
-              ),
-            );
-          }
-        }
-      } else if (data is Map && data['items'] is List) {
-        for (final entry in data['items']) {
-          if (entry is Map) {
-            list.add(
-              FinanceReconciliationPayment.fromMap(
-                Map<String, dynamic>.from(entry),
-              ),
-            );
-          }
-        }
-      }
-      return list;
-    } catch (_) {
-      return [];
-    }
-  }
-
-  @override
-  Future<List<FinanceReconciliationIssue>> reconciliationReport({
-    String scope = 'all',
-  }) async {
-    try {
-      final res = await _api.dio
-          .get(
-            '/v1/finance/reconciliation/report',
-            queryParameters: {'scope': scope},
-          )
-          .timeout(const Duration(seconds: 12));
-      final data = res.data;
-      final list = <FinanceReconciliationIssue>[];
-      if (data is List) {
-        for (final entry in data) {
-          if (entry is Map) {
-            list.add(
-              FinanceReconciliationIssue.fromMap(
-                Map<String, dynamic>.from(entry),
-              ),
-            );
-          }
-        }
-      } else if (data is Map && data['items'] is List) {
-        for (final entry in data['items']) {
-          if (entry is Map) {
-            list.add(
-              FinanceReconciliationIssue.fromMap(
-                Map<String, dynamic>.from(entry),
-              ),
-            );
-          }
-        }
-      }
-      return list;
-    } catch (_) {
-      return [];
-    }
-  }
-
   @override
   Future<FinanceAnomalyReport> anomalies({
     required String month,

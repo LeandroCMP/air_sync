@@ -10,10 +10,6 @@ import 'package:air_sync/repositories/finance/finance_repository.dart';
 import 'package:air_sync/repositories/finance/finance_repository_impl.dart';
 import 'package:air_sync/services/finance/finance_service.dart';
 import 'package:air_sync/services/finance/finance_service_impl.dart';
-import 'package:air_sync/repositories/cost_centers/cost_centers_repository.dart';
-import 'package:air_sync/repositories/cost_centers/cost_centers_repository_impl.dart';
-import 'package:air_sync/services/cost_centers/cost_centers_service.dart';
-import 'package:air_sync/services/cost_centers/cost_centers_service_impl.dart';
 import 'package:air_sync/models/user_model.dart';
 import 'package:air_sync/modules/splash/splash_controller.dart';
 import 'package:air_sync/repositories/auth/auth_repository.dart';
@@ -37,6 +33,10 @@ import 'package:air_sync/repositories/signups/signups_repository.dart';
 import 'package:air_sync/repositories/signups/signups_repository_impl.dart';
 import 'package:air_sync/services/signups/signups_service.dart';
 import 'package:air_sync/services/signups/signups_service_impl.dart';
+import 'package:air_sync/repositories/maintenance/maintenance_repository.dart';
+import 'package:air_sync/repositories/maintenance/maintenance_repository_impl.dart';
+import 'package:air_sync/services/maintenance/maintenance_service.dart';
+import 'package:air_sync/services/maintenance/maintenance_service_impl.dart';
 
 class ApplicationBindings implements Bindings {
   ApplicationBindings({required AppConfig appConfig}) : _appConfig = appConfig;
@@ -64,14 +64,6 @@ class ApplicationBindings implements Bindings {
       () => FinanceServiceImpl(repo: Get.find()),
       fenix: true,
     );
-    Get.lazyPut<CostCentersRepository>(
-      () => CostCentersRepositoryImpl(),
-      fenix: true,
-    );
-    Get.lazyPut<CostCentersService>(
-      () => CostCentersServiceImpl(repository: Get.find()),
-      fenix: true,
-    );
     Get.lazyPut<SalesRepository>(() => SalesRepositoryImpl(), fenix: true);
     Get.lazyPut<SalesService>(
       () => SalesServiceImpl(repository: Get.find()),
@@ -90,6 +82,14 @@ class ApplicationBindings implements Bindings {
     Get.lazyPut<SignupsRepository>(() => SignupsRepositoryImpl(), fenix: true);
     Get.lazyPut<SignupsService>(
       () => SignupsServiceImpl(repository: Get.find()),
+      fenix: true,
+    );
+    Get.lazyPut<MaintenanceRepository>(
+      () => MaintenanceRepositoryImpl(),
+      fenix: true,
+    );
+    Get.lazyPut<MaintenanceService>(
+      () => MaintenanceServiceImpl(repository: Get.find()),
       fenix: true,
     );
     Get.put(SessionService(tokens: Get.find(), apiClient: Get.find()), permanent: true);

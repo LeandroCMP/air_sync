@@ -90,6 +90,117 @@ class CompanyProfilePage extends GetView<CompanyProfileController> {
                       ),
                       const SizedBox(height: 16),
                       _SectionCard(
+                        title: 'WhatsApp oficial',
+                        child: Obx(() {
+                          final status = controller.whatsappStatus.value;
+                          final loading = controller.whatsappLoading.value;
+                          final actionLoading = controller.whatsappActionLoading.value;
+                          final connected = status?.isConnected == true;
+                          final expired = status?.isExpired == true;
+                          final phoneId = status?.phoneId ?? '';
+                          final statusLabel = status?.label ?? 'Nao conectado';
+                          final statusColor =
+                              connected
+                                  ? Colors.green
+                                  : expired
+                                      ? Colors.orange
+                                      : Colors.white70;
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 10,
+                                      vertical: 6,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: statusColor.withValues(alpha: 0.12),
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: statusColor.withValues(alpha: 0.5),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      loading ? 'Carregando...' : statusLabel,
+                                      style: TextStyle(
+                                        color: statusColor,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
+                                  ),
+                                  const Spacer(),
+                                  TextButton.icon(
+                                    onPressed:
+                                        loading ? null : controller.loadWhatsappStatus,
+                                    icon: const Icon(Icons.refresh),
+                                    label: const Text('Atualizar status'),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 8),
+                              if (phoneId.isNotEmpty)
+                                Text(
+                                  'Phone ID: $phoneId',
+                                  style: const TextStyle(color: Colors.white70),
+                                ),
+                              if ((status?.message ?? '').isNotEmpty) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  status!.message!,
+                                  style: const TextStyle(color: Colors.orangeAccent),
+                                ),
+                              ],
+                              const SizedBox(height: 12),
+                              Row(
+                                children: [
+                                  Expanded(
+                                    child: ElevatedButton.icon(
+                                      onPressed:
+                                          actionLoading ? null : controller.connectWhatsapp,
+                                      icon: const Icon(Icons.link),
+                                      label: const Text('Conectar WhatsApp'),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  Expanded(
+                                    child: OutlinedButton.icon(
+                                      onPressed:
+                                          (!connected && !expired) || actionLoading
+                                              ? null
+                                              : controller.disconnectWhatsapp,
+                                      icon: const Icon(Icons.link_off),
+                                      label: const Text('Desconectar'),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              const SizedBox(height: 12),
+                              TextField(
+                                controller: controller.whatsappTestPhoneCtrl,
+                                decoration: const InputDecoration(
+                                  labelText: 'Numero para teste (E.164)',
+                                  hintText: '+5511999999999',
+                                ),
+                                keyboardType: TextInputType.phone,
+                              ),
+                              const SizedBox(height: 8),
+                              Align(
+                                alignment: Alignment.centerRight,
+                                child: ElevatedButton.icon(
+                                  onPressed:
+                                      actionLoading ? null : controller.sendWhatsappTest,
+                                  icon: const Icon(Icons.send),
+                                  label: const Text('Enviar teste'),
+                                ),
+                              ),
+                            ],
+                          );
+                        }),
+                      ),
+                      const SizedBox(height: 16),
+                      _SectionCard(
                         title: 'Taxas de cartão de crédito',
                         action: TextButton.icon(
                           onPressed: controller.addCreditFee,

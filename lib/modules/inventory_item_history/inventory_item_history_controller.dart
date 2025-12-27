@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:air_sync/models/inventory_model.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
 import 'package:get/get.dart';
@@ -73,8 +74,11 @@ class InventoryItemHistoryController extends GetxController {
       movements.assignAll(_sortMovements(fetchedMovements));
       await _loadCostHistory(freshItem);
       _syncFiltersWithData();
-    } catch (_) {
-      _hydrateMovementsFromItem();
+    } catch (e) {
+      Get.snackbar(
+        'Histórico',
+        _apiError(e, 'Falha ao carregar histórico.'),
+      );
     } finally {
       isLoading.value = false;
     }
@@ -328,3 +332,25 @@ class InventoryItemHistoryController extends GetxController {
     }
   }
 }
+
+String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+

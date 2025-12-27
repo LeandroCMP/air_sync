@@ -11,6 +11,8 @@ import 'package:air_sync/models/location_model.dart';
 import 'package:air_sync/models/order_model.dart';
 import 'package:air_sync/models/order_draft_model.dart';
 import 'package:air_sync/modules/orders/orders_controller.dart';
+import 'package:air_sync/models/maintenance_service_type.dart';
+import 'package:air_sync/modules/orders/order_booking_conflict.dart';
 import 'package:air_sync/services/client/client_service.dart';
 import 'package:air_sync/services/equipments/equipments_service.dart';
 import 'package:air_sync/services/inventory/inventory_service.dart';
@@ -19,6 +21,7 @@ import 'package:air_sync/services/orders/order_label_service.dart';
 import 'package:air_sync/services/orders/order_draft_storage.dart';
 import 'package:air_sync/services/orders/orders_service.dart';
 import 'package:air_sync/services/users/users_service.dart';
+import 'package:air_sync/services/maintenance/maintenance_service.dart';
 import 'package:intl/intl.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -38,6 +41,7 @@ class OrderCreateController extends GetxController
     required OrderLabelService labelService,
     required UsersService usersService,
     required OrderDraftStorage draftStorage,
+    required MaintenanceService maintenanceService,
     OrderDraftModel? initialDraft,
   }) : _ordersService = ordersService,
        _clientService = clientService,
@@ -47,6 +51,7 @@ class OrderCreateController extends GetxController
        _labelService = labelService,
        _usersService = usersService,
        _draftStorage = draftStorage,
+       _maintenanceService = maintenanceService,
        _initialDraft = initialDraft {
     _setEditingDraft(initialDraft);
   }
@@ -59,11 +64,13 @@ class OrderCreateController extends GetxController
   final OrderLabelService _labelService;
   final UsersService _usersService;
   final OrderDraftStorage _draftStorage;
+  final MaintenanceService _maintenanceService;
   final OrderDraftModel? _initialDraft;
   OrderDraftModel? _editingDraft;
   bool _draftApplied = false;
 
   final RxBool _hasDraft = false.obs;
+  final Rxn<OrderBookingConflict> bookingConflict = Rxn<OrderBookingConflict>();
 
   bool get isEditingDraft => _hasDraft.value;
 
@@ -78,6 +85,8 @@ class OrderCreateController extends GetxController
       WidgetsBinding.instance.addPostFrameCallback((_) => updateFlag());
     }
   }
+
+  void clearBookingConflict() => bookingConflict.value = null;
 
   final formKey = GlobalKey<FormState>();
 
@@ -108,6 +117,9 @@ class OrderCreateController extends GetxController
 
   final RxList<OrderMaterialDraft> materials = <OrderMaterialDraft>[].obs;
   final RxList<OrderBillingDraft> billingItems = <OrderBillingDraft>[].obs;
+  final RxList<MaintenanceServiceType> serviceTypes =
+      <MaintenanceServiceType>[].obs;
+  final RxBool serviceTypesLoading = false.obs;
   final RxList<CollaboratorModel> technicians = <CollaboratorModel>[].obs;
   final RxList<String> selectedTechnicianIds = <String>[].obs;
 
@@ -122,6 +134,7 @@ class OrderCreateController extends GetxController
     await _loadClients();
     await _loadInventoryItems();
     await _loadTechnicians();
+    await _loadServiceTypes();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future.delayed(const Duration(milliseconds: 150), () {
         _maybeApplyInitialDraft();
@@ -203,6 +216,18 @@ class OrderCreateController extends GetxController
     }
   }
 
+  Future<void> _loadServiceTypes() async {
+    try {
+      serviceTypesLoading.value = true;
+      final result = await _maintenanceService.listServiceTypes();
+      serviceTypes.assignAll(result);
+    } catch (_) {
+      // silencioso para nЧo travar criaЧгo de OS; validaЧгo tratarЧг erro
+    } finally {
+      serviceTypesLoading.value = false;
+    }
+  }
+
   Future<void> _maybeApplyInitialDraft() async {
     final draft = _initialDraft;
     if (draft == null || _draftApplied) return;
@@ -268,6 +293,7 @@ class OrderCreateController extends GetxController
     selectedTechnicianIds
       ..clear()
       ..assignAll(ids.toSet());
+    clearBookingConflict();
   }
 
   void toggleTechnician(String id) {
@@ -276,16 +302,36 @@ class OrderCreateController extends GetxController
     } else {
       selectedTechnicianIds.add(id);
     }
+    clearBookingConflict();
   }
 
-  void removeTechnician(String id) => selectedTechnicianIds.remove(id);
+  void removeTechnician(String id) {
+    selectedTechnicianIds.remove(id);
+    clearBookingConflict();
+  }
 
   List<CollaboratorModel> get selectedTechnicians =>
       technicians
           .where((tech) => selectedTechnicianIds.contains(tech.id))
           .toList();
 
+  int? _defaultIntervalFor(String? code) {
+    if (code == null || code.isEmpty) return null;
+    for (final type in serviceTypes) {
+      if (type.code == code) return type.defaultIntervalDays;
+    }
+    return null;
+  }
+
+  int? _resolveNextMaintenanceDays(OrderBillingDraft entry) {
+    final override =
+        int.tryParse(entry.nextMaintenanceCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
+    if (override != null && override > 0) return override;
+    return _defaultIntervalFor(entry.serviceType.value);
+  }
+
   Future<void> refreshInventory() => _loadInventoryItems();
+  Future<void> refreshServiceTypes() => _loadServiceTypes();
 
   Future<void> onClientSelected(String? clientId) async {
     selectedClientId.value = clientId;
@@ -331,9 +377,15 @@ class OrderCreateController extends GetxController
 
   void setEquipment(String? id) => selectedEquipmentId.value = id;
 
-  void setScheduledAt(DateTime? dateTime) => scheduledAt.value = dateTime;
+  void setScheduledAt(DateTime? dateTime) {
+    scheduledAt.value = dateTime;
+    clearBookingConflict();
+  }
 
-  void clearScheduledAt() => scheduledAt.value = null;
+  void clearScheduledAt() {
+    scheduledAt.value = null;
+    clearBookingConflict();
+  }
 
   void addChecklistItem() {
     final text = checklistCtrl.text.trim();
@@ -431,17 +483,45 @@ class OrderCreateController extends GetxController
             .whereType<OrderMaterialInput>()
             .toList();
 
-    final billingInputs =
-        billingItems
-            .map((entry) => entry.toBilling())
-            .whereType<OrderBillingItemInput>()
-            .toList();
+    final billingInputs = <OrderBillingItemInput>[];
+    for (final entry in billingItems) {
+      final billing = entry.toBilling();
+      if (billing == null) continue;
+      if (billing.type == 'service') {
+        final code = entry.serviceType.value?.trim() ?? '';
+        if (code.isEmpty) {
+          isLoading(false);
+          message(
+            MessageModel.error(
+              title: 'ServiЦo',
+              message:
+                  'Selecione o tipo de serviЦo para gerar o prУximo lembrete.',
+            ),
+          );
+          return;
+        }
+        final nextMaintenance = _resolveNextMaintenanceDays(entry);
+        billingInputs.add(
+          OrderBillingItemInput(
+            type: billing.type,
+            name: billing.name,
+            qty: billing.qty,
+            unitPrice: billing.unitPrice,
+            serviceTypeCode: code,
+            nextMaintenanceInDays: nextMaintenance,
+          ),
+        );
+      } else {
+        billingInputs.add(billing);
+      }
+    }
 
     final discount =
         double.tryParse(discountCtrl.text.replaceAll(',', '.').trim()) ?? 0;
 
     isLoading(true);
     try {
+      clearBookingConflict();
       final order = await _ordersService.create(
         clientId: clientId,
         locationId: locationId,
@@ -507,14 +587,26 @@ class OrderCreateController extends GetxController
         equipmentLabel: localEquipmentLabel ?? order.equipmentLabel,
       );
       final enrichedOrder = await _labelService.enrich(decoratedOrder);
+      clearBookingConflict();
       Get.back(result: enrichedOrder);
     } catch (e) {
-      message(
-        MessageModel.error(
-          title: 'Erro ao criar OS',
-          message: _extractApiError(e),
-        ),
-      );
+      final conflict = parseOrderBookingConflict(e);
+      if (conflict != null) {
+        bookingConflict.value = conflict;
+        message(
+          MessageModel.error(
+            title: 'Conflito de agenda',
+            message: _bookingConflictMessage(conflict),
+          ),
+        );
+      } else {
+        message(
+          MessageModel.error(
+            title: 'Erro ao criar OS',
+            message: _extractApiError(e),
+          ),
+        );
+      }
     } finally {
       if (_editingDraft != null) {
         await _draftStorage.delete(_editingDraft!.id);
@@ -694,7 +786,40 @@ class OrderCreateController extends GetxController
     await completer.future;
   }
 
+  String _bookingConflictMessage(OrderBookingConflict conflict) {
+    final names =
+        technicians
+            .where((tech) => conflict.technicianIds.contains(tech.id))
+            .map((tech) => tech.name.trim())
+            .where((name) => name.isNotEmpty)
+            .toList();
+
+    final base =
+        conflict.message.trim().isNotEmpty
+            ? conflict.message.trim()
+            : 'Este tecnico ja tem OS nesse horario.';
+    final suffix =
+        names.isEmpty ? '' : ' Tecnico(s): ${names.join(', ')}.';
+
+    return '$base Ajuste o horario ou troque o tecnico.$suffix';
+  }
+
   String _extractApiError(Object error) {
+    if (error is DioException) {
+      final code = error.response?.data is Map
+          ? (error.response?.data['code'] ?? error.response?.data['error']?['code'])
+              ?.toString()
+          : null;
+      if (code == 'SERVICE_TYPE_NOT_FOUND') {
+        return 'Tipo de serviЦo nУo encontrado. Atualize o catЦlogo e tente novamente.';
+      }
+    }
+    final conflict = parseOrderBookingConflict(error);
+    if (conflict != null) {
+      bookingConflict.value ??= conflict;
+      return _bookingConflictMessage(conflict);
+    }
+
     if (error is DioException) {
       final data = error.response?.data;
       String? pick(dynamic source) {
@@ -883,16 +1008,26 @@ class OrderMaterialDraft {
 }
 
 class OrderBillingDraft {
-  OrderBillingDraft()
-    : type = 'service'.obs,
-      nameCtrl = TextEditingController(),
-      qtyCtrl = TextEditingController(),
-      unitPriceCtrl = TextEditingController();
+  OrderBillingDraft({
+    String? serviceTypeCode,
+    int? nextMaintenanceInDays,
+  }) : type = 'service'.obs,
+       nameCtrl = TextEditingController(),
+       qtyCtrl = TextEditingController(),
+       unitPriceCtrl = TextEditingController(),
+       serviceType = RxnString(serviceTypeCode),
+       nextMaintenanceCtrl = TextEditingController(
+         text: nextMaintenanceInDays != null && nextMaintenanceInDays > 0
+             ? nextMaintenanceInDays.toString()
+             : '',
+       );
 
   final RxString type;
   final TextEditingController nameCtrl;
   final TextEditingController qtyCtrl;
   final TextEditingController unitPriceCtrl;
+  final RxnString serviceType;
+  final TextEditingController nextMaintenanceCtrl;
 
   OrderBillingItemInput? toBilling() {
     final name = nameCtrl.text.trim();
@@ -902,11 +1037,17 @@ class OrderBillingDraft {
     final qty = double.tryParse(qtyRaw);
     final unit = digits.isEmpty ? null : double.parse(digits) / 100;
     if (qty == null || qty <= 0 || unit == null || unit < 0) return null;
+    final nextMaintenance =
+        int.tryParse(nextMaintenanceCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
     return OrderBillingItemInput(
       type: type.value,
       name: name,
       qty: qty,
       unitPrice: unit,
+      serviceTypeCode: serviceType.value?.trim().isEmpty == true
+          ? null
+          : serviceType.value?.trim(),
+      nextMaintenanceInDays: nextMaintenance,
     );
   }
 
@@ -914,6 +1055,7 @@ class OrderBillingDraft {
     nameCtrl.dispose();
     qtyCtrl.dispose();
     unitPriceCtrl.dispose();
+    nextMaintenanceCtrl.dispose();
   }
 
   OrderDraftBillingItem? toDraftBilling() {
@@ -927,11 +1069,16 @@ class OrderBillingDraft {
         (qty != null && qty > 0) ||
         (unit != null && unit > 0);
     if (!hasContent) return null;
+    final nextMaintenance =
+        int.tryParse(nextMaintenanceCtrl.text.replaceAll(RegExp(r'[^0-9]'), ''));
     return OrderDraftBillingItem(
       type: type.value,
       name: name,
       qty: qty ?? 0,
       unitPrice: unit ?? 0,
+      serviceTypeCode:
+          serviceType.value?.trim().isEmpty == true ? null : serviceType.value,
+      nextMaintenanceInDays: nextMaintenance,
     );
   }
 
@@ -945,6 +1092,11 @@ class OrderBillingDraft {
       unitPriceCtrl,
       _draftCurrencyFormatter.format(data.unitPrice),
     );
+    serviceType.value = data.serviceTypeCode;
+    nextMaintenanceCtrl.text =
+        data.nextMaintenanceInDays != null && data.nextMaintenanceInDays! > 0
+            ? data.nextMaintenanceInDays.toString()
+            : '';
   }
 }
 

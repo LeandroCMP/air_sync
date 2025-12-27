@@ -10,6 +10,7 @@ abstract class SalesRepository {
     String? notes,
     Map<String, dynamic>? moveRequest,
     bool autoCreateOrder = false,
+    Map<String, dynamic>? orderMeta,
   });
   Future<SaleModel> update(
     String id, {
@@ -20,11 +21,16 @@ abstract class SalesRepository {
     String? notes,
     Map<String, dynamic>? moveRequest,
     bool? autoCreateOrder,
+    Map<String, dynamic>? orderMeta,
   });
   Future<SaleModel> approve(String id, {bool forceOrder = false});
   Future<SaleModel> fulfill(String id, {DateTime? fulfilledAt});
   Future<SaleModel> cancel(String id, {String? reason});
   Future<String> generateProposal(String id);
   Future<String> commercialAssistant(String id, String question);
-  Future<SaleModel> launchOrderIfNeeded(String id, {bool force = false});
+  Future<SaleModel> launchOrderIfNeeded(
+    String id, {
+    bool force = false,
+    Map<String, dynamic>? orderMeta,
+  });
 }

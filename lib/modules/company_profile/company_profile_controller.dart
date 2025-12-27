@@ -1,13 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:air_sync/application/ui/input_formatters.dart';
 import 'package:air_sync/application/ui/loader/loader_mixin.dart';
 import 'package:air_sync/application/ui/messages/messages_mixin.dart';
 import 'package:air_sync/models/company_profile_model.dart';
+import 'package:air_sync/models/whatsapp_status.dart';
 import 'package:air_sync/services/company_profile/company_profile_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class CompanyProfileController extends GetxController
     with LoaderMixin, MessagesMixin {
@@ -27,6 +30,10 @@ class CompanyProfileController extends GetxController
   final isLoading = false.obs;
   final message = Rxn<MessageModel>();
   final Rx<PixKeyType> pixType = Rx<PixKeyType>(PixKeyType.phone);
+  final Rxn<WhatsAppStatus> whatsappStatus = Rxn<WhatsAppStatus>();
+  final RxBool whatsappLoading = false.obs;
+  final RxBool whatsappActionLoading = false.obs;
+  final TextEditingController whatsappTestPhoneCtrl = TextEditingController();
 
   @override
   void onInit() {
@@ -37,6 +44,7 @@ class CompanyProfileController extends GetxController
   @override
   Future<void> onReady() async {
     await loadProfile();
+    unawaited(loadWhatsappStatus());
     super.onReady();
   }
 
@@ -304,7 +312,126 @@ class CompanyProfileController extends GetxController
     for (final fee in creditFees) {
       fee.dispose();
     }
+    whatsappTestPhoneCtrl.dispose();
     super.onClose();
+  }
+
+  Future<void> loadWhatsappStatus() async {
+    whatsappLoading(true);
+    try {
+      final status = await _service.fetchWhatsappStatus();
+      whatsappStatus.value = status;
+    } catch (_) {
+      whatsappStatus.value = null;
+      message(
+        MessageModel.error(
+          title: 'WhatsApp',
+          message: 'Nao foi possivel carregar o status do WhatsApp.',
+        ),
+      );
+    } finally {
+      whatsappLoading(false);
+    }
+  }
+
+  Future<void> connectWhatsapp() async {
+    if (whatsappActionLoading.value) return;
+    whatsappActionLoading(true);
+    try {
+      final url = await _service.fetchWhatsappOnboardUrl();
+      final uri = Uri.tryParse(url);
+      if (uri == null) {
+        message(
+          MessageModel.error(
+            title: 'WhatsApp',
+            message: 'URL de conexao invalida retornada pela API.',
+          ),
+        );
+        return;
+      }
+      final opened = await launchUrl(
+        uri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!opened) {
+        message(
+          MessageModel.error(
+            title: 'WhatsApp',
+            message: 'Nao foi possivel abrir o navegador.',
+          ),
+        );
+      }
+    } catch (_) {
+      message(
+        MessageModel.error(
+          title: 'WhatsApp',
+          message: 'Nao foi possivel iniciar a conexao.',
+        ),
+      );
+    } finally {
+      whatsappActionLoading(false);
+      unawaited(loadWhatsappStatus());
+    }
+  }
+
+  Future<void> disconnectWhatsapp() async {
+    if (whatsappActionLoading.value) return;
+    whatsappActionLoading(true);
+    try {
+      await _service.disconnectWhatsapp();
+      message(
+        MessageModel.success(
+          title: 'WhatsApp',
+          message: 'Conexao removida.',
+        ),
+      );
+      await loadWhatsappStatus();
+    } catch (_) {
+      message(
+        MessageModel.error(
+          title: 'WhatsApp',
+          message: 'Nao foi possivel desconectar.',
+        ),
+      );
+    } finally {
+      whatsappActionLoading(false);
+    }
+  }
+
+  Future<void> sendWhatsappTest() async {
+    final phone = whatsappTestPhoneCtrl.text.trim();
+    if (!_isValidE164(phone)) {
+      message(
+        MessageModel.info(
+          title: 'WhatsApp',
+          message: 'Informe um numero no formato E.164 (ex.: +5511999999999).',
+        ),
+      );
+      return;
+    }
+    whatsappActionLoading(true);
+    try {
+      await _service.sendWhatsappTest(phone);
+      message(
+        MessageModel.success(
+          title: 'WhatsApp',
+          message: 'Mensagem de teste enviada (se permitido pela API).',
+        ),
+      );
+    } catch (_) {
+      message(
+        MessageModel.error(
+          title: 'WhatsApp',
+          message: 'Nao foi possivel enviar o teste.',
+        ),
+      );
+    } finally {
+      whatsappActionLoading(false);
+    }
+  }
+
+  bool _isValidE164(String value) {
+    return RegExp(r'^\\+[1-9]\\d{7,14}\$').hasMatch(value);
   }
 }
 

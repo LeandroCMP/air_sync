@@ -111,7 +111,7 @@ class ClientDetailsController extends GetxController
       client.value = data;
       await loadLocations();
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -133,7 +133,7 @@ class ClientDetailsController extends GetxController
         (key, _) => list.every((location) => location.id != key),
       );
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -177,7 +177,7 @@ class ClientDetailsController extends GetxController
       );
       locationEquipments[locationId] = list;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -239,7 +239,7 @@ class ClientDetailsController extends GetxController
       );
       return true;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -316,7 +316,7 @@ class ClientDetailsController extends GetxController
       );
       return true;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -346,7 +346,7 @@ class ClientDetailsController extends GetxController
       );
       return true;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -410,7 +410,7 @@ class ClientDetailsController extends GetxController
       );
       return true;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -497,7 +497,7 @@ class ClientDetailsController extends GetxController
       );
       return true;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -530,7 +530,7 @@ class ClientDetailsController extends GetxController
       );
       return true;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -562,7 +562,7 @@ class ClientDetailsController extends GetxController
       equipmentHistory[equipmentId] = enriched;
       return enriched;
     } on ClientFailure catch (e) {
-      message(MessageModel.error(title: 'Erro', message: e.message));
+      message(MessageModel.error(title: 'Erro', message: _apiError(e, 'Opera??o n?o conclu?da.')));
     } catch (_) {
       message(
         MessageModel.error(
@@ -1016,3 +1016,26 @@ class ClientDetailsController extends GetxController
     return next;
   }
 }
+
+
+String _apiError(Object error, String fallback) {
+  if (error is DioException) {
+    final data = error.response?.data;
+    if (data is Map) {
+      final nested = data['error'];
+      if (nested is Map && nested['message'] is String && (nested['message'] as String).trim().isNotEmpty) {
+        return (nested['message'] as String).trim();
+      }
+      if (data['message'] is String && (data['message'] as String).trim().isNotEmpty) {
+        return (data['message'] as String).trim();
+      }
+    }
+    if (data is String && data.trim().isNotEmpty) return data.trim();
+    if ((error.message ?? '').isNotEmpty) return error.message!;
+  } else if (error is Exception) {
+    final text = error.toString();
+    if (text.trim().isNotEmpty) return text;
+  }
+  return fallback;
+}
+

@@ -41,37 +41,37 @@ class LocationsRepositoryImpl implements LocationsRepository {
 
   @override
   Future<List<LocationModel>> listByClient(String clientId) async {
-    try {
-      final res = await _api.dio.get(
-        '/v1/locations',
-        queryParameters: {'clientId': clientId},
-      );
-      final data = res.data;
-      if (data is List) {
-        return data
-            .whereType<Map>()
-            .map(
-              (e) => LocationModel.fromMap(
-                Map<String, dynamic>.from(
-                  e.map((key, value) => MapEntry(key.toString(), value)),
-                ),
+    final res = await _api.dio.get(
+      '/v1/locations',
+      queryParameters: {'clientId': clientId},
+    );
+
+    final data = res.data;
+
+    if (data is List) {
+      return data
+          .whereType<Map>()
+          .map(
+            (e) => LocationModel.fromMap(
+              Map<String, dynamic>.from(
+                e.map((key, value) => MapEntry(key.toString(), value)),
               ),
-            )
-            .toList();
-      }
-      if (data is Map) {
-        return [
-          LocationModel.fromMap(
-            Map<String, dynamic>.from(
-              data.map((key, value) => MapEntry(key.toString(), value)),
             ),
-          ),
-        ];
-      }
-      return const [];
-    } on DioException {
-      return const [];
+          )
+          .toList();
     }
+
+    if (data is Map) {
+      return [
+        LocationModel.fromMap(
+          Map<String, dynamic>.from(
+            data.map((key, value) => MapEntry(key.toString(), value)),
+          ),
+        ),
+      ];
+    }
+
+    return const [];
   }
 
   @override
@@ -112,8 +112,7 @@ class LocationsRepositoryImpl implements LocationsRepository {
     try {
       await _api.dio.delete(
         '/v1/locations/$id',
-        queryParameters:
-            cascadeEquipments ? {'cascadeEquipments': 'true'} : null,
+        queryParameters: cascadeEquipments ? {'cascadeEquipments': 'true'} : null,
       );
     } on DioException catch (e) {
       _handleDioError(
@@ -191,7 +190,7 @@ class LocationsRepositoryImpl implements LocationsRepository {
       if (trimmed.isEmpty) return null;
       var result = trimmed;
       if (digitsOnly) {
-        result = trimmed.replaceAll(RegExp(r'\D'), '');
+        result = trimmed.replaceAll(RegExp(r'\\D'), '');
       }
       if (upper) {
         result = result.toUpperCase();
@@ -275,12 +274,15 @@ class LocationsRepositoryImpl implements LocationsRepository {
 
   String _extractErrorMessage(dynamic data, {required String fallback}) {
     if (data == null) return fallback;
+
     if (data is String && data.trim().isNotEmpty) {
       return data.trim();
     }
+
     if (data is List && data.isNotEmpty) {
       return _extractErrorMessage(data.first, fallback: fallback);
     }
+
     if (data is Map) {
       final message = data['message'] ?? data['detail'] ?? data['error'];
       if (message != null) {
@@ -291,6 +293,7 @@ class LocationsRepositoryImpl implements LocationsRepository {
         return _extractErrorMessage(errors, fallback: fallback);
       }
     }
+
     return fallback;
   }
 }

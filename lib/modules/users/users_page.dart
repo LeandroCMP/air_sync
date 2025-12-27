@@ -1,4 +1,4 @@
-import 'package:air_sync/application/ui/theme_extensions.dart';
+﻿import 'package:air_sync/application/ui/theme_extensions.dart';
 
 import 'package:air_sync/models/collaborator_models.dart';
 
@@ -1146,56 +1146,6 @@ class _CollaboratorCard extends StatelessWidget {
 
             .toList();
 
-    final detailChips =
-
-        collaborator.permissions.map((code) {
-
-          final entry = permissionCatalog[code];
-
-          final label = permissionLabels[code] ?? entry?.label ?? code;
-
-          final tooltip =
-
-              entry?.description?.trim().isNotEmpty == true
-
-                  ? entry!.description!.trim()
-
-                  : 'Codigo: $code';
-
-          return Tooltip(
-
-            message: tooltip,
-
-            waitDuration: const Duration(milliseconds: 300),
-
-            child: Container(
-
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-
-              decoration: BoxDecoration(
-
-                color: context.themeSurface,
-
-                borderRadius: BorderRadius.circular(16),
-
-                border: Border.all(color: context.themeBorder),
-
-              ),
-
-              child: Text(
-
-                label,
-
-                style: const TextStyle(color: Colors.white70, fontSize: 12),
-
-              ),
-
-            ),
-
-          );
-
-        }).toList();
-
     final initials = _initialsFor(collaborator.name);
 
 
@@ -1383,153 +1333,72 @@ class _CollaboratorCard extends StatelessWidget {
           ),
 
           const SizedBox(height: 16),
-
           Wrap(
-
-            spacing: 16,
-
-            runSpacing: 12,
-
+            spacing: 12,
+            runSpacing: 10,
             children: [
-
               if (salary != null)
-
                 _InfoTile(
-
                   icon: Icons.attach_money,
-
-                  label: 'Salario',
-
+                  label: 'SalÃ¡rio',
                   value: _currencyFormatter.format(salary),
-
                 ),
-
               if (hourlyCost != null)
-
                 _InfoTile(
-
                   icon: Icons.timer,
-
                   label: 'Custo/hora',
-
                   value: _currencyFormatter.format(hourlyCost),
-
                 ),
-
               if (paymentDay != null)
-
                 _InfoTile(
-
                   icon: Icons.calendar_today,
-
                   label: 'Dia de pagamento',
-
                   value: 'Dia $paymentDay',
-
                 ),
-
               if (compensation?.paymentFrequency != null)
-
                 _InfoTile(
-
                   icon: Icons.event_repeat,
-
-                  label: 'Frequencia',
-
+                  label: 'FrequÃªncia',
                   value: _paymentFrequencyLabel(
-
                     compensation!.paymentFrequency!,
-
                   ),
-
                 ),
-
               if (compensation?.paymentMethod != null)
-
                 _InfoTile(
-
                   icon: Icons.payments,
-
                   label: 'Forma de pagamento',
-
                   value: _paymentMethodLabel(compensation!.paymentMethod!),
-
                 ),
-
+              _InfoTile(
+                icon: Icons.lock_person,
+                label: 'PermissÃµes',
+                value: usesCustomPermissions
+                    ? 'Personalizadas (${collaborator.permissions.length})'
+                    : 'Papel padrÃ£o',
+              ),
+              if (moduleCounts.isNotEmpty)
+                _InfoTile(
+                  icon: Icons.tune,
+                  label: 'Por mÃ³dulo',
+                  value: moduleCounts.entries
+                      .map((e) => '${_moduleLabel(e.key)}: ${e.value}')
+                      .join('  â€¢  '),
+                ),
+              if (payrollCount > 0)
+                _InfoTile(
+                  icon: Icons.receipt_long_outlined,
+                  label: 'Holerites',
+                  value: '$payrollCount',
+                ),
             ],
-
           ),
 
           if (compensation?.notes?.isNotEmpty ?? false) ...[
-
             const SizedBox(height: 12),
-
             Text(
-
               compensation!.notes!,
-
               style: const TextStyle(color: Colors.white70),
-
             ),
-
-          ],
-
-          if (detailChips.isNotEmpty) ...[
-
-            const SizedBox(height: 12),
-
-            Theme(
-
-              data: theme.copyWith(dividerColor: Colors.white12),
-
-              child: ExpansionTile(
-
-                tilePadding: EdgeInsets.zero,
-
-                collapsedIconColor: Colors.white70,
-
-                iconColor: Colors.white,
-
-                childrenPadding: const EdgeInsets.only(top: 4, bottom: 4),
-
-                title: Text(
-
-                  'Permissoes (${detailChips.length})',
-
-                  style: const TextStyle(
-
-                    color: Colors.white70,
-
-                    fontWeight: FontWeight.w600,
-
-                  ),
-
-                ),
-
-                children: [
-
-                  Align(
-
-                    alignment: Alignment.centerLeft,
-
-                    child: Wrap(
-
-                      spacing: 8,
-
-                      runSpacing: 8,
-
-                      children: detailChips,
-
-                    ),
-
-                  ),
-
-                ],
-
-              ),
-
-            ),
-
           ],
 
           if (isDeleting) ...[
